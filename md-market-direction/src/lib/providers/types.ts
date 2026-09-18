@@ -40,6 +40,12 @@ export interface MarketDataProvider extends BaseProvider {
   getQuote(symbol: string): Promise<Quote | null>;
   getQuotes(symbols: string[]): Promise<Quote[]>;
   getHistoricalData(symbol: string, timeframe: Timeframe, bars?: number): Promise<Candle[]>;
+  /**
+   * All six timeframes for one symbol. Live providers implement this by
+   * fetching two base series and deriving the rest (see data/aggregate.ts),
+   * which cuts per-asset request cost from six calls to two.
+   */
+  getSeriesBundle?(symbol: string): Promise<Record<Timeframe, Candle[]>>;
 }
 
 export interface NewsProvider extends BaseProvider {

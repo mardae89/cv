@@ -58,6 +58,7 @@ export function toScannerRow(a: AssetAnalysis): ScannerRow {
     eventRisk: a.eventRisk.risk,
     evidenceQuality: a.score.evidenceQuality,
     updatedAt: a.generatedAt,
+    demo: a.demo,
   };
 }
 

@@ -14,6 +14,8 @@ import { DemoFundamentalsProvider } from "./demo/fundamentals";
 import { TwelveDataProvider } from "./live/twelveData";
 import { NewsApiProvider } from "./live/newsApi";
 import { FmpCalendarProvider } from "./live/fmpCalendar";
+import { ASSETS } from "@/lib/data/universe";
+import { budget } from "./budget";
 
 /**
  * PROVIDER REGISTRY.
@@ -34,6 +36,46 @@ const liveMarket = process.env.TWELVE_DATA_API_KEY
   : null;
 const liveNews = process.env.NEWS_API_KEY ? new NewsApiProvider(process.env.NEWS_API_KEY) : null;
 const liveCalendar = process.env.FMP_API_KEY ? new FmpCalendarProvider(process.env.FMP_API_KEY) : null;
+
+/**
+ * WHICH SYMBOLS GET LIVE DATA.
+ *
+ * Live data is metered, so the universe is split deliberately rather than by
+ * accident. `MD_LIVE_SYMBOLS` (comma separated) names the markets worth paying
+ * for; everything else stays on clearly-labelled demo data and says so per
+ * asset. The default is a core set that fits comfortably inside a free plan.
+ */
+const DEFAULT_LIVE_SYMBOLS = [
+  "EUR/USD", "GBP/USD", "USD/JPY", "XAU/USD", "XAG/USD", "SPX",
+  "NDX", "BTC/USD", "ETH/USD", "WTI", "AAPL", "NVDA",
+];
+
+export const LIVE_SYMBOLS: Set<string> = new Set(
+  (process.env.MD_LIVE_SYMBOLS
+    ? process.env.MD_LIVE_SYMBOLS.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean)
+    : DEFAULT_LIVE_SYMBOLS
+  ),
+);
+
+/** True when this specific symbol is CONFIGURED for a live feed. */
+export function isLiveSymbol(symbol: string): boolean {
+  return Boolean(liveMarket) && LIVE_SYMBOLS.has(symbol.toUpperCase());
+}
+
+/**
+ * Symbols that a live feed has actually served, as opposed to those merely
+ * configured for it. The banner reports this one: a configured symbol whose
+ * fetch failed or was refused by the budget is still showing demo data, and
+ * saying otherwise would be the exact dishonesty this product exists to avoid.
+ */
+const confirmedLive = new Set<string>();
+export function markLive(symbol: string, live: boolean) {
+  if (live) confirmedLive.add(symbol.toUpperCase());
+  else confirmedLive.delete(symbol.toUpperCase());
+}
+export function confirmedLiveSymbols(): string[] {
+  return Array.from(confirmedLive);
+}
 
 /** Records of degraded calls, surfaced to the user rather than hidden. */
 const fallbacks = new Map<string, { at: number; reason: string }>();
@@ -80,6 +122,23 @@ export function isDemoMode(): boolean {
   return !liveMarket || !liveNews || !liveCalendar;
 }
 
+/** How much of the universe is actually live — shown in the UI, not implied. */
+export function liveCoverage(): {
+  live: number; total: number; symbols: string[]; configured: number; pending: number;
+} {
+  const confirmed = liveMarket ? confirmedLiveSymbols() : [];
+  const configured = liveMarket ? LIVE_SYMBOLS.size : 0;
+  return {
+    live: confirmed.length,
+    total: ASSETS.length,
+    symbols: confirmed,
+    configured,
+    // Configured but not yet fetched — a fresh instance warms up over the first
+    // few page loads because of the per-minute request limit.
+    pending: Math.max(0, configured - confirmed.length),
+  };
+}
+
 export function demoSources(): string[] {
   const out: string[] = [];
   if (!liveMarket) out.push("Market data");
@@ -87,6 +146,10 @@ export function demoSources(): string[] {
   if (!liveCalendar) out.push("Economic calendar");
   out.push("Macro");
   return out;
+}
+
+export function budgetState() {
+  return providers.marketLive ? budget.state() : null;
 }
 
 export function providerStatus(): ProviderHealth[] {

@@ -106,7 +106,7 @@ export async function analyseAsset(
     macro: macroReading,
     cross,
     eventDampening: eventRisk.dampening,
-    ctxDemo: ctx.demo,
+    ctxDemo: !ctx.isLive(asset.symbol),
   });
 
   /* ---------------- previous-day comparison for change detection ---------------- */
@@ -124,7 +124,7 @@ export async function analyseAsset(
       macro: macroReading,
       cross,
       eventDampening: eventRisk.dampening,
-      ctxDemo: ctx.demo,
+      ctxDemo: !ctx.isLive(asset.symbol),
     });
     previous = { score: prevScore.score, direction: prevScore.direction };
     changeReasons = diffReasons(prevCore, core, asset.precision);
@@ -150,7 +150,8 @@ export async function analyseAsset(
     previous,
     change: buildChange(score, previous, changeReasons),
     generatedAt: Date.now(),
-    demo: ctx.demo,
+    // Per asset: a live feed may cover gold but not the Hang Seng.
+    demo: !ctx.isLive(asset.symbol),
   };
 
   analysisCache.set(cacheKey, analysis);
@@ -252,7 +253,7 @@ function assemble({ mode, core, news, macro, cross, eventDampening, ctxDemo }: A
   ];
 
   const qualityNotes: string[] = [];
-  if (ctxDemo) qualityNotes.push("Demo data mode — not live market data");
+  if (ctxDemo) qualityNotes.push("Demo data — not live market data");
   if (!news.available) qualityNotes.push("No relevant news coverage");
 
   return buildScore({ categories, conflict, eventDampening, qualityNotes });

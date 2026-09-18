@@ -218,14 +218,47 @@ function LogoutButton({ className = "" }: { className?: string }) {
   );
 }
 
-/** Demo mode must never be mistaken for live market data. */
+/**
+ * Data-source banner. Demo data must never be mistaken for live market data, and
+ * a partially-live instance must not be presented as fully live — so this states
+ * the actual coverage rather than a single on/off flag.
+ */
 export function DemoBanner() {
-  const { data } = useApi<{ demoMode: boolean; demoSources: string[] }>("/api/status");
-  if (!data?.demoMode) return null;
+  const { data } = useApi<{
+    demoMode: boolean;
+    demoSources: string[];
+    coverage: { live: number; total: number; configured: number; pending: number };
+    budget: { usedToday: number; perDay: number; exhausted: boolean; reason: string | null } | null;
+  }>("/api/status");
+  if (!data) return null;
+
+  const live = data.coverage?.live ?? 0;
+  const total = data.coverage?.total ?? 0;
+
+  if (live === 0) {
+    return (
+      <div className="sticky top-0 z-50 border-b border-gold/30 bg-gold/10 px-4 py-2 text-center">
+        <p className="display text-[10px] font-bold uppercase tracking-[0.2em] text-gold sm:text-[11px]">
+          Demo mode — {data.demoSources.join(", ")} are generated sample data. Connect live data to enable real-time analysis.
+        </p>
+      </div>
+    );
+  }
+
+  const exhausted = data.budget?.exhausted;
   return (
-    <div className="sticky top-0 z-50 border-b border-gold/30 bg-gold/10 px-4 py-2 text-center">
-      <p className="display text-[10px] font-bold uppercase tracking-[0.2em] text-gold sm:text-[11px]">
-        Demo mode — {data.demoSources.join(", ")} are generated sample data. Connect live data to enable real-time analysis.
+    <div
+      className={`sticky top-0 z-50 border-b px-4 py-2 text-center ${
+        exhausted ? "border-bear/30 bg-bear/10" : "border-bull/25 bg-bull/5"
+      }`}
+    >
+      <p className={`display text-[10px] font-bold uppercase tracking-[0.2em] sm:text-[11px] ${exhausted ? "text-bear" : "text-bull"}`}>
+        Live data on {live} of {total} markets
+        {exhausted
+          ? ` — ${data.budget?.reason ?? "request budget reached"}`
+          : data.coverage.pending > 0
+            ? ` · ${data.coverage.pending} more warming up · the rest are marked demo on every card`
+            : ` · the remaining ${total - live} are marked demo on every card`}
       </p>
     </div>
   );

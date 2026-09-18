@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { User } from "@/lib/db/schema";
 import { currentUser, gate } from "./session";
 import type { Feature } from "@/lib/config/tiers";
+import { anonymousViewer, isPublicFeature, publicMode } from "./public";
 import { singleton } from "@/lib/utils/cache";
 
 /** Simple in-process rate limiter for expensive endpoints (AI, scans, backtests). */
@@ -29,6 +30,12 @@ export async function requireUser(): Promise<{ user: User } | { response: NextRe
 export async function requireFeature(
   feature: Feature,
 ): Promise<{ user: User } | { response: NextResponse }> {
+  // In public mode, read-only intelligence is open. Write paths and metered
+  // features still fall through to the normal account check below.
+  if (publicMode() && isPublicFeature(feature)) {
+    const user = await currentUser();
+    return { user: user ?? anonymousViewer() };
+  }
   const auth = await requireUser();
   if ("response" in auth) return auth;
   const g = gate(auth.user, feature);

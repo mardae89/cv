@@ -50,7 +50,9 @@ export function MarketCard({ row, precision = 2 }: { row: ScannerRow; precision?
       </dl>
 
       <div className="mt-3 flex items-center justify-between text-[10px] uppercase tracking-widest text-faint">
-        <span>Updated {timeAgo(row.updatedAt)}</span>
+        <span className={row.demo ? "text-gold" : "text-bull"}>
+          {row.demo ? "Demo" : "Live"} · {timeAgo(row.updatedAt)}
+        </span>
         {row.eventRisk !== "none" ? <span className="text-gold">Event risk {row.eventRisk}</span> : <span>No event risk</span>}
       </div>
     </Link>

@@ -2,7 +2,7 @@ import { buildContext } from "@/lib/engine/context";
 import { globalDirection, scanUniverse } from "@/lib/engine/market";
 import { buildBrief } from "@/lib/engine/brief";
 import { analyseAsset } from "@/lib/engine/analyze";
-import { currentUser } from "@/lib/auth/session";
+import { viewer } from "@/lib/auth/public";
 import { CACHE_SHORT, ok, resolveMode } from "@/lib/api";
 import { radar } from "@/lib/engine/market";
 
@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
-  const user = await currentUser();
+  const user = await viewer();
   const mode = resolveMode(searchParams.get("mode"), user);
   const ctx = await buildContext();
   const analyses = await scanUniverse(ctx, mode);

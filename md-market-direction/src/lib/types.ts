@@ -385,4 +385,6 @@ export interface ScannerRow {
   eventRisk: Impact | "none";
   evidenceQuality: EvidenceQuality;
   updatedAt: number;
+  /** false when this specific market came from a live feed. */
+  demo: boolean;
 }

@@ -1,6 +1,7 @@
 import { buildContext } from "@/lib/engine/context";
 import { scanUniverse, toScannerRow } from "@/lib/engine/market";
-import { currentUser, effectiveTier } from "@/lib/auth/session";
+import { effectiveTier } from "@/lib/auth/session";
+import { viewer } from "@/lib/auth/public";
 import { FREE_TIER_SYMBOLS } from "@/lib/data/universe";
 import { recordUsage } from "@/lib/db/store";
 import { CACHE_SHORT, ok, resolveMode } from "@/lib/api";
@@ -10,7 +11,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
-  const user = await currentUser();
+  const user = await viewer();
   const tier = effectiveTier(user);
   const mode = resolveMode(searchParams.get("mode"), user);
 

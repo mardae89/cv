@@ -1,6 +1,6 @@
 import { buildContext } from "@/lib/engine/context";
 import { analyseAsset } from "@/lib/engine/analyze";
-import { currentUser } from "@/lib/auth/session";
+import { viewer } from "@/lib/auth/public";
 import { recordUsage } from "@/lib/db/store";
 import { CACHE_SHORT, fail, ok, resolveMode } from "@/lib/api";
 
@@ -11,7 +11,7 @@ export async function GET(req: Request) {
   const symbol = searchParams.get("symbol");
   if (!symbol) return fail("symbol is required");
 
-  const user = await currentUser();
+  const user = await viewer();
   const mode = resolveMode(searchParams.get("mode"), user);
   const ctx = await buildContext();
   const analysis = await analyseAsset(ctx, symbol, { mode, withPrevious: true });

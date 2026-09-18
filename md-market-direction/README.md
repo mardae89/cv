@@ -24,6 +24,13 @@ No credentials are required. With no provider keys the app starts in **DEMO DATA
 MODE** — clearly labelled synthetic data, never presented as live prices. Copy
 `.env.example` to `.env.local` to connect real providers.
 
+### Deploy it with real prices
+
+**[DEPLOY.md](DEPLOY.md)** walks through a Vercel deploy with live market data —
+about ten minutes, no terminal. One key (`TWELVE_DATA_API_KEY`) turns real prices
+on; the app is engineered around a free tier's 800-requests-per-day limit by
+fetching two series per asset and deriving the other four timeframes.
+
 The first account created becomes the instance **admin** and is given Elite
 access, so you can see every feature immediately.
 
@@ -126,8 +133,13 @@ Mobile-first throughout: bottom navigation on phones, a fixed rail on desktop.
 
 ## Things that are deliberately honest
 
-- **Demo data is never dressed up as live data.** A persistent banner names
-  exactly which sources are synthetic.
+- **Demo data is never dressed up as live data.** The banner reports live
+  coverage per market, counting only symbols that have *actually returned* live
+  data — not symbols merely configured for it — and every card carries its own
+  `Live` or `Demo` label.
+- **A metered plan degrades honestly.** A request budget refuses calls before
+  making them, so an exhausted quota falls back to demo data with an explanation
+  instead of a wall of rate-limit errors.
 - **Missing data is reported as missing.** The engine marks a category
   unavailable rather than inventing a reading — including when live news arrives
   with no LLM configured to classify it.

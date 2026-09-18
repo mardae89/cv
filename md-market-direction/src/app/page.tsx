@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { currentUser } from "@/lib/auth/session";
+import { publicMode } from "@/lib/auth/public";
 import { LandingPreview } from "@/components/landing-preview";
 import { Logo } from "@/components/logo";
 import { TIERS, TIER_ORDER } from "@/lib/config/tiers";

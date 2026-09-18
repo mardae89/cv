@@ -1,4 +1,4 @@
-import { demoSources, getFallbacks, isDemoMode, providerStatus } from "@/lib/providers/registry";
+import { budgetState, demoSources, getFallbacks, isDemoMode, liveCoverage, providerStatus } from "@/lib/providers/registry";
 import { llmConfigured } from "@/lib/ai/llm";
 import { cacheStats } from "@/lib/engine/context";
 import { store } from "@/lib/db/store";
@@ -10,6 +10,8 @@ export async function GET() {
   return ok({
     demoMode: isDemoMode(),
     demoSources: demoSources(),
+    coverage: liveCoverage(),
+    budget: budgetState(),
     providers: providerStatus(),
     fallbacks: getFallbacks(),
     ai: { configured: llmConfigured() },
