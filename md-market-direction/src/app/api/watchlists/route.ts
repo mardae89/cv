@@ -4,7 +4,7 @@ import { newId, store } from "@/lib/db/store";
 import { buildContext } from "@/lib/engine/context";
 import { analyseAsset } from "@/lib/engine/analyze";
 import { resolveAsset } from "@/lib/data/universe";
-import { fail, ok, resolveMode } from "@/lib/api";
+import { fail, ok, resolveMode, resolveScope } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +14,7 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const withScores = searchParams.get("scores") !== "false";
   const mode = resolveMode(searchParams.get("mode"), auth.user);
+  const scope = resolveScope(searchParams.get("scope"), auth.user);
 
   const lists = store.read().watchlists.filter((w) => w.userId === auth.user.id);
   if (!withScores) return ok({ watchlists: lists.map((l) => ({ ...l, items: [] })) });
@@ -23,7 +24,7 @@ export async function GET(req: Request) {
   for (const list of lists) {
     const items = [];
     for (const symbol of list.symbols) {
-      const a = await analyseAsset(ctx, symbol, { mode });
+      const a = await analyseAsset(ctx, symbol, { mode, scope });
       if (!a) continue;
       items.push({
         symbol: a.asset.symbol, name: a.asset.name, price: a.quote.price, precision: a.asset.precision,

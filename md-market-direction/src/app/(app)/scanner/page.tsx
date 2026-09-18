@@ -3,9 +3,10 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useApi } from "@/lib/hooks";
+import { useTrendScope } from "@/lib/useTrendScope";
 import type { ScannerRow } from "@/lib/types";
 import { ScoreMeter } from "@/components/score";
-import { DirectionBadge, EmptyState, ErrorState, Eyebrow, GhostButton, Panel, SectionHeading, Skeleton } from "@/components/primitives";
+import { DirectionBadge, EmptyState, ErrorState, Eyebrow, GhostButton, Panel, SectionHeading, Skeleton, TrendScopeSwitch } from "@/components/primitives";
 import { fmtPct, fmtPrice, timeAgo } from "@/lib/utils/format";
 
 interface ScannerResponse {
@@ -29,6 +30,7 @@ const FILTERS = {
 };
 
 export default function ScannerPage() {
+  const [scope, setScope] = useTrendScope();
   const [state, setState] = useState<Record<string, string>>({
     direction: "any", minScore: "0", class: "any", ma50: "any",
     structure: "any", momentum: "any", news: "any", eventRisk: "any", q: "",
@@ -40,8 +42,9 @@ export default function ScannerPage() {
     Object.entries(state).forEach(([k, v]) => {
       if (v && v !== "any" && v !== "0" && v !== "") p.set(k, v);
     });
+    p.set("scope", scope);
     return `/api/scanner?${p.toString()}`;
-  }, [state]);
+  }, [state, scope]);
 
   const { data, loading, error, refresh } = useApi<ScannerResponse>(query);
 
@@ -59,6 +62,8 @@ export default function ScannerPage() {
         subtitle="Rank every market by evidence alignment, then narrow it down with the filters that matter to you."
         action={<GhostButton onClick={refresh}>Rescan</GhostButton>}
       />
+
+      <TrendScopeSwitch scope={scope} onChange={setScope} />
 
       <Panel className="p-4">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

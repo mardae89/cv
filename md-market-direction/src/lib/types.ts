@@ -20,6 +20,13 @@ export type Timeframe = "5M" | "15M" | "1H" | "4H" | "1D" | "1W";
 
 export type TradingMode = "scalper" | "day" | "swing" | "md-momentum";
 
+/**
+ * Which timeframes are allowed to define the trend. "htf" limits trend,
+ * structure, momentum and conflict detection to the weekly, daily and 4H;
+ * "all" folds in the entry charts as well.
+ */
+export type TrendScope = "htf" | "all";
+
 export type Direction = "bullish" | "bearish" | "neutral" | "mixed";
 
 export type Impact = "low" | "medium" | "high";

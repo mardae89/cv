@@ -31,6 +31,7 @@ export function anonymousViewer(): User {
     onboarded: true,
     preferences: {
       mode: "swing",
+      trendScope: "htf",
       markets: [],
       defaultTimeframe: "1D",
       theme: "dark",

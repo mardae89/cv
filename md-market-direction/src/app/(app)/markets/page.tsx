@@ -2,10 +2,11 @@
 
 import { useMemo, useState } from "react";
 import { useApi } from "@/lib/hooks";
+import { useTrendScope } from "@/lib/useTrendScope";
 import { symbolMatches } from "@/lib/symbols";
 import type { ScannerRow } from "@/lib/types";
 import { MarketCard } from "@/components/market-card";
-import { EmptyState, ErrorState, Eyebrow, SectionHeading, Skeleton } from "@/components/primitives";
+import { EmptyState, ErrorState, Eyebrow, SectionHeading, Skeleton, TrendScopeSwitch } from "@/components/primitives";
 import Link from "next/link";
 
 interface ScannerResponse {
@@ -34,7 +35,8 @@ const GROUP_ORDER = [
 export default function MarketsPage() {
   const [group, setGroup] = useState("All");
   const [query, setQuery] = useState("");
-  const { data, loading, error, refresh } = useApi<ScannerResponse>("/api/scanner");
+  const [scope, setScope] = useTrendScope();
+  const { data, loading, error, refresh } = useApi<ScannerResponse>(`/api/scanner?scope=${scope}`, [scope]);
 
   const rows = useMemo(() => {
     if (!data) return [];
@@ -57,6 +59,8 @@ export default function MarketsPage() {
         title="Markets"
         subtitle="Every market, scored on the same evidence. Search any ticker to analyse it."
       />
+
+      <TrendScopeSwitch scope={scope} onChange={setScope} />
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <input

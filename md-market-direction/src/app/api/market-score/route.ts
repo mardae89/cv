@@ -1,7 +1,7 @@
 import { buildContext } from "@/lib/engine/context";
 import { globalDirection, mostInteresting, radar, scanUniverse, toScannerRow } from "@/lib/engine/market";
 import { viewer } from "@/lib/auth/public";
-import { CACHE_SHORT, ok, resolveMode } from "@/lib/api";
+import { CACHE_SHORT, ok, resolveMode, resolveScope } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -10,8 +10,9 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const user = await viewer();
   const mode = resolveMode(searchParams.get("mode"), user);
+  const scope = resolveScope(searchParams.get("scope"), user);
   const ctx = await buildContext();
-  const analyses = await scanUniverse(ctx, mode);
+  const analyses = await scanUniverse(ctx, mode, undefined, scope);
   const global = globalDirection(analyses);
   const { bullish, bearish } = radar(analyses, 6);
 

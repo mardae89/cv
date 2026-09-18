@@ -5,7 +5,7 @@ import { globalDirection, scanUniverse } from "@/lib/engine/market";
 import { answerQuestion, buildAnalystContext } from "@/lib/ai/analyst";
 import { llmConfigured } from "@/lib/ai/llm";
 import { newId, recordUsage, store } from "@/lib/db/store";
-import { fail, ok, resolveMode } from "@/lib/api";
+import { fail, ok, resolveMode, resolveScope } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -22,8 +22,9 @@ export async function POST(req: Request) {
   if (!question) return fail("Ask a question.");
 
   const mode = resolveMode(body?.mode, auth.user);
+  const scope = resolveScope(body?.scope, auth.user);
   const ctx = await buildContext();
-  const analyses = await scanUniverse(ctx, mode);
+  const analyses = await scanUniverse(ctx, mode, undefined, scope);
   const global = globalDirection(analyses);
 
   // If the question does not name a market, ground the answer in the user's own

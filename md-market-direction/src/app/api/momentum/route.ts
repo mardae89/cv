@@ -3,7 +3,7 @@ import { buildContext } from "@/lib/engine/context";
 import { analyseAsset } from "@/lib/engine/analyze";
 import { evaluateMdMomentum } from "@/lib/engine/mdMomentum";
 import { ASSETS, resolveAsset } from "@/lib/data/universe";
-import { CACHE_SHORT, fail, ok } from "@/lib/api";
+import { CACHE_SHORT, fail, ok, resolveScope } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -14,12 +14,13 @@ export async function GET(req: Request) {
 
   const { searchParams } = new URL(req.url);
   const symbol = searchParams.get("symbol");
+  const scope = resolveScope(searchParams.get("scope"), auth.user);
   const ctx = await buildContext();
 
   if (symbol) {
     const asset = resolveAsset(symbol);
     if (!asset) return fail("Unknown symbol.", 404);
-    const analysis = await analyseAsset(ctx, asset.symbol, { mode: "md-momentum", withPrevious: true });
+    const analysis = await analyseAsset(ctx, asset.symbol, { mode: "md-momentum", scope, withPrevious: true });
     if (!analysis) return fail("Market data unavailable.", 503);
     const weekly = await ctx.candles(asset.symbol, "1W");
     return ok({ analysis, momentum: evaluateMdMomentum(analysis, weekly), demo: ctx.demo }, { headers: CACHE_SHORT });
@@ -28,7 +29,7 @@ export async function GET(req: Request) {
   // Ranked board across the tradable universe.
   const results = [];
   for (const asset of ASSETS.filter((a) => a.group !== "Macro Reference")) {
-    const analysis = await analyseAsset(ctx, asset.symbol, { mode: "md-momentum" });
+    const analysis = await analyseAsset(ctx, asset.symbol, { mode: "md-momentum", scope });
     if (!analysis) continue;
     const weekly = await ctx.candles(asset.symbol, "1W");
     results.push(evaluateMdMomentum(analysis, weekly));
