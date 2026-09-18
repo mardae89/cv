@@ -21,6 +21,7 @@ export default function SettingsPage() {
   const status = useApi<{
     demoMode: boolean; demoSources: string[]; providers: ProviderHealth[];
     ai: { configured: boolean }; storage: string; stripe: { configured: boolean }; cache: Record<string, number>;
+    auth: { accountsAvailable: boolean; publicMode: boolean };
   }>("/api/status");
 
   const [prefs, setPrefs] = useState<UserPreferences | null>(null);
@@ -46,6 +47,21 @@ export default function SettingsPage() {
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <SectionHeading title="Settings" />
+
+      {status.data && !status.data.auth.accountsAvailable ? (
+        <Panel className="border-gold/30 bg-gold/5 p-5">
+          <Eyebrow className="mb-2 text-gold">Accounts unavailable on this deployment</Eyebrow>
+          <p className="text-sm text-mute">
+            Signing in needs storage that survives between requests, and this host gives each request a read-only,
+            non-shared filesystem. Rather than accept a signup that silently disappears, the app runs open: all market
+            analysis works without an account, and your watchlist and alerts are saved in this browser.
+          </p>
+          <p className="mt-2 text-xs text-faint">
+            To enable real accounts, connect a database (the repository ships a Prisma PostgreSQL schema) and set
+            DATABASE_URL.
+          </p>
+        </Panel>
+      ) : null}
 
       <Panel className="p-5">
         <Eyebrow className="mb-3">Profile</Eyebrow>

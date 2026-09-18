@@ -3,8 +3,16 @@ import { log } from "@/lib/db/store";
 import { fail, ok } from "@/lib/api";
 import { AUTH_SETUP_MESSAGE, authConfigured } from "@/lib/auth/session";
 import { rateLimit } from "@/lib/auth/guard";
+import { accountsAvailable } from "@/lib/auth/public";
 
 export async function POST(req: Request) {
+  if (!accountsAvailable()) {
+    return fail(
+      "Accounts need a database, and this deployment has no persistent storage. " +
+        "Everything else works without signing in — your watchlist and alerts are saved in this browser.",
+      503,
+    );
+  }
   if (!authConfigured()) return fail(AUTH_SETUP_MESSAGE, 503);
   const limit = rateLimit("signup", 20, 60_000);
   if (!limit.ok) return fail("Too many attempts. Try again shortly.", 429);
