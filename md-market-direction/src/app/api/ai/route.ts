@@ -10,7 +10,7 @@ import { fail, ok, resolveMode } from "@/lib/api";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
-  const auth = await requireFeature("ai.analyst");
+  const auth = await requireFeature();
   if ("response" in auth) return auth.response;
 
   const daily = limitsFor(auth.user).aiMessagesPerDay;
@@ -68,7 +68,7 @@ export async function POST(req: Request) {
 }
 
 export async function GET() {
-  const auth = await requireFeature("ai.analyst");
+  const auth = await requireFeature();
   if ("response" in auth) return auth.response;
   const conversations = store.read().conversations
     .filter((c) => c.userId === auth.user.id)

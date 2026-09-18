@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
  * effect and why. For one symbol: every article that touches it.
  */
 export async function GET(req: Request) {
-  const auth = await requireFeature("news.intelligence");
+  const auth = await requireFeature();
   if ("response" in auth) return auth.response;
 
   const { searchParams } = new URL(req.url);

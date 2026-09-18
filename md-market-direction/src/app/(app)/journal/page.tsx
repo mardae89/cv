@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
-import { postJson, useApi } from "@/lib/hooks";
+import { useEffect, useState } from "react";
+import { guest } from "@/lib/guestStore";
+import { journalAnalytics } from "@/lib/engine/journal";
 import type { JournalEntry } from "@/lib/db/schema";
-import { Paywall } from "@/components/paywall";
 import {
-  EmptyState, ErrorState, Eyebrow, GhostButton, GoldButton, Panel, SectionHeading, Skeleton,
+  EmptyState, Eyebrow, GhostButton, GoldButton, Panel, SectionHeading, Skeleton,
 } from "@/components/primitives";
 import { fmtPct, fmtPrice } from "@/lib/utils/format";
 import Link from "next/link";
@@ -17,42 +17,48 @@ interface Analytics {
 }
 
 export default function JournalPage() {
-  const { data, loading, error, refresh, upgrade } = useApi<{
-    entries: JournalEntry[]; analytics: Analytics | null; analyticsLocked: boolean;
-  }>("/api/journal");
+  const [entries, setEntries] = useState<JournalEntry[] | null>(null);
+  const reload = () => setEntries(guest.journal());
+  useEffect(() => { setEntries(guest.journal()); }, []);
+  const analytics: Analytics | null = entries ? (journalAnalytics(entries) as Analytics) : null;
 
   const [form, setForm] = useState({
     symbol: "XAU/USD", direction: "long", entry: "", stop: "", target: "",
     strategy: "MD Momentum", timeframe: "4H", mdScoreAtEntry: "", notes: "", screenshotUrl: "",
   });
   const [exitValues, setExitValues] = useState<Record<string, string>>({});
-  const [status, setStatus] = useState<string | null>(null);
-
-  if (upgrade) return <Paywall requiredTier={upgrade.requiredTier} featureName="The trading journal" />;
+  const [statusMsg, setStatusMsg] = useState<string | null>(null);
 
   async function add() {
-    setStatus(null);
+    setStatusMsg(null);
     try {
-      await postJson("/api/journal", {
-        ...form,
+      guest.createJournalEntry({
+        symbol: form.symbol,
+        direction: form.direction === "short" ? "short" : "long",
         entry: Number(form.entry),
         stop: form.stop ? Number(form.stop) : null,
         target: form.target ? Number(form.target) : null,
+        size: null,
+        openedAt: Date.now(),
+        strategy: form.strategy,
+        timeframe: form.timeframe as JournalEntry["timeframe"],
         mdScoreAtEntry: form.mdScoreAtEntry ? Number(form.mdScoreAtEntry) : null,
+        screenshotUrl: form.screenshotUrl || null,
+        notes: form.notes,
       });
       setForm({ ...form, entry: "", stop: "", target: "", notes: "", mdScoreAtEntry: "" });
-      refresh();
+      reload();
     } catch (e) {
-      setStatus((e as Error).message);
+      setStatusMsg((e as Error).message);
     }
   }
 
   async function close(id: string) {
     const exit = Number(exitValues[id]);
     if (!Number.isFinite(exit)) return;
-    await postJson(`/api/journal/${id}`, { exit }, "PATCH");
+    guest.closeJournalEntry(id, exit);
     setExitValues({ ...exitValues, [id]: "" });
-    refresh();
+    reload();
   }
 
   return (
@@ -75,15 +81,13 @@ export default function JournalPage() {
         </div>
         <div className="mt-4 flex items-center gap-3">
           <GoldButton onClick={add} disabled={!form.entry}>Log trade</GoldButton>
-          {status ? <span className="text-xs text-bear">{status}</span> : null}
+          {statusMsg ? <span className="text-xs text-bear">{statusMsg}</span> : null}
         </div>
       </Panel>
 
-      {error ? <ErrorState message={error} onRetry={refresh} /> : null}
-
-      {loading && !data ? (
+      {entries === null ? (
         <Skeleton className="h-64" />
-      ) : !data?.entries.length ? (
+      ) : !entries.length ? (
         <EmptyState title="No trades logged" message="Log your first trade above. Analytics appear once you close trades." />
       ) : (
         <>
@@ -97,7 +101,7 @@ export default function JournalPage() {
                 </tr>
               </thead>
               <tbody>
-                {data.entries.map((e) => (
+                {entries.map((e) => (
                   <tr key={e.id} className="border-b border-hairline-soft last:border-b-0">
                     <td className="px-3 py-2">
                       <Link href={`/markets/${encodeURIComponent(e.symbol)}`} className="display text-xs font-semibold hover:text-gold">
@@ -135,17 +139,7 @@ export default function JournalPage() {
             </table>
           </Panel>
 
-          {data.analyticsLocked ? (
-            <Panel className="p-6 text-center">
-              <Eyebrow className="mb-2">Journal analytics</Eyebrow>
-              <p className="text-sm text-mute">
-                Performance by asset, by MD Score band, by strategy and by timeframe is included with Elite.
-              </p>
-              <Link href="/subscription" className="mt-3 inline-block"><GoldButton>See Elite</GoldButton></Link>
-            </Panel>
-          ) : data.analytics ? (
-            <Analytics analytics={data.analytics} />
-          ) : null}
+          {analytics ? <Analytics analytics={analytics} /> : null}
         </>
       )}
     </div>

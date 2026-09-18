@@ -5,7 +5,7 @@ import { fail, ok } from "@/lib/api";
 export const dynamic = "force-dynamic";
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireFeature("journal");
+  const auth = await requireFeature();
   if ("response" in auth) return auth.response;
   const { id } = await params;
   const body = await req.json().catch(() => null);
@@ -36,7 +36,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 }
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireFeature("journal");
+  const auth = await requireFeature();
   if ("response" in auth) return auth.response;
   const { id } = await params;
   const removed = store.write((db) => {

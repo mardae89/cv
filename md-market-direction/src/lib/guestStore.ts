@@ -1,6 +1,6 @@
 "use client";
 
-import type { Alert, AlertKind, Watchlist } from "@/lib/db/schema";
+import type { Alert, AlertKind, JournalEntry, Watchlist } from "@/lib/db/schema";
 import type { Direction } from "@/lib/types";
 
 /**
@@ -19,9 +19,10 @@ const KEY = "md.guest.v1";
 interface GuestData {
   watchlists: Watchlist[];
   alerts: Alert[];
+  journal: JournalEntry[];
 }
 
-const EMPTY: GuestData = { watchlists: [], alerts: [] };
+const EMPTY: GuestData = { watchlists: [], alerts: [], journal: [] };
 
 function read(): GuestData {
   try {
@@ -31,6 +32,7 @@ function read(): GuestData {
     return {
       watchlists: Array.isArray(parsed.watchlists) ? parsed.watchlists : [],
       alerts: Array.isArray(parsed.alerts) ? parsed.alerts : [],
+      journal: Array.isArray(parsed.journal) ? parsed.journal : [],
     };
   } catch {
     return structuredClone(EMPTY);
@@ -128,6 +130,47 @@ export const guest = {
   deleteAlert(alertId: string) {
     const data = read();
     data.alerts = data.alerts.filter((a) => a.id !== alertId);
+    write(data);
+  },
+
+  journal(): JournalEntry[] {
+    return read().journal.sort((a, b) => b.openedAt - a.openedAt);
+  },
+
+  createJournalEntry(input: Omit<JournalEntry, "id" | "userId" | "closedAt" | "outcome" | "resultR" | "resultPct">): JournalEntry {
+    const data = read();
+    const entry: JournalEntry = {
+      ...input,
+      id: id("jrn"),
+      userId: "guest",
+      closedAt: null,
+      outcome: "open",
+      resultR: null,
+      resultPct: null,
+    };
+    data.journal.push(entry);
+    write(data);
+    return entry;
+  },
+
+  closeJournalEntry(entryId: string, exit: number) {
+    const data = read();
+    const entry = data.journal.find((j) => j.id === entryId);
+    if (!entry) return;
+    const sign = entry.direction === "long" ? 1 : -1;
+    entry.resultPct = ((exit - entry.entry) / entry.entry) * 100 * sign;
+    // An R multiple only means something when a stop was recorded.
+    if (entry.stop != null && entry.stop !== entry.entry) {
+      entry.resultR = ((exit - entry.entry) * sign) / Math.abs(entry.entry - entry.stop);
+    }
+    entry.closedAt = Date.now();
+    entry.outcome = entry.resultPct > 0.02 ? "win" : entry.resultPct < -0.02 ? "loss" : "breakeven";
+    write(data);
+  },
+
+  deleteJournalEntry(entryId: string) {
+    const data = read();
+    data.journal = data.journal.filter((j) => j.id !== entryId);
     write(data);
   },
 };

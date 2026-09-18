@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   // The full news feed and its market mapping are part of News Intelligence.
   // Headline teasers still reach every user through the daily brief.
-  const auth = await requireFeature("news.intelligence");
+  const auth = await requireFeature();
   if ("response" in auth) return auth.response;
 
   const { searchParams } = new URL(req.url);

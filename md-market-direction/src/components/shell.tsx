@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Icon } from "./icons";
 import { Logo } from "./logo";
@@ -19,21 +19,21 @@ const PRIMARY: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: Icon.dashboard },
   { href: "/markets", label: "Markets", icon: Icon.markets },
   { href: "/scanner", label: "Scanner", icon: Icon.scanner },
-  { href: "/news", label: "News Intelligence", icon: Icon.news, minTier: "pro" },
+  { href: "/news", label: "News Intelligence", icon: Icon.news },
   { href: "/calendar", label: "Economic Calendar", icon: Icon.calendar },
 ];
 
 const PERSONAL: NavItem[] = [
   { href: "/watchlists", label: "Watchlists", icon: Icon.watchlist },
   { href: "/alerts", label: "Alerts", icon: Icon.alerts },
-  { href: "/journal", label: "Journal", icon: Icon.journal, minTier: "pro" },
+  { href: "/journal", label: "Journal", icon: Icon.journal },
 ];
 
 const INTELLIGENCE: NavItem[] = [
-  { href: "/analyst", label: "AI Analyst", icon: Icon.ai, minTier: "pro" },
-  { href: "/momentum", label: "MD Momentum", icon: Icon.momentum, minTier: "elite" },
-  { href: "/cross-market", label: "Cross-Market Map", icon: Icon.crossMarket, minTier: "elite" },
-  { href: "/backtest", label: "Backtesting", icon: Icon.backtest, minTier: "elite" },
+  { href: "/analyst", label: "AI Analyst", icon: Icon.ai },
+  { href: "/momentum", label: "MD Momentum", icon: Icon.momentum },
+  { href: "/cross-market", label: "Cross-Market Map", icon: Icon.crossMarket },
+  { href: "/backtest", label: "Backtesting", icon: Icon.backtest },
 ];
 
 const MOBILE: NavItem[] = [
@@ -72,11 +72,7 @@ export function AppShell({ user, children }: { user: ShellUser; children: React.
             <NavGroup title="Intelligence" items={INTELLIGENCE} pathname={pathname} tier={user.tier} />
             <NavGroup
               title="Account"
-              items={[
-                { href: "/settings", label: "Settings", icon: Icon.settings },
-                { href: "/subscription", label: "Subscription", icon: Icon.crown },
-                ...(user.role === "admin" ? [{ href: "/admin", label: "Admin", icon: Icon.admin }] : []),
-              ]}
+              items={[{ href: "/settings", label: "Settings", icon: Icon.settings }]}
               pathname={pathname}
               tier={user.tier}
             />
@@ -105,11 +101,7 @@ export function AppShell({ user, children }: { user: ShellUser; children: React.
               <NavGroup title="Intelligence" items={INTELLIGENCE} pathname={pathname} tier={user.tier} />
               <NavGroup
                 title="Account"
-                items={[
-                  { href: "/settings", label: "Settings", icon: Icon.settings },
-                  { href: "/subscription", label: "Subscription", icon: Icon.crown },
-                  ...(user.role === "admin" ? [{ href: "/admin", label: "Admin", icon: Icon.admin }] : []),
-                ]}
+                items={[{ href: "/settings", label: "Settings", icon: Icon.settings }]}
                 pathname={pathname}
                 tier={user.tier}
               />
@@ -198,49 +190,15 @@ export function TierChip({ tier }: { tier: Tier }) {
   );
 }
 
-/**
- * Accounts only exist where there is durable storage. On a deployment without
- * one, offering "sign out" (or implying a login happened) is a lie the UI should
- * not tell — so the guest state is named plainly instead.
- */
 function AccountFooter({ user, className = "" }: { user: ShellUser; className?: string }) {
-  const { data } = useApi<{ auth: { accountsAvailable: boolean } }>("/api/status");
-  const accounts = data?.auth.accountsAvailable;
-  if (accounts === false) {
-    return (
-      <div className={className}>
-        <div className="text-xs text-mute">Guest — no sign-in needed</div>
-        <div className="mt-1 flex items-center justify-between">
-          <TierChip tier={user.tier} />
-          <span className="text-[10px] uppercase tracking-widest text-faint">Saved on this device</span>
-        </div>
-      </div>
-    );
-  }
   return (
     <div className={className}>
-      <div className="truncate text-xs text-mute">{user.email}</div>
+      <div className="text-xs text-mute">No sign-in needed</div>
       <div className="mt-1 flex items-center justify-between">
         <TierChip tier={user.tier} />
-        <LogoutButton />
+        <span className="text-[10px] uppercase tracking-widest text-faint">Saved on this device</span>
       </div>
     </div>
-  );
-}
-
-function LogoutButton({ className = "" }: { className?: string }) {
-  const router = useRouter();
-  return (
-    <button
-      onClick={async () => {
-        await fetch("/api/auth/logout", { method: "POST" });
-        router.push("/");
-        router.refresh();
-      }}
-      className={`text-[10px] uppercase tracking-widest text-faint hover:text-bear ${className}`}
-    >
-      Sign out
-    </button>
   );
 }
 

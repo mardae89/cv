@@ -9,7 +9,7 @@ import type { JournalEntry } from "@/lib/db/schema";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const auth = await requireFeature("journal");
+  const auth = await requireFeature();
   if ("response" in auth) return auth.response;
   const entries = store.read().journal
     .filter((j) => j.userId === auth.user.id)
@@ -19,7 +19,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const auth = await requireFeature("journal");
+  const auth = await requireFeature();
   if ("response" in auth) return auth.response;
   const body = await req.json().catch(() => null);
   const asset = resolveAsset(String(body?.symbol ?? ""));
