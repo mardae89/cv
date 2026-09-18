@@ -10,7 +10,7 @@ import { newId, store } from "@/lib/db/store";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
-  const auth = await requireFeature("backtest");
+  const auth = await requireFeature();
   if ("response" in auth) return auth.response;
 
   const limit = rateLimit(`backtest:${auth.user.id}`, 30, 60_000);
@@ -49,7 +49,7 @@ export async function POST(req: Request) {
 }
 
 export async function GET() {
-  const auth = await requireFeature("backtest");
+  const auth = await requireFeature();
   if ("response" in auth) return auth.response;
   return ok({ saved: store.read().backtests.filter((b) => b.userId === auth.user.id) });
 }

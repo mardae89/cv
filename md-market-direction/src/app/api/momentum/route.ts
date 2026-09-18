@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 /** MD Momentum Mode — the strategy dashboard. */
 export async function GET(req: Request) {
-  const auth = await requireFeature("momentum.mode");
+  const auth = await requireFeature();
   if ("response" in auth) return auth.response;
 
   const { searchParams } = new URL(req.url);
