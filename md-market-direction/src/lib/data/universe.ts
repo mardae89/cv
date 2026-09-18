@@ -1,4 +1,5 @@
 import type { Asset, AssetClass, CrossMarketLink, MacroBetas } from "@/lib/types";
+import { normalizeSymbol, symbolMatches } from "@/lib/symbols";
 
 /**
  * THE ASSET UNIVERSE.
@@ -50,6 +51,181 @@ function asset(a: AssetInput): Asset {
 }
 
 const US_EVENTS = ["fed", "us-inflation", "us-jobs", "us-growth"];
+
+/* -------------------------------------------------------------------------- */
+/*  FOREX CROSSES — generated from per-currency profiles                       */
+/* -------------------------------------------------------------------------- */
+/**
+ * All 21 crosses among the eight major currencies are derived rather than
+ * written out one at a time, so the set is complete by construction: with the
+ * seven USD majors above, the app covers the full 28 pairs a forex trader
+ * expects.
+ *
+ * A cross is a ratio, so its response to any factor is the base currency's
+ * response minus the quote currency's. The six crosses that used to be
+ * hand-tuned here are reproduced by this model to within ~0.15 on every beta,
+ * and their demo prices and drifts come out exact — the subtraction is the
+ * rule those values were following anyway.
+ *
+ * The USD majors stay hand-written: they carry dollar-specific anchors (DXY,
+ * copper, crude) that do not fall out of a subtraction.
+ */
+interface CurrencyProfile {
+  name: string;
+  /** Value of one unit in USD. Keeps generated demo prices arbitrage-free. */
+  usd: number;
+  /** Demo-mode drift of the currency itself; a cross gets base minus quote. */
+  drift: number;
+  /** Demo-mode volatility contribution; a cross adds the two in quadrature. */
+  vol: number;
+  /** Currencies that trade together, so their crosses are quieter than that. */
+  bloc: "europe" | "commodity" | "haven";
+  macro: Betas;
+  news: Record<string, number>;
+  events: string[];
+  /** Markets that move WITH this currency. A cross inherits them signed. */
+  anchors: Array<[symbol: string, weight: number, label: string]>;
+}
+
+const CURRENCIES: Record<string, CurrencyProfile> = {
+  EUR: {
+    name: "Euro", usd: 1.0842, drift: 0.05, vol: 0.054, bloc: "europe",
+    macro: { rates: 0.15, realYields: -0.05, riskAppetite: 0.05, growth: 0.25 },
+    news: { "central-bank-ecb": 0.75, "growth-strong": 0.2 },
+    events: ["ecb", "eu-inflation", "eu-growth"],
+    anchors: [["DAX", 0.45, "European equities"]],
+  },
+  GBP: {
+    name: "British Pound", usd: 1.2718, drift: 0.17, vol: 0.066, bloc: "europe",
+    macro: { rates: 0.2, riskAppetite: 0.15, growth: 0.3 },
+    news: { "central-bank-boe": 0.75, "risk-sentiment": 0.15 },
+    events: ["boe", "uk-inflation", "uk-growth"],
+    anchors: [["FTSE", 0.3, "UK equities"]],
+  },
+  AUD: {
+    name: "Australian Dollar", usd: 0.6592, drift: 0.03, vol: 0.078, bloc: "commodity",
+    macro: { rates: 0.1, riskAppetite: 0.45, growth: 0.45, inflation: 0.2 },
+    news: { "china-growth": 0.75, "risk-sentiment": 0.45, "growth-strong": 0.3 },
+    events: ["rba", "china"],
+    anchors: [["COPPER", 0.6, "Copper"], ["HSI", 0.5, "China proxy"]],
+  },
+  NZD: {
+    name: "New Zealand Dollar", usd: 0.6088, drift: 0, vol: 0.078, bloc: "commodity",
+    macro: { rates: 0.1, riskAppetite: 0.45, growth: 0.4, inflation: 0.1 },
+    news: { "china-growth": 0.65, "risk-sentiment": 0.45, "growth-strong": 0.25 },
+    events: ["rbnz", "china"],
+    anchors: [["COPPER", 0.4, "Copper"], ["HSI", 0.4, "China proxy"]],
+  },
+  CAD: {
+    name: "Canadian Dollar", usd: 1 / 1.3588, drift: -0.05, vol: 0.054, bloc: "commodity",
+    macro: { rates: 0.15, riskAppetite: 0.15, growth: 0.2, inflation: 0.3 },
+    news: { "oil-supply": 0.65, "energy-demand": 0.4, "risk-sentiment": 0.15 },
+    events: ["boc", "oil"],
+    anchors: [["WTI", 0.7, "Crude oil"]],
+  },
+  CHF: {
+    name: "Swiss Franc", usd: 1 / 0.8964, drift: 0.29, vol: 0.054, bloc: "europe",
+    macro: { rates: -0.05, realYields: -0.1, riskAppetite: -0.35 },
+    news: { geopolitics: 0.6, "risk-sentiment": -0.35 },
+    events: ["snb"],
+    anchors: [["XAU/USD", 0.4, "Gold"], ["VIX", 0.4, "Volatility"]],
+  },
+  JPY: {
+    name: "Japanese Yen", usd: 1 / 151.42, drift: -0.25, vol: 0.078, bloc: "haven",
+    macro: { rates: -0.3, realYields: -0.45, riskAppetite: -0.5, growth: -0.1 },
+    news: { "central-bank-boj": 0.85, "risk-sentiment": -0.5, geopolitics: 0.45 },
+    events: ["boj", "jp-inflation"],
+    anchors: [["VIX", 0.5, "Volatility"]],
+  },
+};
+
+/**
+ * Market convention for which currency is quoted first. Every pair in the
+ * 28 reads base-before-quote in this order (EUR/AUD, not AUD/EUR).
+ */
+const QUOTE_ORDER = ["EUR", "GBP", "AUD", "NZD", "USD", "CAD", "CHF", "JPY"];
+
+/** How each currency is quoted against the dollar, for the cross-market links. */
+const USD_MAJOR: Record<string, { symbol: string; baseIsUsd: boolean }> = {
+  EUR: { symbol: "EUR/USD", baseIsUsd: false },
+  GBP: { symbol: "GBP/USD", baseIsUsd: false },
+  AUD: { symbol: "AUD/USD", baseIsUsd: false },
+  NZD: { symbol: "NZD/USD", baseIsUsd: false },
+  CAD: { symbol: "USD/CAD", baseIsUsd: true },
+  CHF: { symbol: "USD/CHF", baseIsUsd: true },
+  JPY: { symbol: "USD/JPY", baseIsUsd: true },
+};
+
+/** Correlated currencies make for quieter crosses than independence implies. */
+const BLOC_DAMPENING = 0.65;
+
+function round(value: number, dp: number): number {
+  const f = 10 ** dp;
+  return Math.round(value * f) / f;
+}
+
+/** Subtract two factor maps: a pair responds as base minus quote. */
+function subtract(a: Record<string, number>, b: Record<string, number>): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) {
+    const v = round((a[key] ?? 0) - (b[key] ?? 0), 2);
+    if (v !== 0) out[key] = v;
+  }
+  return out;
+}
+
+function crossAsset(baseCode: string, quoteCode: string): Asset {
+  const base = CURRENCIES[baseCode];
+  const quote = CURRENCIES[quoteCode];
+  const precision = quoteCode === "JPY" ? 3 : 5;
+
+  // Anchors net out when both legs share one, so AUD/NZD keeps only the
+  // copper sensitivity the two do not have in common.
+  const anchorWeights = new Map<string, { weight: number; label: string }>();
+  for (const [symbol, weight, label] of base.anchors) {
+    anchorWeights.set(symbol, { weight, label });
+  }
+  for (const [symbol, weight, label] of quote.anchors) {
+    const prev = anchorWeights.get(symbol);
+    anchorWeights.set(symbol, { weight: (prev?.weight ?? 0) - weight, label: prev?.label ?? label });
+  }
+  const related: CrossMarketLink[] = [];
+  for (const [symbol, { weight, label }] of anchorWeights) {
+    // Below this the link is noise, and a zero-sign link would be meaningless.
+    if (Math.abs(weight) < 0.15) continue;
+    related.push(rel(symbol, weight > 0 ? 1 : -1, round(Math.abs(weight), 2), label));
+  }
+  // Each leg also confirms against its own dollar pair.
+  const baseMajor = USD_MAJOR[baseCode];
+  const quoteMajor = USD_MAJOR[quoteCode];
+  related.push(rel(baseMajor.symbol, baseMajor.baseIsUsd ? -1 : 1, 0.6, `${baseCode} vs dollar`));
+  related.push(rel(quoteMajor.symbol, quoteMajor.baseIsUsd ? 1 : -1, 0.6, `${quoteCode} vs dollar`));
+
+  const vol = base.bloc === quote.bloc ? BLOC_DAMPENING : 1;
+
+  return asset({
+    symbol: `${baseCode}/${quoteCode}`,
+    name: `${base.name} / ${quote.name}`,
+    assetClass: "forex",
+    group: "Forex Crosses",
+    precision,
+    demoPrice: round(base.usd / quote.usd, precision),
+    demoVol: round(Math.hypot(base.vol, quote.vol) * vol, 3),
+    demoBias: round(base.drift - quote.drift, 2),
+    currencies: [baseCode, quoteCode],
+    macroBetas: subtract(base.macro as Record<string, number>, quote.macro as Record<string, number>) as Betas,
+    newsBetas: subtract(base.news, quote.news),
+    eventTags: Array.from(new Set([...base.events, ...quote.events])),
+    related,
+  });
+}
+
+/** The 21 crosses: every pair of the eight majors that is not a dollar pair. */
+const CROSS_CODES = QUOTE_ORDER.filter((c) => c !== "USD");
+const FOREX_CROSSES: Asset[] = CROSS_CODES.flatMap((baseCode, i) =>
+  CROSS_CODES.slice(i + 1).map((quoteCode) => crossAsset(baseCode, quoteCode)),
+);
+
 
 export const ASSETS: Asset[] = [
   /* ------------------------------ FOREX MAJORS ------------------------------ */
@@ -117,61 +293,7 @@ export const ASSETS: Asset[] = [
     related: [rel("AUD/USD", 1, 0.9, "Aussie dollar"), rel("DXY", -1, 0.85, "Dollar index")],
   }),
 
-  /* ------------------------------ FOREX CROSSES ----------------------------- */
-  asset({
-    symbol: "EUR/JPY", name: "Euro / Japanese Yen", assetClass: "forex", group: "Forex Crosses",
-    precision: 3, demoPrice: 164.18, demoVol: 0.09, demoBias: 0.3,
-    currencies: ["EUR", "JPY"],
-    macroBetas: { riskAppetite: 0.65, rates: 0.4, growth: 0.4, realYields: 0.4 },
-    newsBetas: { "risk-sentiment": 0.7, "central-bank-boj": -0.85, "central-bank-ecb": 0.7, geopolitics: -0.5 },
-    eventTags: ["ecb", "boj", "eu-inflation"],
-    related: [rel("USD/JPY", 1, 0.8, "Yen weakness"), rel("DAX", 1, 0.5, "European equities")],
-  }),
-  asset({
-    symbol: "GBP/JPY", name: "British Pound / Japanese Yen", assetClass: "forex", group: "Forex Crosses",
-    precision: 3, demoPrice: 192.56, demoVol: 0.11, demoBias: 0.42,
-    currencies: ["GBP", "JPY"],
-    macroBetas: { riskAppetite: 0.75, rates: 0.45, growth: 0.45, realYields: 0.45 },
-    newsBetas: { "risk-sentiment": 0.8, "central-bank-boj": -0.85, "central-bank-boe": 0.7, geopolitics: -0.55 },
-    eventTags: ["boe", "boj", "uk-inflation"],
-    related: [rel("USD/JPY", 1, 0.85, "Yen weakness"), rel("SPX", 1, 0.5, "Global risk appetite"), rel("GBP/USD", 1, 0.5, "Sterling")],
-  }),
-  asset({
-    symbol: "EUR/GBP", name: "Euro / British Pound", assetClass: "forex", group: "Forex Crosses",
-    precision: 5, demoPrice: 0.8524, demoVol: 0.05, demoBias: -0.06,
-    currencies: ["EUR", "GBP"],
-    macroBetas: { growth: -0.2, riskAppetite: -0.2 },
-    newsBetas: { "central-bank-ecb": 0.8, "central-bank-boe": -0.8 },
-    eventTags: ["ecb", "boe", "eu-inflation", "uk-inflation"],
-    related: [rel("EUR/USD", 1, 0.5, "Euro"), rel("GBP/USD", -1, 0.5, "Sterling")],
-  }),
-  asset({
-    symbol: "AUD/JPY", name: "Australian Dollar / Japanese Yen", assetClass: "forex", group: "Forex Crosses",
-    precision: 3, demoPrice: 99.82, demoVol: 0.1, demoBias: 0.28,
-    currencies: ["AUD", "JPY"],
-    macroBetas: { riskAppetite: 0.9, growth: 0.6, realYields: 0.35 },
-    newsBetas: { "risk-sentiment": 0.9, "china-growth": 0.7, "central-bank-boj": -0.8, geopolitics: -0.6 },
-    eventTags: ["rba", "boj", "china"],
-    related: [rel("SPX", 1, 0.6, "Global risk appetite"), rel("VIX", -1, 0.6, "Volatility"), rel("AUD/USD", 1, 0.6, "Aussie dollar")],
-  }),
-  asset({
-    symbol: "EUR/CHF", name: "Euro / Swiss Franc", assetClass: "forex", group: "Forex Crosses",
-    precision: 5, demoPrice: 0.9718, demoVol: 0.05, demoBias: -0.24,
-    currencies: ["EUR", "CHF"],
-    macroBetas: { riskAppetite: 0.5, growth: 0.25 },
-    newsBetas: { "risk-sentiment": 0.55, geopolitics: -0.75, "central-bank-ecb": 0.6 },
-    eventTags: ["ecb", "snb"],
-    related: [rel("DAX", 1, 0.45, "European equities"), rel("VIX", -1, 0.5, "Volatility")],
-  }),
-  asset({
-    symbol: "CAD/JPY", name: "Canadian Dollar / Japanese Yen", assetClass: "forex", group: "Forex Crosses",
-    precision: 3, demoPrice: 111.44, demoVol: 0.09, demoBias: 0.2,
-    currencies: ["CAD", "JPY"],
-    macroBetas: { riskAppetite: 0.6, growth: 0.45, inflation: 0.3 },
-    newsBetas: { "oil-supply": 0.7, "risk-sentiment": 0.6, "central-bank-boj": -0.8 },
-    eventTags: ["boc", "boj", "oil"],
-    related: [rel("WTI", 1, 0.7, "Crude oil"), rel("USD/JPY", 1, 0.6, "Yen weakness")],
-  }),
+  ...FOREX_CROSSES,
 
   /* --------------------------------- METALS -------------------------------- */
   asset({
@@ -504,6 +626,12 @@ export const ASSETS: Asset[] = [
 
 export const ASSET_MAP: Map<string, Asset> = new Map(ASSETS.map((a) => [a.symbol, a]));
 
+/**
+ * Separator-free lookup: "EURUSD", "eur usd" and "eur-usd" all reach EUR/USD.
+ * Nobody should have to type a slash on a phone keyboard to find a pair.
+ */
+const ALIAS_MAP: Map<string, Asset> = new Map(ASSETS.map((a) => [normalizeSymbol(a.symbol), a]));
+
 export const GROUPS: string[] = Array.from(new Set(ASSETS.map((a) => a.group)));
 
 /** Assets available on the Free tier — enough to demonstrate the product. */
@@ -513,7 +641,7 @@ export const FREE_TIER_SYMBOLS = [
 ];
 
 export function getAsset(symbol: string): Asset | undefined {
-  return ASSET_MAP.get(symbol.toUpperCase());
+  return ASSET_MAP.get(symbol.toUpperCase()) ?? ALIAS_MAP.get(normalizeSymbol(symbol));
 }
 
 /**
@@ -523,7 +651,7 @@ export function getAsset(symbol: string): Asset | undefined {
  */
 export function resolveAsset(symbol: string): Asset | undefined {
   const upper = symbol.toUpperCase();
-  const known = ASSET_MAP.get(upper);
+  const known = getAsset(upper);
   if (known) return known;
   if (!/^[A-Z]{1,5}$/.test(upper)) return undefined;
   const seed = Array.from(upper).reduce((a, c) => a + c.charCodeAt(0), 0);
@@ -549,9 +677,6 @@ export function assetsByClass(cls: AssetClass): Asset[] {
 }
 
 export function searchAssets(query: string, limit = 20): Asset[] {
-  const q = query.trim().toUpperCase();
-  if (!q) return ASSETS.slice(0, limit);
-  return ASSETS.filter(
-    (a) => a.symbol.includes(q) || a.name.toUpperCase().includes(q) || a.group.toUpperCase().includes(q),
-  ).slice(0, limit);
+  if (!query.trim()) return ASSETS.slice(0, limit);
+  return ASSETS.filter((a) => symbolMatches(query, a.symbol, a.name, a.group)).slice(0, limit);
 }

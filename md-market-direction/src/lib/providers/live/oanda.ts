@@ -1,6 +1,7 @@
 import type { Candle, Quote, Timeframe } from "@/lib/types";
 import type { MarketDataProvider, ProviderHealth } from "../types";
 import { buildTimeframes } from "@/lib/data/aggregate";
+import { ASSETS, getAsset } from "@/lib/data/universe";
 
 /**
  * LIVE MARKET DATA — OANDA v20 adapter.
@@ -38,19 +39,33 @@ const GRANULARITY: Record<Timeframe, string> = {
  *  - Individual stocks and crypto: not offered, or region-dependent.
  * Those symbols fall through to the next provider, or to demo data.
  */
-const INSTRUMENTS: Record<string, string> = {
-  "EUR/USD": "EUR_USD", "GBP/USD": "GBP_USD", "USD/JPY": "USD_JPY", "USD/CHF": "USD_CHF",
-  "AUD/USD": "AUD_USD", "USD/CAD": "USD_CAD", "NZD/USD": "NZD_USD",
-  "EUR/JPY": "EUR_JPY", "GBP/JPY": "GBP_JPY", "EUR/GBP": "EUR_GBP", "AUD/JPY": "AUD_JPY",
-  "EUR/CHF": "EUR_CHF", "CAD/JPY": "CAD_JPY",
+const NON_FX_INSTRUMENTS: Record<string, string> = {
   "XAU/USD": "XAU_USD", "XAG/USD": "XAG_USD",
   SPX: "SPX500_USD", NDX: "NAS100_USD", DJI: "US30_USD", RUT: "US2000_USD",
   DAX: "DE30_EUR", FTSE: "UK100_GBP", NIKKEI: "JP225_USD", HSI: "HK33_HKD",
   WTI: "WTICO_USD", BRENT: "BCO_USD", NATGAS: "NATGAS_USD", COPPER: "XCU_USD",
 };
 
+/**
+ * Forex mappings are derived, not listed. OANDA names every pair of the eight
+ * majors BASE_QUOTE, so all 28 map by swapping the slash — and a pair added to
+ * the universe is covered the moment it exists, with no second list to forget.
+ */
+const INSTRUMENTS: Record<string, string> = {
+  ...NON_FX_INSTRUMENTS,
+  ...Object.fromEntries(
+    ASSETS.filter((a) => a.assetClass === "forex").map((a) => [a.symbol, a.symbol.replace("/", "_")]),
+  ),
+};
+
 export function oandaCovers(symbol: string): boolean {
-  return symbol.toUpperCase() in INSTRUMENTS;
+  return Boolean(instrumentFor(symbol));
+}
+
+/** Resolves through the universe first, so "eurusd" finds EUR_USD. */
+function instrumentFor(symbol: string): string | undefined {
+  const canonical = getAsset(symbol)?.symbol ?? symbol.toUpperCase();
+  return INSTRUMENTS[canonical];
 }
 
 interface OandaCandle {
@@ -90,7 +105,7 @@ export class OandaProvider implements MarketDataProvider {
   }
 
   private async candles(symbol: string, granularity: string, count: number): Promise<Candle[]> {
-    const instrument = INSTRUMENTS[symbol.toUpperCase()];
+    const instrument = instrumentFor(symbol);
     if (!instrument) throw new Error(`${symbol} is not an OANDA instrument.`);
 
     const url = new URL(`${this.baseUrl}/v3/instruments/${instrument}/candles`);

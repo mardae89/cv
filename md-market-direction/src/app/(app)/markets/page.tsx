@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useApi } from "@/lib/hooks";
+import { symbolMatches } from "@/lib/symbols";
 import type { ScannerRow } from "@/lib/types";
 import { MarketCard } from "@/components/market-card";
 import { EmptyState, ErrorState, Eyebrow, SectionHeading, Skeleton } from "@/components/primitives";
@@ -37,11 +38,11 @@ export default function MarketsPage() {
 
   const rows = useMemo(() => {
     if (!data) return [];
-    const q = query.trim().toUpperCase();
     return data.rows.filter(
       (r) =>
         (group === "All" || r.group === group) &&
-        (!q || r.symbol.includes(q) || r.name.toUpperCase().includes(q)),
+        // Separator-insensitive: "eurusd" finds EUR/USD, no slash required.
+        symbolMatches(query, r.symbol, r.name),
     );
   }, [data, group, query]);
 
@@ -61,7 +62,7 @@ export default function MarketsPage() {
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search symbol or name — e.g. XAU, NVDA, GBP/JPY"
+          placeholder="Search symbol or name — e.g. XAU, NVDA, gbpjpy"
           className="w-full px-3 py-2.5 text-sm sm:max-w-sm"
         />
         {query.trim().length >= 1 && rows.length === 0 ? (
