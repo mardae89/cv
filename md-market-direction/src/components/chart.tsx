@@ -102,7 +102,7 @@ export function PriceChart({
         setData(json);
         const count = Math.min(json.candles.length, timeframe === "1W" ? 110 : 160);
         viewRef.current = {
-          start: Math.max(0, json.candles.length - count),
+          start: json.candles.length - count + count * 0.06,
           count,
           priceAuto: true,
           center: 0,
@@ -126,13 +126,20 @@ export function PriceChart({
   const v = viewRef.current;
   if (total) {
     v.count = clamp(v.count, MIN_BARS, total);
-    v.start = clamp(v.start, 0, total - v.count);
+    // Margin on both sides: the window may run past the newest bar and before
+    // the oldest, so the price action can be dragged to sit anywhere on screen
+    // rather than being pinned to the right edge.
+    const margin = v.count * 0.55;
+    v.start = clamp(v.start, -margin, total - v.count + margin);
   }
-  const s0 = Math.round(v.start);
   const n = Math.round(v.count);
-  const slice = candles.slice(s0, s0 + n);
-  const ma50 = (data?.ma50 ?? []).slice(s0, s0 + n);
-  const ma200 = (data?.ma200 ?? []).slice(s0, s0 + n);
+  // Absolute bar indices: what is on screen may start before the first bar or
+  // end after the last, so the visible slice is intersected with the data.
+  const first = Math.max(0, Math.floor(v.start));
+  const last = Math.min(total, Math.ceil(v.start + n));
+  const slice = candles.slice(first, last);
+  const ma50 = (data?.ma50 ?? []).slice(first, last);
+  const ma200 = (data?.ma200 ?? []).slice(first, last);
 
   /* Price axis: follows the data until the user takes hold of it. */
   let top = 1;
@@ -153,9 +160,10 @@ export function PriceChart({
     }
   }
 
-  const step = plotW / Math.max(1, slice.length);
+  const step = plotW / Math.max(1, n);
   const bodyW = Math.max(1, Math.min(step * 0.62, 30));
-  const X = (i: number) => i * step + step / 2;
+  /** i is an index into `slice`; it is offset back into absolute bar space. */
+  const X = (i: number) => (first + i - v.start) * step + step / 2;
   const Y = (p: number) => PAD_T + ((top - p) / (top - bot || 1)) * priceH;
   const maxVol = Math.max(1, ...slice.map((c) => c.v));
   const volTop = PAD_T + priceH + GAP;
@@ -232,7 +240,8 @@ export function PriceChart({
     } else if (!gesture.current) {
       // Hover crosshair only.
       const rect = svgRef.current!.getBoundingClientRect();
-      const i = Math.round((e.clientX - rect.left - step / 2) / step);
+      const abs = Math.round(v.start + (e.clientX - rect.left - step / 2) / step);
+      const i = abs - first;
       setHover(i >= 0 && i < slice.length ? i : null);
       return;
     }
@@ -265,7 +274,14 @@ export function PriceChart({
     } else {
       const barsPerPx = g.view.count / plotW;
       v.start = g.view.start - dx * barsPerPx;
-      if (!g.view.priceAuto) {
+      // Vertical drag moves price. Engaging it takes the axis off auto-fit, so
+      // it waits for a deliberate movement rather than ordinary wobble.
+      //
+      // Both branches must measure from the view captured at gesture START.
+      // Reading the live top/bot here instead would fold each frame's own shift
+      // back into the next one, and the price window would accelerate away from
+      // the candles until they left the screen entirely.
+      if (!g.view.priceAuto || Math.abs(dy) > 14) {
         v.priceAuto = false;
         v.center = g.view.center + (dy / priceH) * g.view.span;
         v.span = g.view.span;
@@ -297,7 +313,8 @@ export function PriceChart({
 
   const resetAll = () => {
     const count = Math.min(total, timeframe === "1W" ? 110 : 160);
-    viewRef.current = { start: Math.max(0, total - count), count, priceAuto: true, center: 0, span: 1 };
+    // A small right margin, so the newest candle is not jammed against the scale.
+    viewRef.current = { start: total - count + count * 0.06, count, priceAuto: true, center: 0, span: 1 };
     repaint();
   };
   const resetPrice = () => {
@@ -307,7 +324,7 @@ export function PriceChart({
 
   /* ── ticks ─────────────────────────────────────────────────────────────── */
   const priceTicks = buildPriceTicks(bot, top, 6);
-  const timeTicks = buildTimeTicks(slice, timeframe, plotW, step);
+  const timeTicks = buildTimeTicks(slice, timeframe, plotW, step, X);
 
   const hovered = hover != null ? slice[hover] : null;
 
@@ -581,10 +598,11 @@ function buildPriceTicks(bot: number, top: number, target: number): number[] {
 }
 
 /** Date labels whose granularity follows the timeframe and the zoom level. */
-function buildTimeTicks(slice: Candle[], tf: Timeframe, plotW: number, step: number) {
+function buildTimeTicks(slice: Candle[], tf: Timeframe, plotW: number, step: number, X: (i: number) => number) {
   if (!slice.length) return [];
   const maxLabels = Math.max(2, Math.floor(plotW / 78));
-  const every = Math.max(1, Math.ceil(slice.length / maxLabels));
+  const visible = Math.max(1, Math.round(plotW / Math.max(1, step)));
+  const every = Math.max(1, Math.ceil(visible / maxLabels));
   const intraday = tf === "5M" || tf === "15M" || tf === "1H" || tf === "4H";
   const out: { i: number; label: string }[] = [];
   let lastDay = "";
@@ -603,7 +621,8 @@ function buildTimeTicks(slice: Candle[], tf: Timeframe, plotW: number, step: num
       label = d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", timeZone: "UTC" });
     }
     lastDay = day;
-    if (step * i < plotW - 20) out.push({ i, label });
+    const x = X(i);
+    if (x > 14 && x < plotW - 14) out.push({ i, label });
   });
   return out;
 }
