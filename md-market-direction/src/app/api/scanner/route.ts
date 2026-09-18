@@ -5,6 +5,7 @@ import { viewer } from "@/lib/auth/public";
 import { FREE_TIER_SYMBOLS } from "@/lib/data/universe";
 import { recordUsage } from "@/lib/db/store";
 import { CACHE_SHORT, ok, resolveMode } from "@/lib/api";
+import { symbolMatches } from "@/lib/symbols";
 import type { ScannerRow } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -31,7 +32,7 @@ export async function GET(req: Request) {
   const momentum = searchParams.get("momentum");
   const news = searchParams.get("news");
   const eventRisk = searchParams.get("eventRisk");
-  const query = (searchParams.get("q") ?? "").trim().toUpperCase();
+  const query = (searchParams.get("q") ?? "").trim();
 
   const matches = (r: ScannerRow) => {
     if (direction && direction !== "any" && r.direction !== direction) return false;
@@ -47,7 +48,7 @@ export async function GET(req: Request) {
     if (momentum && momentum !== "any" && r.momentum !== momentum) return false;
     if (news && news !== "any" && r.news !== news) return false;
     if (eventRisk && eventRisk !== "any" && r.eventRisk !== eventRisk) return false;
-    if (query && !r.symbol.includes(query) && !r.name.toUpperCase().includes(query)) return false;
+    if (!symbolMatches(query, r.symbol, r.name)) return false;
     return true;
   };
 
