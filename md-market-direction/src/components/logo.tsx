@@ -1,15 +1,24 @@
+import Image from "next/image";
+
+/**
+ * The brand mark. Supplied as artwork on a black field; the ground is stripped
+ * to alpha so it sits on the app's near-black without showing a box edge.
+ */
 export function Logo({ size = 28, showWord = true }: { size?: number; showWord?: boolean }) {
   return (
     <div className="flex items-center gap-2.5">
-      <svg width={size} height={size} viewBox="0 0 40 40" aria-hidden>
-        <rect x="0.75" y="0.75" width="38.5" height="38.5" fill="none" stroke="var(--color-gold)" strokeWidth="1.5" />
-        <path d="M9 28V12l6.5 9L22 12v16" fill="none" stroke="var(--color-bone)" strokeWidth="2.4" strokeLinejoin="miter" />
-        <path d="M26 12h3.5c3 0 4.5 2.4 4.5 8s-1.5 8-4.5 8H26z" fill="none" stroke="var(--color-gold)" strokeWidth="2.4" />
-      </svg>
+      <Image
+        src="/logo-mark.png"
+        alt="MD Market Direction"
+        width={Math.round(size * 1.46)}
+        height={size}
+        priority
+        style={{ height: size, width: "auto" }}
+      />
       {showWord ? (
         <div className="leading-none">
-          <div className="display text-sm font-extrabold uppercase tracking-[0.18em] text-bone">MD</div>
-          <div className="display text-[9px] font-semibold uppercase tracking-[0.28em] text-gold">Direction</div>
+          <div className="display text-[11px] font-extrabold uppercase tracking-[0.2em] text-bone">Market</div>
+          <div className="display mt-0.5 text-[9px] font-semibold uppercase tracking-[0.28em] text-gold">Direction</div>
         </div>
       ) : null}
     </div>
