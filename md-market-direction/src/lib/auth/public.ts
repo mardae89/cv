@@ -1,6 +1,7 @@
 import type { User } from "@/lib/db/schema";
 import type { Feature, Tier } from "@/lib/config/tiers";
 import { currentUser } from "./session";
+import { store } from "@/lib/db/store";
 
 /**
  * PUBLIC MODE.
@@ -16,7 +17,22 @@ import { currentUser } from "./session";
  * another's data.
  */
 export function publicMode(): boolean {
-  return process.env.MD_PUBLIC_MODE === "true";
+  if (process.env.MD_PUBLIC_MODE === "true") return true;
+  // Serverless hosts give each invocation a read-only filesystem, so the JSON
+  // store degrades to memory that is NOT shared between invocations. An account
+  // created on one instance is invisible to the next, which presents as "that
+  // email already exists" followed by a sign-in that silently does nothing.
+  // Rather than let that happen, an instance with no durable store serves the
+  // market intelligence openly instead of asking for a login it cannot honour.
+  return !accountsAvailable();
+}
+
+/**
+ * Accounts require storage that survives between requests. Without it, signup
+ * and sign-in cannot work, so the UI must not offer them.
+ */
+export function accountsAvailable(): boolean {
+  return store.isPersistent;
 }
 
 /** Tier granted to anonymous viewers in public mode. */

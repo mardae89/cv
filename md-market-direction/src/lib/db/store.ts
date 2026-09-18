@@ -24,6 +24,7 @@ class JsonStore {
   private persistent = true;
   private loaded = false;
   private writeQueued = false;
+  private probed = false;
 
   private load() {
     if (this.loaded) return;
@@ -73,7 +74,29 @@ class JsonStore {
     return result;
   }
 
+  /**
+   * Whether writes actually survive. This must PROBE, not assume: `persistent`
+   * starts optimistic and is only cleared once a real read or write has failed,
+   * so answering before the store has been touched reports a writable disk on a
+   * host that has none — which is how a serverless deploy ends up offering a
+   * login it cannot honour.
+   */
   get isPersistent() {
+    this.load();
+    // Probe once per process: this is read on every request that renders the
+    // shell, and a filesystem check per request would be wasteful.
+    if (this.persistent && !this.probed) {
+      this.probed = true;
+      // A directory can exist and still reject writes; only a write proves it.
+      try {
+        fs.mkdirSync(DATA_DIR, { recursive: true });
+        const probe = path.join(DATA_DIR, ".write-probe");
+        fs.writeFileSync(probe, "ok");
+        fs.unlinkSync(probe);
+      } catch {
+        this.persistent = false;
+      }
+    }
     return this.persistent;
   }
 

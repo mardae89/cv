@@ -82,11 +82,7 @@ export function AppShell({ user, children }: { user: ShellUser; children: React.
             />
           </nav>
           <div className="border-t border-hairline-soft px-5 py-4">
-            <div className="truncate text-xs text-mute">{user.email}</div>
-            <div className="mt-1 flex items-center justify-between">
-              <TierChip tier={user.tier} />
-              <LogoutButton />
-            </div>
+            <AccountFooter user={user} />
           </div>
         </aside>
 
@@ -117,7 +113,7 @@ export function AppShell({ user, children }: { user: ShellUser; children: React.
                 pathname={pathname}
                 tier={user.tier}
               />
-              <LogoutButton className="mt-2 w-full" />
+              <AccountFooter user={user} className="mt-3" />
             </div>
           ) : null}
 
@@ -199,6 +195,36 @@ export function TierChip({ tier }: { tier: Tier }) {
     <span className={`border px-2 py-0.5 font-display text-[10px] font-bold uppercase tracking-widest ${map[tier]}`}>
       {tier}
     </span>
+  );
+}
+
+/**
+ * Accounts only exist where there is durable storage. On a deployment without
+ * one, offering "sign out" (or implying a login happened) is a lie the UI should
+ * not tell — so the guest state is named plainly instead.
+ */
+function AccountFooter({ user, className = "" }: { user: ShellUser; className?: string }) {
+  const { data } = useApi<{ auth: { accountsAvailable: boolean } }>("/api/status");
+  const accounts = data?.auth.accountsAvailable;
+  if (accounts === false) {
+    return (
+      <div className={className}>
+        <div className="text-xs text-mute">Guest — no sign-in needed</div>
+        <div className="mt-1 flex items-center justify-between">
+          <TierChip tier={user.tier} />
+          <span className="text-[10px] uppercase tracking-widest text-faint">Saved on this device</span>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className={className}>
+      <div className="truncate text-xs text-mute">{user.email}</div>
+      <div className="mt-1 flex items-center justify-between">
+        <TierChip tier={user.tier} />
+        <LogoutButton />
+      </div>
+    </div>
   );
 }
 

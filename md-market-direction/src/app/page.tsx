@@ -10,6 +10,9 @@ import { Icon } from "@/components/icons";
 export default async function LandingPage() {
   const user = await currentUser();
   if (user) redirect(user.onboarded ? "/dashboard" : "/onboarding");
+  // On an open instance the marketing page is a wall in front of a product the
+  // visitor is already allowed to use.
+  if (publicMode()) redirect("/dashboard");
 
   return (
     <div className="min-h-screen bg-void">

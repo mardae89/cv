@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { postJson, useApi } from "@/lib/hooks";
+import { guest } from "@/lib/guestStore";
 import { MarketRow } from "@/components/market-card";
 import {
   EmptyState, ErrorState, Eyebrow, GhostButton, GoldButton, Panel, SectionHeading, Skeleton,
@@ -17,19 +18,61 @@ interface WatchlistData {
 }
 
 export default function WatchlistsPage() {
-  const { data, loading, error, refresh } = useApi<{ watchlists: WatchlistData[] }>("/api/watchlists");
+  const status = useApi<{ auth: { accountsAvailable: boolean } }>("/api/status");
+  const accounts = status.data?.auth.accountsAvailable;
+  // Only hit the server API when accounts actually work on this deployment.
+  const { data, loading, error, refresh } = useApi<{ watchlists: WatchlistData[] }>(
+    accounts === true ? "/api/watchlists" : null,
+  );
+  const [local, setLocal] = useState<WatchlistData[] | null>(null);
+  const [tick, setTick] = useState(0);
+
+  // Guest mode: the browser is the store, and scores come from the public API.
+  useEffect(() => {
+    if (accounts !== false) return;
+    let cancelled = false;
+    (async () => {
+      const lists = guest.watchlists();
+      const enriched: WatchlistData[] = [];
+      for (const list of lists) {
+        const items: WatchlistItem[] = [];
+        for (const symbol of list.symbols) {
+          try {
+            const res = await fetch(`/api/market-analysis?symbol=${encodeURIComponent(symbol)}`);
+            if (!res.ok) continue;
+            const json = await res.json();
+            const a = json.analysis;
+            items.push({
+              symbol: a.asset.symbol, name: a.asset.name, price: a.quote.price,
+              precision: a.asset.precision, changePct: a.quote.changePct,
+              score: a.score.score, direction: a.score.direction, label: a.score.label,
+            });
+          } catch { /* a market that will not load is simply left out */ }
+        }
+        enriched.push({ ...list, items });
+      }
+      if (!cancelled) setLocal(enriched);
+    })();
+    return () => { cancelled = true; };
+  }, [accounts, tick]);
+
+  const isGuest = accounts === false;
+  const lists = isGuest ? local : data?.watchlists;
+  const busy = isGuest ? local === null : loading && !data;
+  const reload = () => (isGuest ? setTick((t) => t + 1) : refresh());
   const [name, setName] = useState("");
   const [adding, setAdding] = useState<Record<string, string>>({});
-  const [status, setStatus] = useState<string | null>(null);
+  const [statusMsg, setStatusMsg] = useState<string | null>(null);
 
   async function create() {
     try {
-      await postJson("/api/watchlists", { name });
+      if (isGuest) guest.createWatchlist(name);
+      else await postJson("/api/watchlists", { name });
       setName("");
-      setStatus(null);
-      refresh();
+      setStatusMsg(null);
+      reload();
     } catch (e) {
-      setStatus((e as Error).message);
+      setStatusMsg((e as Error).message);
     }
   }
 
@@ -37,22 +80,25 @@ export default function WatchlistsPage() {
     const symbol = (adding[id] ?? "").trim().toUpperCase();
     if (!symbol) return;
     try {
-      await postJson(`/api/watchlists/${id}`, { add: symbol }, "PATCH");
+      if (isGuest) guest.updateWatchlist(id, { add: symbol });
+      else await postJson(`/api/watchlists/${id}`, { add: symbol }, "PATCH");
       setAdding({ ...adding, [id]: "" });
-      refresh();
+      reload();
     } catch (e) {
-      setStatus((e as Error).message);
+      setStatusMsg((e as Error).message);
     }
   }
 
   async function removeSymbol(id: string, symbol: string) {
-    await postJson(`/api/watchlists/${id}`, { remove: symbol }, "PATCH");
-    refresh();
+    if (isGuest) guest.updateWatchlist(id, { remove: symbol });
+    else await postJson(`/api/watchlists/${id}`, { remove: symbol }, "PATCH");
+    reload();
   }
 
   async function removeList(id: string) {
-    await fetch(`/api/watchlists/${id}`, { method: "DELETE" });
-    refresh();
+    if (isGuest) guest.deleteWatchlist(id);
+    else await fetch(`/api/watchlists/${id}`, { method: "DELETE" });
+    reload();
   }
 
   return (
@@ -70,14 +116,19 @@ export default function WatchlistsPage() {
           />
           <GoldButton onClick={create} disabled={!name.trim()}>Create</GoldButton>
         </div>
-        {status ? <p className="mt-2 text-xs text-bear">{status}</p> : null}
+        {statusMsg ? <p className="mt-2 text-xs text-bear">{statusMsg}</p> : null}
       </Panel>
 
-      {error ? <ErrorState message={error} onRetry={refresh} /> : null}
+      {error ? <ErrorState message={error} onRetry={reload} /> : null}
+      {isGuest ? (
+        <p className="text-xs text-faint">
+          Saved in this browser. No account needed — this deployment has no database, so your lists live on this device.
+        </p>
+      ) : null}
 
-      {loading && !data ? (
+      {busy ? (
         <Skeleton className="h-64" />
-      ) : !data?.watchlists.length ? (
+      ) : !lists?.length ? (
         <EmptyState
           title="No watchlists yet"
           message="Create one above, then add markets from here or from any market detail page."
@@ -85,7 +136,7 @@ export default function WatchlistsPage() {
         />
       ) : (
         <div className="space-y-5">
-          {data.watchlists.map((w) => (
+          {lists.map((w) => (
             <Panel key={w.id}>
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-hairline-soft px-4 py-3">
                 <div>
