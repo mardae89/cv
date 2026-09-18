@@ -2,7 +2,7 @@ import { buildContext } from "@/lib/engine/context";
 import { ALL_TIMEFRAMES } from "@/lib/config/scoring";
 import type { Timeframe } from "@/lib/types";
 import { analyseStructure, findSwings } from "@/lib/engine/structure";
-import { sma } from "@/lib/engine/indicators";
+import { ema, sma } from "@/lib/engine/indicators";
 import { resolveAsset } from "@/lib/data/universe";
 import { CACHE_SHORT, fail, ok } from "@/lib/api";
 
@@ -25,7 +25,7 @@ export async function GET(req: Request) {
   if (!all.length) return fail("Market data temporarily unavailable.", 503);
 
   const closes = all.map((c) => c.c);
-  const ma50 = sma(closes, 50);
+  const ma50 = ema(closes, 50);
   const ma200 = sma(closes, 200);
   const swings = findSwings(all, 3).slice(-12);
   const structure = analyseStructure(all, tf);

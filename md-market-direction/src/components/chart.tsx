@@ -66,8 +66,6 @@ export function PriceChart({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [showMa, setShowMa] = useState(true);
-  const [showStructure, setShowStructure] = useState(true);
-  const [showEvents, setShowEvents] = useState(true);
   const [hover, setHover] = useState<number | null>(null);
   const [width, setWidth] = useState(720);
   const [chartH, setChartH] = useState(height);
@@ -180,14 +178,13 @@ export function PriceChart({
   const last = Math.min(total, Math.ceil(v.start + n));
   const slice = candles.slice(first, last);
   const ma50 = (data?.ma50 ?? []).slice(first, last);
-  const ma200 = (data?.ma200 ?? []).slice(first, last);
 
   /* Price axis: follows the data until the user takes hold of it. */
   let top = 1;
   let bot = 0;
   if (slice.length) {
     if (v.priceAuto) {
-      const overlay = showMa ? [...ma50, ...ma200].filter((x): x is number => x != null) : [];
+      const overlay = showMa ? ma50.filter((x): x is number => x != null) : [];
       const hi = Math.max(...slice.map((c) => c.h), ...overlay);
       const lo = Math.min(...slice.map((c) => c.l), ...overlay);
       const pad = (hi - lo) * 0.08 || hi * 0.01;
@@ -387,9 +384,7 @@ export function PriceChart({
           ))}
         </div>
         <div className="flex flex-wrap items-center gap-3 text-[10px] uppercase tracking-widest">
-          <Toggle label="MA" on={showMa} onChange={setShowMa} swatch="bg-gold" />
-          <Toggle label="Structure" on={showStructure} onChange={setShowStructure} swatch="bg-bone" />
-          <Toggle label="Events" on={showEvents} onChange={setShowEvents} swatch="bg-bear" />
+          <Toggle label="50 EMA" on={showMa} onChange={setShowMa} swatch="bg-gold" />
           {!v.priceAuto ? (
             <button onClick={resetPrice} className="border border-gold/50 px-2 py-0.5 text-gold">
               Auto price
@@ -495,40 +490,8 @@ export function PriceChart({
             })}
 
             {showMa ? (
-              <>
-                <path d={linePath(ma50, X, Y)} fill="none" stroke="var(--color-gold)" strokeWidth={1.6} />
-                <path d={linePath(ma200, X, Y)} fill="none" stroke="var(--color-mute)" strokeWidth={1.4} strokeDasharray="4 3" />
-              </>
+              <path d={linePath(ma50, X, Y)} fill="none" stroke="var(--color-gold)" strokeWidth={1.6} />
             ) : null}
-
-            {showStructure
-              ? data.swings.map((sw, k) => {
-                  const i = nearestIndex(slice, sw.t);
-                  if (i < 0) return null;
-                  const y = Y(sw.price);
-                  return (
-                    <g key={`s${k}`}>
-                      <circle cx={X(i)} cy={y} r={2.6} fill="var(--color-bone)" opacity={0.8} />
-                      <text x={X(i)} y={sw.kind === "high" ? y - 7 : y + 13} fill="var(--color-faint)" fontSize={9} textAnchor="middle">
-                        {sw.kind === "high" ? "H" : "L"}
-                      </text>
-                    </g>
-                  );
-                })
-              : null}
-
-            {showEvents
-              ? data.events.map((ev, k) => {
-                  const i = nearestIndex(slice, ev.t);
-                  if (i < 0) return null;
-                  return (
-                    <g key={`e${k}`}>
-                      <line x1={X(i)} x2={X(i)} y1={PAD_T} y2={PAD_T + priceH} stroke="var(--color-bear)" strokeWidth={1} strokeDasharray="2 4" opacity={0.45} />
-                      <rect x={X(i) - 3} y={PAD_T} width={6} height={6} fill="var(--color-bear)" opacity={0.9} />
-                    </g>
-                  );
-                })
-              : null}
 
             {/* last price marker on the scale */}
             {slice.length ? (
@@ -582,8 +545,7 @@ export function PriceChart({
           ) : null}
 
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-hairline-soft px-4 py-2 text-[10px] uppercase tracking-widest text-faint">
-            <span className="flex items-center gap-1.5"><span className="h-px w-4 bg-gold" /> 50 MA</span>
-            <span className="flex items-center gap-1.5"><span className="h-px w-4 bg-mute" /> 200 MA</span>
+            <span className="flex items-center gap-1.5"><span className="h-px w-4 bg-gold" /> 50 EMA</span>
             <span className="tnum">{n} bars</span>
             <span>{v.priceAuto ? "Price: auto" : "Price: manual"}</span>
             <span className="ml-auto normal-case tracking-normal">

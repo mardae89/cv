@@ -282,7 +282,17 @@ export interface EventRiskResult {
 }
 
 export interface ConflictReport {
+  /** True only when the disagreement is material enough to call the market mixed. */
   conflicted: boolean;
+  /**
+   * 0..1 — the share of the mode's decided timeframe weight sitting on the
+   * minority side, doubled so that an even split reads 1. A single junior
+   * timeframe pulling back inside a trend scores low here; a weekly-versus-daily
+   * split scores high.
+   */
+  dissent: number;
+  /** 0..1 — how much conviction this disagreement removes. */
+  dampening: number;
   higherTimeframe: Direction;
   lowerTimeframe: Direction;
   message: string | null;

@@ -69,7 +69,7 @@ export function evaluateAlerts(alerts: Alert[], analyses: Map<string, AssetAnaly
         break;
       case "price-cross-ma50":
         fired = Boolean(alert.lastState) && alert.lastState !== state && state !== "unknown";
-        message = `${alert.symbol} price is now ${state} its daily 50 MA.`;
+        message = `${alert.symbol} price is now ${state} its daily 50 EMA.`;
         alert.lastState = state;
         break;
       case "structure-change":

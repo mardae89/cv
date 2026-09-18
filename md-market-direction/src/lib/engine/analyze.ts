@@ -178,7 +178,7 @@ function assemble({ mode, core, news, macro, cross, eventDampening, ctxDemo }: A
     const s = core.structure.find((x) => x.timeframe === t.timeframe);
     return { timeframe: t.timeframe, strength: clamp(t.strength * 0.5 + (s?.strength ?? 0) * 0.5, -1, 1) };
   });
-  const conflict = detectConflict(combined);
+  const conflict = detectConflict(combined, mode);
 
   const categories: CategoryInput[] = [
     {
@@ -189,7 +189,7 @@ function assemble({ mode, core, news, macro, cross, eventDampening, ctxDemo }: A
         .filter((t) => ["1W", "1D", "4H", "1H"].includes(t.timeframe))
         .map((t) => ({
           label: `${t.timeframe} trend`,
-          detail: `Price ${t.priceVsMa50 ?? "—"} the 50 MA, 50 MA ${t.ma50Slope ?? "—"}, volatility ${t.volatility}.`,
+          detail: `Price ${t.priceVsMa50 ?? "—"} the 50 EMA, 50 EMA ${t.ma50Slope ?? "—"}, volatility ${t.volatility}.`,
           impact: t.strength,
         })),
       summary: summarise("technical", techStrength),
@@ -265,7 +265,7 @@ function diffReasons(prev: CoreReadings, now: CoreReadings, precision: number): 
     const a = prev.technical.find((t) => t.timeframe === tf);
     const b = now.technical.find((t) => t.timeframe === tf);
     if (a && b && a.priceVsMa50 && b.priceVsMa50 && a.priceVsMa50 !== b.priceVsMa50) {
-      out.push(`Price crossed ${b.priceVsMa50} the 50 MA on the ${tf} chart.`);
+      out.push(`Price crossed ${b.priceVsMa50} the 50 EMA on the ${tf} chart.`);
     }
     const sa = prev.structure.find((s) => s.timeframe === tf);
     const sb = now.structure.find((s) => s.timeframe === tf);

@@ -15,8 +15,12 @@ import {
   CATEGORY_LABELS,
   CATEGORY_ORDER,
   CONFLICT_DAMPENING,
+  CONFLICT_MIXED_AT,
   DEFAULT_WEIGHTS,
+  MAX_EVIDENCE_AMPLIFICATION,
   MODE_TIMEFRAMES,
+  NEUTRAL_BAND,
+  voteShare,
 } from "@/lib/config/scoring";
 import { clamp } from "./indicators";
 
@@ -81,59 +85,83 @@ function groupStrength(
 }
 
 function toDirection(v: number): Direction {
-  return v > 0.18 ? "bullish" : v < -0.18 ? "bearish" : "neutral";
+  return v > NEUTRAL_BAND ? "bullish" : v < -NEUTRAL_BAND ? "bearish" : "neutral";
 }
 
 /**
  * CONFLICT DETECTION.
  *
- * Two kinds of disagreement matter, and both are caught here:
+ * The question is not "does any timeframe disagree" — on a real chart one always
+ * does. It is HOW MUCH of the trader's attention is on the dissenting side.
  *
- *  1. Higher timeframes versus lower timeframes — the classic "weekly says up,
- *     the hourly says down" case.
- *  2. Disagreement WITHIN the higher timeframes — a bullish weekly with a bearish
- *     daily is not a clean trend, and calling it "strong alignment" would be wrong
- *     even though the group average looks positive.
+ * So the timeframes that have taken a side are tallied using the weights of the
+ * mode the user is actually trading, and the minority share of that weight is the
+ * measure of disagreement. Doubled so that an even split reads 1:
  *
- * In either case the market is reported as MIXED, the score is pulled toward
- * neutral, and the user is told in plain English which side is which.
+ *     dissent = 2 * min(bullWeight, bearWeight) / (bullWeight + bearWeight)
+ *
+ * A 4H pullback under a rising weekly and daily is a retracement — a small share,
+ * a small haircut, and the trend is still called a trend. A bullish weekly against
+ * a bearish daily splits the weight nearly evenly, takes the full haircut and is
+ * called MIXED. A swing trader's 5M chart barely registers; a scalper's dominates.
+ * That is the same arithmetic reading both, which is the point.
  */
 export function detectConflict(
   combined: { timeframe: Timeframe; strength: number }[],
+  mode: TradingMode,
 ): ConflictReport {
   const htf = groupStrength(combined, HTF, HTF_WEIGHTS);
   const ltf = groupStrength(combined, LTF, LTF_WEIGHTS);
-  if (htf === null || ltf === null) {
-    return { conflicted: false, higherTimeframe: "neutral", lowerTimeframe: "neutral", message: null };
-  }
-  const hDir = toDirection(htf);
-  const lDir = toDirection(ltf);
+  const none: ConflictReport = {
+    conflicted: false,
+    dissent: 0,
+    dampening: 0,
+    higherTimeframe: htf === null ? "neutral" : toDirection(htf),
+    lowerTimeframe: ltf === null ? "neutral" : toDirection(ltf),
+    message: null,
+  };
+  if (htf === null || ltf === null) return none;
 
-  // 1. Higher versus lower timeframes.
-  if (hDir !== "neutral" && lDir !== "neutral" && hDir !== lDir) {
-    return {
-      conflicted: true,
-      higherTimeframe: hDir,
-      lowerTimeframe: lDir,
-      message: `Higher timeframes remain ${hDir}, but short-term structure has turned ${lDir}.`,
-    };
+  const modeWeights = MODE_TIMEFRAMES[mode].weights;
+  let bullWeight = 0;
+  let bearWeight = 0;
+  const bulls: Timeframe[] = [];
+  const bears: Timeframe[] = [];
+  for (const c of combined) {
+    const w = modeWeights[c.timeframe] ?? 0;
+    if (!w) continue;
+    // Weighted by conviction as well as by attention: a 4H easing to -0.3 is not
+    // the equal and opposite of a weekly pinned at +0.9, and counting them as one
+    // box each is what turned ordinary retracements into "the timeframes disagree".
+    const conviction = w * Math.abs(c.strength);
+    if (c.strength > NEUTRAL_BAND) {
+      bullWeight += conviction;
+      bulls.push(c.timeframe);
+    } else if (c.strength < -NEUTRAL_BAND) {
+      bearWeight += conviction;
+      bears.push(c.timeframe);
+    }
   }
+  const decided = bullWeight + bearWeight;
+  if (!decided || !bulls.length || !bears.length) return none;
 
-  // 2. Disagreement inside the higher timeframes themselves.
-  const CONVICTION = 0.35;
-  const strongHtf = combined.filter((c) => HTF.includes(c.timeframe) && Math.abs(c.strength) > CONVICTION);
-  const bulls = strongHtf.filter((c) => c.strength > 0);
-  const bears = strongHtf.filter((c) => c.strength < 0);
-  if (bulls.length && bears.length) {
-    return {
-      conflicted: true,
-      higherTimeframe: hDir,
-      lowerTimeframe: lDir,
-      message: `Higher timeframes disagree with each other — ${bulls.map((c) => c.timeframe).join(" and ")} bullish against ${bears.map((c) => c.timeframe).join(" and ")} bearish.`,
-    };
-  }
+  const dissent = (2 * Math.min(bullWeight, bearWeight)) / decided;
+  const dampening = CONFLICT_DAMPENING * dissent;
+  const minority = bullWeight < bearWeight ? bulls : bears;
+  const majority = bullWeight < bearWeight ? bears : bulls;
+  const minoritySide = bullWeight < bearWeight ? "bullish" : "bearish";
+  const majoritySide = bullWeight < bearWeight ? "bearish" : "bullish";
 
-  return { conflicted: false, higherTimeframe: hDir, lowerTimeframe: lDir, message: null };
+  return {
+    conflicted: dissent >= CONFLICT_MIXED_AT,
+    dissent,
+    dampening,
+    higherTimeframe: toDirection(htf),
+    lowerTimeframe: toDirection(ltf),
+    message:
+      `${majority.join(", ")} ${majority.length > 1 ? "are" : "is"} ${majoritySide}, ` +
+      `while ${minority.join(", ")} ${minority.length > 1 ? "are" : "is"} ${minoritySide}.`,
+  };
 }
 
 export interface BuildScoreParams {
@@ -160,6 +188,7 @@ export function buildScore({
   const directional = CATEGORY_ORDER.filter((k) => k !== "eventRisk");
   let raw = 0;
   let availableWeight = 0;
+  let votingWeight = 0;
   let totalWeight = 0;
 
   const results: CategoryResult[] = [];
@@ -172,6 +201,9 @@ export function buildScore({
     const raw_strength = input?.available ? clamp(input.strength, -1, 1) : 0;
     const strength = calibrate(key, raw_strength);
     if (input?.available) availableWeight += weight;
+    // A category only claims its share of the denominator to the extent that it
+    // has an opinion; see CATEGORY_VOTE. Its points are unaffected either way.
+    votingWeight += weight * (input?.available ? voteShare(strength) : 0);
     const points = strength * weight;
     raw += points;
     results.push({
@@ -194,7 +226,10 @@ export function buildScore({
   const sign = raw === 0 ? 0 : Math.sign(raw);
   const eventPoints = -Math.abs(eventDampening) * eventWeight * sign;
   const eventInput = byKey.get("eventRisk");
-  if (eventDampening > 0) availableWeight += eventWeight;
+  if (eventDampening > 0) {
+    availableWeight += eventWeight;
+    votingWeight += eventWeight * voteShare(eventDampening);
+  }
   raw += eventPoints;
   results.push({
     key: "eventRisk",
@@ -208,14 +243,23 @@ export function buildScore({
     summary: eventInput?.summary ?? "No scheduled event risk detected for this market.",
   });
 
-  // 3. Conflicting timeframes reduce conviction.
-  if (conflict.conflicted) raw *= 1 - CONFLICT_DAMPENING;
+  // 3. The score measures alignment among the evidence that EXISTS. Categories
+  //    with nothing to say are not counted as votes for "neutral", which would
+  //    otherwise cap a textbook trend in a quiet news cycle around 77.
+  const amplification = votingWeight > 0
+    ? Math.min(totalWeight / votingWeight, MAX_EVIDENCE_AMPLIFICATION)
+    : 0;
+  raw *= amplification;
+
+  // 4. Disagreement between timeframes reduces conviction, in proportion to how
+  //    much of the trader's attention sits on the dissenting side.
+  raw *= 1 - conflict.dampening;
 
   const score = clamp(Math.round(50 + raw / 2), 0, 100);
   const band = bandFor(score);
   const direction: Direction = conflict.conflicted ? "mixed" : (band.direction as Direction);
 
-  // 4. Evidence quality — a separate concept from the score itself.
+  // 5. Evidence quality — a separate concept from the score itself.
   const coverage = totalWeight ? availableWeight / totalWeight : 0;
   const availableCount = results.filter((r) => r.available).length;
   const reasons = [
