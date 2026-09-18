@@ -7,7 +7,7 @@
  * being pinned behind a stale cache — the usual way a PWA ends up serving last
  * week's build forever.
  */
-const CACHE = "md-direction-v1";
+const CACHE = "md-direction-v2";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon.svg"];
 
 self.addEventListener("install", (event) => {

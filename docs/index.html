@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#08080b">
-<meta name="description" content="MD Market Direction — a transparent directional bias for 51 markets, with the evidence behind every score.">
+<meta name="description" content="MD Market Direction — a transparent directional bias for 51 markets. Runs on simulated prices, not a live feed.">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-180.png">
@@ -93,8 +93,8 @@ option{background:var(--ink)}
 }
 
 /* ── demo banner ────────────────────────────────────────────────────────── */
-.demobar{background:rgba(201,162,39,.11);border-bottom:1px solid rgba(201,162,39,.32);padding:7px 16px;text-align:center}
-.demobar span{font-family:var(--display);font-weight:700;font-size:10px;letter-spacing:.17em;text-transform:uppercase;color:var(--gold)}
+.demobar{background:rgba(240,87,78,.14);border-bottom:1px solid rgba(240,87,78,.45);padding:8px 16px;text-align:center}
+.demobar span{font-family:var(--display);font-weight:700;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--bear)}
 
 /* ── components ─────────────────────────────────────────────────────────── */
 .sect{margin-bottom:34px}
@@ -176,7 +176,6 @@ details summary::-webkit-details-marker{display:none}
 .between{display:flex;align-items:center;justify-content:space-between;gap:12px}
 </style>
 <style>
-/* Standalone build: the artifact runtime normally supplies these. */
 html,body{height:100%}
 :root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 img{max-width:100%}
@@ -186,7 +185,7 @@ img{max-width:100%}
 <body>
 
 
-<div class="demobar"><span id="demoMsg">Demo mode — market data, news and calendar are generated sample data. Not live market data.</span></div>
+<div class="demobar"><span id="demoMsg">⚠ Simulated data — these are not real prices. Generated numbers for testing the app only. Do not trade from them.</span></div>
 
 <div class="shell">
   <aside class="rail">
@@ -1658,6 +1657,14 @@ function chartScene(symbol){
       svg+='<line x1="'+X(best)+'" x2="'+X(best)+'" y1="'+padT+'" y2="'+(padT+priceH)+'" stroke="var(--bear)" stroke-width="1" stroke-dasharray="2 4" opacity=".45"></line>'+
         '<rect x="'+(X(best)-3)+'" y="'+padT+'" width="6" height="6" fill="var(--bear)" opacity=".9"></rect>'});
   }
+  // Unmissable on the drawing itself, not just in a caption underneath it.
+  for(let r=0;r<3;r++){
+    for(let k=0;k<3;k++){
+      svg+='<text x="'+(120+k*330)+'" y="'+(90+r*110)+'" fill="var(--bear)" opacity="0.13" font-size="34" '+
+        'font-family="var(--display)" font-weight="800" letter-spacing="5" text-anchor="middle" '+
+        'transform="rotate(-18 '+(120+k*330)+' '+(90+r*110)+')">SAMPLE DATA</text>';
+    }
+  }
   const label=n+' bars · '+dtime(c[0].t).slice(0,10)+' → '+dtime(c[c.length-1].t).slice(0,10);
   return{inner:svg,label:label,bars:n,symbol:symbol};
 }
@@ -1684,7 +1691,7 @@ function chartHTML(symbol){
       '<span class="flexw" style="gap:6px"><span style="width:16px;height:1px;background:var(--mute)"></span>200 MA</span>'+
       '<span class="flexw" style="gap:6px"><span style="width:6px;height:6px;border-radius:50%;background:var(--bone)"></span>Swing high / low</span>'+
       '<span class="flexw" style="gap:6px"><span style="width:6px;height:6px;background:var(--bear)"></span>High-impact event</span>'+
-      '<span class="gold" style="margin-left:auto">Demo data — not live prices</span>'+
+      '<span class="bear" style="margin-left:auto;font-weight:700">Simulated prices — will not match your broker</span>'+
     '</div></div>';
 }
 
@@ -1860,7 +1867,7 @@ function marketCard(a){
       '<dt>News</dt>'+cell(newsDir.toUpperCase(),newsDir==="bullish",newsDir==="bearish")+'</dl>'+
     '<div class="between tiny faint" style="margin-top:11px;letter-spacing:.13em;text-transform:uppercase">'+
       '<span>Updated '+ago(a.generatedAt)+'</span>'+
-      (a.event.risk!=="none"?'<span class="gold">Event risk '+a.event.risk+'</span>':'<span>No event risk</span>')+'</div></a>';
+      '<span class="bear">Simulated</span>'+'</div></a>';
 }
 function rowLink(a){
   return '<a class="rowlink" href="#/market/'+encodeURIComponent(a.asset.symbol)+'">'+
@@ -2005,10 +2012,11 @@ function viewMarket(symbol){
    '<div class="flexw" style="gap:16px;margin-top:16px;align-items:baseline">'+
      '<span class="num" style="font-family:var(--display);font-weight:700;font-size:26px">'+fmt(a.quote.price,p)+'</span>'+
      '<span class="num '+(a.quote.changePct>=0?"bull":"bear")+'" style="font-size:16px">'+pct(a.quote.changePct)+'</span>'+
-     '<span class="tiny faint">H '+fmt(a.quote.dayHigh,p)+' · L '+fmt(a.quote.dayLow,p)+'</span></div>'+
+     '<span class="tiny faint">H '+fmt(a.quote.dayHigh,p)+' · L '+fmt(a.quote.dayLow,p)+'</span>'+
+     '<span class="tag hi" style="font-size:9px">Simulated price</span></div>'+
    '<div class="flexw tiny faint" style="margin-top:7px;letter-spacing:.13em;text-transform:uppercase">'+
      '<span class="flexw" style="gap:6px"><span class="dot" style="width:6px;height:6px;background:var(--gold)"></span>Updated '+ago(a.generatedAt)+'</span>'+
-     '<span>Source: '+esc(a.quote.source)+'</span><span class="gold">Demo data</span><span>Mode: '+esc(MODES[a.mode].label)+'</span></div>'+
+     '<span>Source: '+esc(a.quote.source)+' (generated)</span><span>Mode: '+esc(MODES[a.mode].label)+'</span></div>'+
    '<div class="flexw" style="gap:9px;margin-top:20px">'+
      '<button class="btn btn-gold" data-why="'+esc(a.asset.symbol)+'" style="padding:13px 34px;font-size:12px">Why?</button>'+
      '<button class="btn btn-ghost" data-watch="'+esc(a.asset.symbol)+'">'+(watched?"★ In watchlist":"☆ Add to watchlist")+'</button>'+
@@ -2445,7 +2453,7 @@ function viewAbout(){
     '<b>Evidence quality is separate from the score.</b> A score of 84 backed by four of seven categories is not the same claim as 84 backed by all seven, so the two are never merged into one number.',
     '<b>Calibration.</b> Trend and structure swing near ±1 when a market trends; news, macro and cross-market are weighted averages and rarely exceed ~0.4 raw. Each passes through a monotonic curve that fixes 0→0 and ±1→±1, so it can never change a category\'s direction.',
     '<b>Missing data is reported as missing.</b> When a category has nothing to say the engine marks it unavailable rather than inventing a reading, and the evidence-quality rating drops accordingly.',
-    '<b>Demo data is never dressed up as live data.</b> Prices, headlines and calendar entries in this build are generated by a deterministic engine that runs in your browser, and every screen says so.'
+    '<b>These are not real prices.</b> Every price, headline and calendar entry in this build is generated by an algorithm running in your browser. There is no market data feed behind it. The numbers will not match OANDA, forex.com, TradingView or any broker, because they are not derived from any market. This build exists to test the analysis engine and the interface — never to make a trading decision.'
    ].map(t=>'<div class="panel" style="padding:15px"><p class="small mute" style="line-height:1.6">'+t+'</p></div>').join("")+'</div>'+
   '<div class="panel" style="padding:20px">'+
    '<div class="eyebrow" style="margin-bottom:9px">Disclaimer</div>'+
@@ -2626,10 +2634,9 @@ boot();
 </script>
 
 <script>
-/* Registered only over https (or localhost); a file:// open just skips it. */
 if ("serviceWorker" in navigator && location.protocol === "https:") {
   window.addEventListener("load", function () {
-    navigator.serviceWorker.register("sw.js").catch(function () { /* offline support is optional */ });
+    navigator.serviceWorker.register("sw.js").catch(function () {});
   });
 }
 </script>
