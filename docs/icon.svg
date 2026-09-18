@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="MD Market Direction">
+  <rect width="512" height="512" fill="#08080b"/>
+  <rect x="40" y="40" width="432" height="432" fill="none" stroke="#c9a227" stroke-width="16"/>
+  <path d="M120 356V156l82 114 82-114v200" fill="none" stroke="#f4f4f2" stroke-width="30" stroke-linejoin="miter"/>
+  <path d="M330 156h44c38 0 57 30 57 100s-19 100-57 100h-44z" fill="none" stroke="#c9a227" stroke-width="30"/>
+</svg>
