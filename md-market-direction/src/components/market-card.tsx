@@ -43,7 +43,7 @@ export function MarketCard({ row, precision = 2 }: { row: ScannerRow; precision?
       </div>
 
       <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1 border-t border-hairline-soft pt-3 text-[11px]">
-        <Row label="50 MA (1D)" value={row.ma50 ? row.ma50.toUpperCase() : "—"} good={row.ma50 === "above"} bad={row.ma50 === "below"} />
+        <Row label="50 EMA (1D)" value={row.ma50 ? row.ma50.toUpperCase() : "—"} good={row.ma50 === "above"} bad={row.ma50 === "below"} />
         <Row label="Structure (1D)" value={row.structure.toUpperCase()} good={row.structure === "bullish"} bad={row.structure === "bearish"} />
         <Row label="Momentum" value={row.momentum.toUpperCase()} good={row.momentum === "strong"} />
         <Row label="News" value={row.news.toUpperCase()} good={row.news === "bullish"} bad={row.news === "bearish"} />

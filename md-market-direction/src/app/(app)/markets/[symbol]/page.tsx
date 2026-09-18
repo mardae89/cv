@@ -126,10 +126,12 @@ export default function MarketDetailPage({ params }: { params: Promise<{ symbol:
           </div>
         ) : null}
 
-        {a.score.conflict.conflicted ? (
+        {a.score.conflict.dampening > 0.1 ? (
           <div className="border-t border-flat/30 bg-flat/10 px-5 py-3 text-sm text-flat sm:px-7">
-            <span className="display text-xs font-bold uppercase tracking-widest">Conflict detected · </span>
-            {a.score.conflict.message} The score has been pulled toward neutral as a result.
+            <span className="display text-xs font-bold uppercase tracking-widest">
+              {a.score.conflict.conflicted ? "Conflict detected · " : "Pullback in progress · "}
+            </span>
+            {a.score.conflict.message} Conviction reduced by {Math.round(a.score.conflict.dampening * 100)}%.
           </div>
         ) : null}
       </Panel>
@@ -156,7 +158,7 @@ export default function MarketDetailPage({ params }: { params: Promise<{ symbol:
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-hairline-soft text-left">
-                    {["TF", "Price", "50 MA", "200 MA", "vs 50", "50 slope", "Trend", "Vol"].map((h) => (
+                    {["TF", "Price", "50 EMA", "200 MA", "vs 50", "50 slope", "Trend", "Vol"].map((h) => (
                       <th key={h} className="px-3 py-2 text-[10px] uppercase tracking-widest text-faint">{h}</th>
                     ))}
                   </tr>

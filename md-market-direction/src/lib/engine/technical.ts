@@ -1,11 +1,11 @@
 import type { Candle, Direction, Timeframe, TimeframeMomentum, TimeframeTechnical } from "@/lib/types";
-import { atr, clamp, macd, roc, rsi, sma, squash } from "./indicators";
+import { atr, clamp, ema, macd, roc, rsi, sma, squash } from "./indicators";
 
 /**
  * TECHNICAL TREND + MOMENTUM per timeframe.
  *
  * Trend is built from the two moving averages traders actually watch (50 & 200),
- * their slopes, and how extended price is from the 50 MA in ATR terms. Momentum
+ * their slopes, and how extended price is from the 50 EMA in ATR terms. Momentum
  * combines RSI, MACD histogram, rate of change and relative volume.
  */
 
@@ -22,7 +22,7 @@ function slopeDirection(series: (number | null)[], lookback: number, reference: 
 export function analyseTechnical(candles: Candle[], timeframe: Timeframe): TimeframeTechnical {
   const closes = candles.map((c) => c.c);
   const price = closes[closes.length - 1];
-  const ma50s = sma(closes, 50);
+  const ma50s = ema(closes, 50);
   const ma200s = sma(closes, 200);
   const ma50 = ma50s[ma50s.length - 1];
   const ma200 = ma200s[ma200s.length - 1];
@@ -46,7 +46,7 @@ export function analyseTechnical(candles: Candle[], timeframe: Timeframe): Timef
   if (ma50 != null && ma200 != null) strength += ma50 > ma200 ? 0.12 : -0.12;
   strength += clamp(s50.pct * 0.35, -0.22, 0.22);
   strength += clamp(s200.pct * 0.25, -0.16, 0.16);
-  // Being extremely extended from the 50 MA is a mild caution, not a reversal call.
+  // Being extremely extended from the 50 EMA is a mild caution, not a reversal call.
   if (ma50 != null && atrNow) {
     const extension = (price - ma50) / atrNow;
     if (Math.abs(extension) > 4) strength -= Math.sign(extension) * 0.08;

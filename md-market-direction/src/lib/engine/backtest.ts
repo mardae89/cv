@@ -1,5 +1,5 @@
 import type { Candle, Direction, Timeframe } from "@/lib/types";
-import { atr, clamp, macd, roc, rsi, sma, squash } from "./indicators";
+import { atr, clamp, ema, macd, roc, rsi, sma, squash } from "./indicators";
 import { findSwings } from "./structure";
 
 /**
@@ -23,7 +23,7 @@ const WEIGHTS = { technical: 40, structure: 35, momentum: 25 };
 
 export function historicalScores(candles: Candle[]): HistoricalScorePoint[] {
   const closes = candles.map((c) => c.c);
-  const ma50 = sma(closes, 50);
+  const ma50 = ema(closes, 50);
   const ma200 = sma(closes, 200);
   const rsiS = rsi(closes, 14);
   const macdS = macd(closes);

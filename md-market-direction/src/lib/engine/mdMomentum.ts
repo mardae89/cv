@@ -77,7 +77,7 @@ export function evaluateMdMomentum(analysis: AssetAnalysis, weeklyCandles: Candl
       reading: weeklyTech?.strength ?? 0,
       value: word(weeklyTech?.strength ?? 0),
       detail: weeklyTech
-        ? `Weekly trend read from price versus the 50 and 200 MA and their slopes (50 MA ${weeklyTech.ma50Slope ?? "—"}).`
+        ? `Weekly trend read from price versus the 50 EMA and 200 MA and their slopes (50 EMA ${weeklyTech.ma50Slope ?? "—"}).`
         : "Weekly data unavailable.",
     },
     {
@@ -89,10 +89,10 @@ export function evaluateMdMomentum(analysis: AssetAnalysis, weeklyCandles: Candl
     },
     {
       key: "priceVsMa50Weekly",
-      label: "Price vs 50 MA (Weekly)",
+      label: "Price vs 50 EMA (Weekly)",
       reading: ma50Reading,
       value: weeklyTech?.priceVsMa50 ? weeklyTech.priceVsMa50.toUpperCase() : "Data unavailable",
-      detail: "Distance from the weekly 50 MA, measured in ATR so it is comparable across markets.",
+      detail: "Distance from the weekly 50 EMA, measured in ATR so it is comparable across markets.",
     },
     {
       key: "weeklyStructure",

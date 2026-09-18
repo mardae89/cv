@@ -57,9 +57,9 @@ export function buildWhy(
 
   const daily = technical.find((t) => t.timeframe === "1D");
   if (daily?.ma50 != null && daily.priceVsMa50) {
-    push(daily.priceVsMa50 === "above", `price is ${daily.priceVsMa50} its 50 MA on the daily chart`);
+    push(daily.priceVsMa50 === "above", `price is ${daily.priceVsMa50} its 50 EMA on the daily chart`);
     if (daily.ma50Slope && daily.ma50Slope !== "flat") {
-      push(daily.ma50Slope === "rising", `the daily 50 MA is ${daily.ma50Slope}`);
+      push(daily.ma50Slope === "rising", `the daily 50 EMA is ${daily.ma50Slope}`);
     }
   }
   for (const tf of ["1W", "1D", "4H"] as const) {
@@ -85,8 +85,12 @@ export function buildWhy(
     parts.push(`Working against it, ${opposing.slice(0, 3).join(", ")} — which is why the score is not higher.`);
   }
 
-  if (score.conflict.conflicted && score.conflict.message) {
-    parts.push(`${score.conflict.message} That disagreement is why this is not treated as strong alignment.`);
+  if (score.conflict.message && score.conflict.dampening > 0.1) {
+    parts.push(
+      score.conflict.conflicted
+        ? `${score.conflict.message} That disagreement is why this is not treated as strong alignment.`
+        : `${score.conflict.message} The trend still holds the majority of the evidence, but conviction is reduced by ${Math.round(score.conflict.dampening * 100)}% while that pullback lasts.`,
+    );
   }
 
   if (eventRisk.nextEvent && eventRisk.hoursUntil != null && eventRisk.risk !== "none") {
@@ -115,7 +119,7 @@ export function buildWhatCouldChangeIt(
 
   if (daily?.ma50 != null) {
     const side = daily.priceVsMa50 === "above" ? "back below" : "back above";
-    out.push(`A daily close ${side} the 50 MA at ${fmtPrice(daily.ma50, asset.precision)}.`);
+    out.push(`A daily close ${side} the 50 EMA at ${fmtPrice(daily.ma50, asset.precision)}.`);
   }
   if (dailyStruct?.lastSwingLow != null && dailyStruct?.lastSwingHigh != null) {
     out.push(
@@ -131,7 +135,7 @@ export function buildWhatCouldChangeIt(
   if (macroCat?.available && macroCat.evidence[0]) {
     out.push(`A change in ${macroCat.evidence[0].label.toLowerCase()} would change the macro contribution.`);
   }
-  if (score.conflict.conflicted) {
+  if (score.conflict.dampening > 0.1) {
     out.push("Lower timeframes realigning with the higher timeframes would remove the conflict penalty.");
   }
   return out.slice(0, 5);
