@@ -9,10 +9,24 @@ import { hasFeature, requiredTier, TIERS } from "@/lib/config/tiers";
 const COOKIE = "md_session";
 const DAY = 24 * 60 * 60;
 
+/**
+ * Accounts need a signing secret. In production an unset AUTH_SECRET is a
+ * misconfiguration, not a runtime bug — so it is reported as one, with the fix
+ * in the message, rather than surfacing as an opaque 500 during signup.
+ */
+export function authConfigured(): boolean {
+  return Boolean(process.env.AUTH_SECRET) || process.env.NODE_ENV !== "production";
+}
+
+export const AUTH_SETUP_MESSAGE =
+  "Accounts are disabled because AUTH_SECRET is not set on this deployment. " +
+  "Add it as an environment variable (any long random string) and redeploy. " +
+  "Market analysis works without it.";
+
 function secret(): Uint8Array {
   const raw = process.env.AUTH_SECRET;
   if (!raw && process.env.NODE_ENV === "production") {
-    throw new Error("AUTH_SECRET must be set in production.");
+    throw new Error(AUTH_SETUP_MESSAGE);
   }
   return new TextEncoder().encode(raw || "md-market-direction-development-secret-change-me");
 }

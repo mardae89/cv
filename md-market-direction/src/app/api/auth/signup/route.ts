@@ -1,9 +1,11 @@
 import { createSession, createUser } from "@/lib/auth/session";
 import { log } from "@/lib/db/store";
 import { fail, ok } from "@/lib/api";
+import { AUTH_SETUP_MESSAGE, authConfigured } from "@/lib/auth/session";
 import { rateLimit } from "@/lib/auth/guard";
 
 export async function POST(req: Request) {
+  if (!authConfigured()) return fail(AUTH_SETUP_MESSAGE, 503);
   const limit = rateLimit("signup", 20, 60_000);
   if (!limit.ok) return fail("Too many attempts. Try again shortly.", 429);
   const body = await req.json().catch(() => null);
