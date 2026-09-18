@@ -35,7 +35,12 @@ export const viewport: Viewport = {
   themeColor: "#07070a",
   width: "device-width",
   initialScale: 1,
-  maximumScale: 5,
+  // Browser pinch-zoom is disabled deliberately: the chart's own pinch is a
+  // two-finger gesture, and with page zoom enabled the browser claims it first —
+  // so pinching the chart zoomed the whole page instead of the price axis.
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

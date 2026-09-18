@@ -42,6 +42,8 @@ html,
 body {
   background: var(--color-void);
   color: var(--color-bone);
+  /* Stops the rubber-band scroll that fights a drag starting inside the chart. */
+  overscroll-behavior: none;
 }
 
 body {
@@ -150,3 +152,34 @@ input:focus, select:focus, textarea:focus {
 select option { background: var(--color-ink); }
 
 ::placeholder { color: var(--color-faint); }
+
+/* ── full-bleed chart ─────────────────────────────────────────────────────
+   On a phone the chart should use the whole width of the screen rather than
+   sitting inside the page gutter; the gutter still applies to everything else. */
+.bleed {
+  margin-left: -16px;
+  margin-right: -16px;
+}
+@media (min-width: 640px) {
+  .bleed { margin-left: 0; margin-right: 0; }
+}
+
+/* A rotated phone is a request for chart space: trim the page chrome. */
+@media (orientation: landscape) and (max-height: 700px) {
+  .main { padding-top: 8px; padding-bottom: 68px; }
+  .bleed { margin-left: -16px; margin-right: -16px; }
+  .tabbar a { padding-top: 5px; padding-bottom: 5px; font-size: 8px; }
+}
+
+/* A chart taken fullscreen fills the viewport and loses its rounded chrome. */
+.chart-fs {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: var(--color-void);
+  display: flex;
+  flex-direction: column;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.chart-fs .chart-body { flex: 1; min-height: 0; }

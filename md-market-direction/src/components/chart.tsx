@@ -70,6 +70,8 @@ export function PriceChart({
   const [showEvents, setShowEvents] = useState(true);
   const [hover, setHover] = useState<number | null>(null);
   const [width, setWidth] = useState(720);
+  const [chartH, setChartH] = useState(height);
+  const [fullscreen, setFullscreen] = useState(false);
 
   const hostRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -77,15 +79,54 @@ export function PriceChart({
   const [, bump] = useState(0);
   const repaint = useCallback(() => bump((n) => n + 1), []);
 
-  /* Real pixel width, so the viewBox can be 1:1 with CSS pixels. */
+  /* Real pixel size, so the viewBox is 1:1 with CSS pixels and the chart fills
+     whatever space it has — including a rotated phone and true fullscreen. */
   useLayoutEffect(() => {
     const el = hostRef.current;
     if (!el) return;
-    const measure = () => setWidth(Math.max(280, el.clientWidth));
+    const measure = () => {
+      setWidth(Math.max(280, el.clientWidth));
+      const vh = window.innerHeight;
+      if (fullscreen) {
+        setChartH(Math.max(240, vh - 108));
+      } else if (window.matchMedia("(orientation: landscape)").matches && vh < 700) {
+        // Rotated phone: the chart is the reason you turned the phone, so it
+        // takes the screen and leaves room only for the app's own bars.
+        setChartH(Math.max(240, vh - 96));
+      } else {
+        setChartH(height);
+      }
+    };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
-    return () => ro.disconnect();
+    window.addEventListener("resize", measure);
+    window.addEventListener("orientationchange", measure);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", measure);
+      window.removeEventListener("orientationchange", measure);
+    };
+  }, [height, fullscreen]);
+
+  /* Keep local state in step with the browser's own fullscreen state, which the
+     user can leave with Escape or a system gesture. */
+  useEffect(() => {
+    const sync = () => setFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener("fullscreenchange", sync);
+    return () => document.removeEventListener("fullscreenchange", sync);
+  }, []);
+
+  const toggleFullscreen = useCallback(async () => {
+    const el = hostRef.current;
+    if (!el) return;
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else if (el.requestFullscreen) await el.requestFullscreen({ navigationUI: "hide" });
+      else setFullscreen((f) => !f); // iOS Safari has no element fullscreen; fall back to a fixed overlay
+    } catch {
+      setFullscreen((f) => !f);
+    }
   }, []);
 
   useEffect(() => {
@@ -116,7 +157,7 @@ export function PriceChart({
     };
   }, [symbol, timeframe]);
 
-  const H = height;
+  const H = chartH;
   const plotW = Math.max(60, width - PRICE_GUTTER);
   const priceH = Math.max(80, H - PAD_T - TIME_STRIP - VOL_H - GAP);
 
@@ -270,7 +311,8 @@ export function PriceChart({
       // Drag down compresses (zooms out), drag up expands — matches the terminals.
       zoomPrice(Math.exp(dy / 160), g.view);
     } else if (g.zone === "time") {
-      zoomTime(Math.exp(-dx / 160), 1, g.view);
+      // Drag left to zoom in, right to zoom out.
+      zoomTime(Math.exp(dx / 160), 1, g.view);
     } else {
       const barsPerPx = g.view.count / plotW;
       v.start = g.view.start - dx * barsPerPx;
@@ -329,7 +371,7 @@ export function PriceChart({
   const hovered = hover != null ? slice[hover] : null;
 
   return (
-    <div className="panel" ref={hostRef}>
+    <div className={`panel ${fullscreen ? "chart-fs" : ""}`} ref={hostRef}>
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-hairline-soft px-4 py-3">
         <div className="flex flex-wrap items-center gap-1">
           {ALL_TIMEFRAMES.map((tf) => (
@@ -356,6 +398,13 @@ export function PriceChart({
           <button onClick={resetAll} className="border border-hairline px-2 py-0.5 text-mute hover:border-gold hover:text-gold">
             Reset
           </button>
+          <button
+            onClick={toggleFullscreen}
+            aria-label={fullscreen ? "Exit full screen" : "Full screen chart"}
+            className="border border-hairline px-2 py-0.5 text-mute hover:border-gold hover:text-gold"
+          >
+            {fullscreen ? "Exit" : "Full screen"}
+          </button>
         </div>
       </div>
 
@@ -368,7 +417,7 @@ export function PriceChart({
       ) : !data || !slice.length ? (
         <div className="p-4 text-sm text-mute">Chart data unavailable.</div>
       ) : (
-        <div className="relative">
+        <div className="chart-body relative">
           <svg
             ref={svgRef}
             width={width}
