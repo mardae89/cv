@@ -135,7 +135,9 @@ export default function MarketDetailPage({ params }: { params: Promise<{ symbol:
       </Panel>
 
       {/* ------------------------------- CHART ---------------------------------- */}
-      <PriceChart symbol={a.asset.symbol} initialTimeframe="1D" />
+      <div className="bleed">
+        <PriceChart symbol={a.asset.symbol} initialTimeframe="1D" />
+      </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* --------------------------- EVIDENCE ---------------------------------- */}
