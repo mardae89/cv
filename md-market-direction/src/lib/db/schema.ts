@@ -1,5 +1,5 @@
 import type { Tier } from "@/lib/config/tiers";
-import type { Direction, Timeframe, TradingMode } from "@/lib/types";
+import type { Direction, Timeframe, TradingMode, TrendScope } from "@/lib/types";
 
 export interface User {
   id: string;
@@ -17,6 +17,8 @@ export interface User {
 
 export interface UserPreferences {
   mode: TradingMode;
+  /** Which timeframes may define the trend. Defaults to higher timeframes only. */
+  trendScope: TrendScope;
   markets: string[];
   defaultTimeframe: Timeframe;
   theme: "dark";

@@ -8,6 +8,7 @@ import type {
   MdScore,
   Timeframe,
   TradingMode,
+  TrendScope,
 } from "@/lib/types";
 import {
   bandFor,
@@ -18,7 +19,7 @@ import {
   CONFLICT_MIXED_AT,
   DEFAULT_WEIGHTS,
   MAX_EVIDENCE_AMPLIFICATION,
-  MODE_TIMEFRAMES,
+  scopedWeights,
   NEUTRAL_BAND,
   voteShare,
 } from "@/lib/config/scoring";
@@ -50,8 +51,9 @@ export interface CategoryInput {
 export function weightByMode<T extends { timeframe: Timeframe; strength: number }>(
   items: T[],
   mode: TradingMode,
+  scope: TrendScope = "htf",
 ): number {
-  const weights = MODE_TIMEFRAMES[mode].weights;
+  const weights = scopedWeights(mode, scope);
   let sum = 0;
   let total = 0;
   for (const item of items) {
@@ -109,6 +111,7 @@ function toDirection(v: number): Direction {
 export function detectConflict(
   combined: { timeframe: Timeframe; strength: number }[],
   mode: TradingMode,
+  scope: TrendScope = "htf",
 ): ConflictReport {
   const htf = groupStrength(combined, HTF, HTF_WEIGHTS);
   const ltf = groupStrength(combined, LTF, LTF_WEIGHTS);
@@ -122,7 +125,7 @@ export function detectConflict(
   };
   if (htf === null || ltf === null) return none;
 
-  const modeWeights = MODE_TIMEFRAMES[mode].weights;
+  const modeWeights = scopedWeights(mode, scope);
   let bullWeight = 0;
   let bearWeight = 0;
   const bulls: Timeframe[] = [];

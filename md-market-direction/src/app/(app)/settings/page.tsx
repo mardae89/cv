@@ -5,7 +5,9 @@ import Link from "next/link";
 import { postJson, useApi } from "@/lib/hooks";
 import type { UserPreferences } from "@/lib/db/schema";
 import type { ProviderHealth } from "@/lib/providers/types";
-import { MODE_TIMEFRAMES } from "@/lib/config/scoring";
+import { MODE_TIMEFRAMES, TREND_SCOPES } from "@/lib/config/scoring";
+import { useTrendScope } from "@/lib/useTrendScope";
+import type { TrendScope } from "@/lib/types";
 import { Eyebrow, GoldButton, Panel, SectionHeading, Skeleton, StatusDot } from "@/components/primitives";
 import { TierChip } from "@/components/shell";
 import { timeAgo } from "@/lib/utils/format";
@@ -25,6 +27,7 @@ export default function SettingsPage() {
   }>("/api/status");
 
   const [prefs, setPrefs] = useState<UserPreferences | null>(null);
+  const [scope, setScope] = useTrendScope();
   const [name, setName] = useState("");
   const [saved, setSaved] = useState(false);
 
@@ -99,6 +102,28 @@ export default function SettingsPage() {
         </div>
         <p className="mt-3 text-xs text-faint">
           The trading style changes how much each timeframe contributes to the MD Direction Score. It does not change the evidence itself.
+        </p>
+      </Panel>
+
+      <Panel className="p-5">
+        <Eyebrow className="mb-3">Trend timeframes</Eyebrow>
+        <div className="grid gap-2 sm:grid-cols-2">
+          {(Object.keys(TREND_SCOPES) as TrendScope[]).map((key) => (
+            <button
+              key={key}
+              onClick={() => setScope(key)}
+              className={`border px-4 py-3 text-left transition ${
+                scope === key ? "border-gold bg-gold/10" : "border-hairline hover:border-gold/50"
+              }`}
+            >
+              <div className="display text-sm font-bold uppercase tracking-widest">{TREND_SCOPES[key].label}</div>
+              <div className="mt-1 text-xs text-mute">{TREND_SCOPES[key].blurb}</div>
+            </button>
+          ))}
+        </div>
+        <p className="mt-3 text-xs text-faint">
+          Applies to the MD Direction Score, the momentum score and conflict detection everywhere in the app.
+          Timeframes outside the scope are still charted and still listed in the timeframe table — they just do not vote.
         </p>
       </Panel>
 

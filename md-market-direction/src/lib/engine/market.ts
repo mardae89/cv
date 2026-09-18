@@ -6,6 +6,7 @@ import type {
   RegimeResult,
   ScannerRow,
   TradingMode,
+  TrendScope,
 } from "@/lib/types";
 import { ASSETS } from "@/lib/data/universe";
 import { bandFor } from "@/lib/config/scoring";
@@ -20,9 +21,10 @@ export async function scanUniverse(
   ctx: AnalysisContext,
   mode: TradingMode,
   symbols?: string[],
+  scope: TrendScope = "htf",
 ): Promise<AssetAnalysis[]> {
   const list = symbols?.length ? symbols : ASSETS.map((a) => a.symbol);
-  const key = `${mode}|${list.length === ASSETS.length ? "all" : list.join(",")}`;
+  const key = `${mode}|${scope}|${list.length === ASSETS.length ? "all" : list.join(",")}`;
   const hit = scanCache.get(key);
   if (hit) return hit.value;
 
@@ -30,7 +32,7 @@ export async function scanUniverse(
   // Sequential on purpose: the demo generator is CPU-bound and the live adapters
   // are rate-limited. Series are cached, so repeated symbols cost nothing.
   for (const symbol of list) {
-    const a = await analyseAsset(ctx, symbol, { mode });
+    const a = await analyseAsset(ctx, symbol, { mode, scope });
     if (a) out.push(a);
   }
   scanCache.set(key, out);

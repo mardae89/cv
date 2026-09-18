@@ -102,6 +102,7 @@ export function createUser({ email, password, name }: SignupInput): { user?: Use
       onboarded: false,
       preferences: {
         mode: "swing",
+        trendScope: "htf",
         markets: ["Forex Majors", "Metals", "US Indices"],
         defaultTimeframe: "1D",
         theme: "dark",

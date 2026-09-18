@@ -4,7 +4,7 @@ import { effectiveTier } from "@/lib/auth/session";
 import { viewer } from "@/lib/auth/public";
 import { FREE_TIER_SYMBOLS } from "@/lib/data/universe";
 import { recordUsage } from "@/lib/db/store";
-import { CACHE_SHORT, ok, resolveMode } from "@/lib/api";
+import { CACHE_SHORT, ok, resolveMode, resolveScope } from "@/lib/api";
 import { symbolMatches } from "@/lib/symbols";
 import type { ScannerRow } from "@/lib/types";
 
@@ -15,9 +15,10 @@ export async function GET(req: Request) {
   const user = await viewer();
   const tier = effectiveTier(user);
   const mode = resolveMode(searchParams.get("mode"), user);
+  const scope = resolveScope(searchParams.get("scope"), user);
 
   const ctx = await buildContext();
-  const analyses = await scanUniverse(ctx, mode);
+  const analyses = await scanUniverse(ctx, mode, undefined, scope);
   let rows = analyses.map(toScannerRow);
 
   // Free tier sees a limited universe — the rest is shown locked, never hidden.

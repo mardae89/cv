@@ -3,20 +3,26 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useApi } from "@/lib/hooks";
+import { useTrendScope } from "@/lib/useTrendScope";
 import type { MdMomentumResult } from "@/lib/engine/mdMomentum";
 import type { AssetAnalysis } from "@/lib/types";
 import { Paywall } from "@/components/paywall";
 import { ScoreDial, ScoreMeter } from "@/components/score";
 import {
-  DirectionBadge, ErrorState, Eyebrow, Panel, SectionHeading, Skeleton,
+  DirectionBadge, ErrorState, Eyebrow, Panel, SectionHeading, Skeleton, TrendScopeSwitch,
 } from "@/components/primitives";
 import { fmtSigned } from "@/lib/utils/format";
 
 export default function MomentumPage() {
   const [symbol, setSymbol] = useState<string | null>(null);
-  const board = useApi<{ results: MdMomentumResult[]; demo: boolean }>(symbol ? null : "/api/momentum");
+  const [scope, setScope] = useTrendScope();
+  const board = useApi<{ results: MdMomentumResult[]; demo: boolean }>(
+    symbol ? null : `/api/momentum?scope=${scope}`,
+    [scope],
+  );
   const detail = useApi<{ analysis: AssetAnalysis; momentum: MdMomentumResult }>(
-    symbol ? `/api/momentum?symbol=${encodeURIComponent(symbol)}` : null,
+    symbol ? `/api/momentum?symbol=${encodeURIComponent(symbol)}&scope=${scope}` : null,
+    [scope],
   );
 
   const up = board.upgrade ?? detail.upgrade;
@@ -33,6 +39,8 @@ export default function MomentumPage() {
           </button>
         ) : undefined}
       />
+
+      <TrendScopeSwitch scope={scope} onChange={setScope} />
 
       <div className="border border-hairline-soft bg-ink px-4 py-3 text-xs text-mute">
         This is a configurable model of the strategy, not a hard rule set. Each check produces a reading between −1 and +1, and the weights in{" "}

@@ -9,8 +9,9 @@ import type {
   TimeframeStructure,
   TimeframeTechnical,
   TradingMode,
-} from "@/lib/types";
-import { ALL_TIMEFRAMES } from "@/lib/config/scoring";
+
+  TrendScope,} from "@/lib/types";
+import { ALL_TIMEFRAMES, scopedWeights } from "@/lib/config/scoring";
 import { resolveAsset } from "@/lib/data/universe";
 import type { AnalysisContext } from "./context";
 import { analyseMomentum, analyseTechnical } from "./technical";
@@ -65,6 +66,8 @@ function summarise(key: CategoryKey, strength: number, extra?: string): string {
 
 export interface AnalyseOptions {
   mode?: TradingMode;
+  /** Which timeframes may define the trend. Defaults to higher timeframes only. */
+  scope?: TrendScope;
   withPrevious?: boolean;
   /** Skip the cache (used by the alert evaluator). */
   fresh?: boolean;
@@ -76,10 +79,11 @@ export async function analyseAsset(
   opts: AnalyseOptions = {},
 ): Promise<AssetAnalysis | null> {
   const mode = opts.mode ?? "swing";
+  const scope = opts.scope ?? "htf";
   const asset = resolveAsset(symbol);
   if (!asset) return null;
 
-  const cacheKey = `${asset.symbol}|${mode}|${opts.withPrevious ? "prev" : "now"}`;
+  const cacheKey = `${asset.symbol}|${mode}|${scope}|${opts.withPrevious ? "prev" : "now"}`;
   if (!opts.fresh) {
     const hit = analysisCache.get(cacheKey);
     if (hit) return hit.value;
@@ -101,6 +105,7 @@ export async function analyseAsset(
 
   const score = assemble({
     mode,
+    scope,
     core,
     news: newsReading,
     macro: macroReading,
@@ -119,6 +124,7 @@ export async function analyseAsset(
     const prevNews = analyseNews(asset, ctx.news.filter((a) => a.publishedAt <= ctx.now - 86_400_000), ctx.now - 86_400_000);
     const prevScore = assemble({
       mode,
+      scope,
       core: prevCore,
       news: prevNews,
       macro: macroReading,
@@ -130,7 +136,7 @@ export async function analyseAsset(
     changeReasons = diffReasons(prevCore, core, asset.precision);
   }
 
-  const momentumStrength = weightByMode(core.momentum, mode);
+  const momentumStrength = weightByMode(core.momentum, mode, scope);
   const analysis: AssetAnalysis = {
     asset,
     quote,
@@ -160,6 +166,7 @@ export async function analyseAsset(
 
 interface AssembleParams {
   mode: TradingMode;
+  scope: TrendScope;
   core: CoreReadings;
   news: ReturnType<typeof analyseNews>;
   macro: ReturnType<typeof analyseMacro>;
@@ -168,17 +175,22 @@ interface AssembleParams {
   ctxDemo: boolean;
 }
 
-function assemble({ mode, core, news, macro, cross, eventDampening, ctxDemo }: AssembleParams): MdScore {
-  const techStrength = weightByMode(core.technical, mode);
-  const structStrength = weightByMode(core.structure, mode);
-  const momoStrength = weightByMode(core.momentum, mode);
+function assemble({ mode, scope, core, news, macro, cross, eventDampening, ctxDemo }: AssembleParams): MdScore {
+  const techStrength = weightByMode(core.technical, mode, scope);
+  const structStrength = weightByMode(core.structure, mode, scope);
+  const momoStrength = weightByMode(core.momentum, mode, scope);
 
   // Conflict detection uses trend + structure together, per timeframe.
   const combined = core.technical.map((t) => {
     const s = core.structure.find((x) => x.timeframe === t.timeframe);
     return { timeframe: t.timeframe, strength: clamp(t.strength * 0.5 + (s?.strength ?? 0) * 0.5, -1, 1) };
   });
-  const conflict = detectConflict(combined, mode);
+  const conflict = detectConflict(combined, mode, scope);
+
+  // The "why" breakdown must list exactly the timeframes that voted. Showing a
+  // 1H reading beside a score that excluded it is how a transparent number
+  // stops being transparent.
+  const voting = new Set(Object.keys(scopedWeights(mode, scope)));
 
   const categories: CategoryInput[] = [
     {
@@ -186,7 +198,7 @@ function assemble({ mode, core, news, macro, cross, eventDampening, ctxDemo }: A
       strength: techStrength,
       available: core.technical.length > 0,
       evidence: core.technical
-        .filter((t) => ["1W", "1D", "4H", "1H"].includes(t.timeframe))
+        .filter((t) => voting.has(t.timeframe))
         .map((t) => ({
           label: `${t.timeframe} trend`,
           detail: `Price ${t.priceVsMa50 ?? "—"} the 50 EMA, 50 EMA ${t.ma50Slope ?? "—"}, volatility ${t.volatility}.`,
@@ -199,7 +211,7 @@ function assemble({ mode, core, news, macro, cross, eventDampening, ctxDemo }: A
       strength: structStrength,
       available: core.structure.some((s) => s.state !== "undefined"),
       evidence: core.structure
-        .filter((s) => ["1W", "1D", "4H", "1H"].includes(s.timeframe))
+        .filter((s) => voting.has(s.timeframe))
         .map((s) => ({
           label: `${s.timeframe} structure`,
           detail: `${s.higherHigh ? "Higher high" : s.lowerHigh ? "Lower high" : "Equal highs"}, ${s.higherLow ? "higher low" : s.lowerLow ? "lower low" : "equal lows"}${s.breakOfStructure ? `, ${s.breakOfStructure} break of structure` : ""}${s.changeOfCharacter ? `, ${s.changeOfCharacter} change of character` : ""}. State: ${s.state}.`,
@@ -212,7 +224,7 @@ function assemble({ mode, core, news, macro, cross, eventDampening, ctxDemo }: A
       strength: momoStrength,
       available: core.momentum.length > 0,
       evidence: core.momentum
-        .filter((m) => ["1D", "4H", "1H"].includes(m.timeframe))
+        .filter((m) => voting.has(m.timeframe))
         .map((m) => ({
           label: `${m.timeframe} momentum`,
           detail: `RSI ${m.rsi?.toFixed(1) ?? "—"}, MACD ${m.macdState ?? "—"}, 10-bar rate of change ${m.roc?.toFixed(2) ?? "—"}%.`,

@@ -1,4 +1,4 @@
-import type { CategoryKey, Timeframe, TradingMode } from "@/lib/types";
+import type { CategoryKey, Timeframe, TradingMode, TrendScope } from "@/lib/types";
 
 /**
  * DEFAULT CATEGORY WEIGHTS — the heart of the MD DIRECTION SCORE.
@@ -121,6 +121,52 @@ export const MODE_TIMEFRAMES: Record<
     weights: { "5M": 0, "15M": 0.25, "1H": 1.5, "4H": 2.5, "1D": 3, "1W": 4 },
   },
 };
+
+/**
+ * TREND SCOPE — which timeframes are allowed to define the trend.
+ *
+ * The 5M, 15M and 1H charts are entry tools. They say when to get in; they do not
+ * say which way a market is going, and letting them vote on trend and momentum is
+ * how a market that is plainly trending on the weekly ends up reading as
+ * undecided. "Higher timeframes" is therefore the default: the weekly, daily and
+ * 4H set the direction, and the entry charts are shown but not counted.
+ *
+ * "Full overview" restores the mode's own weighting across all six, for anyone
+ * who does want the short end folded in.
+ */
+export const HTF_SCOPE: Timeframe[] = ["1W", "1D", "4H"];
+
+export const TREND_SCOPES: Record<TrendScope, { label: string; blurb: string }> = {
+  htf: {
+    label: "Higher timeframes",
+    blurb: "Weekly, daily and 4H set the trend. 1H and below are entry charts — shown, not scored.",
+  },
+  all: {
+    label: "Full overview",
+    blurb: "Every timeframe counts, weighted by the trading mode.",
+  },
+};
+
+/**
+ * The mode's timeframe weights, narrowed to the scope. Trend, structure,
+ * momentum and conflict detection all read the weights through here, so the
+ * choice applies everywhere at once rather than in one screen.
+ */
+export function scopedWeights(
+  mode: TradingMode,
+  scope: TrendScope,
+): Partial<Record<Timeframe, number>> {
+  const weights = MODE_TIMEFRAMES[mode].weights;
+  if (scope === "all") return weights;
+  const out: Partial<Record<Timeframe, number>> = {};
+  for (const tf of HTF_SCOPE) {
+    const w = weights[tf];
+    if (w) out[tf] = w;
+  }
+  // A scalper narrowed to higher timeframes would otherwise be scored on weights
+  // tuned for a chart they are not looking at; the relative shape still holds.
+  return out;
+}
 
 /**
  * MD MOMENTUM MODE — a configurable model of the strategy, not a hard rule set.

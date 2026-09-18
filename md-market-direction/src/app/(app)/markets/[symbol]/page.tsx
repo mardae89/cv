@@ -4,10 +4,12 @@ import { use, useState } from "react";
 import Link from "next/link";
 import type { AssetAnalysis } from "@/lib/types";
 import { useApi, useTicker, postJson } from "@/lib/hooks";
+import { useTrendScope } from "@/lib/useTrendScope";
 import { PriceChart } from "@/components/chart";
 import { EvidenceBreakdown, ScoreDial } from "@/components/score";
 import {
   DirectionBadge, ErrorState, Eyebrow, GhostButton, GoldButton, ImpactTag, Panel, QualityTag, SectionHeading, Skeleton,
+  TrendScopeSwitch,
 } from "@/components/primitives";
 import { fmtPct, fmtPrice, fmtSigned, timeAgo, untilLabel, fmtTime } from "@/lib/utils/format";
 import { Icon } from "@/components/icons";
@@ -16,9 +18,11 @@ export default function MarketDetailPage({ params }: { params: Promise<{ symbol:
   const { symbol: raw } = use(params);
   const symbol = decodeURIComponent(raw).toUpperCase();
   useTicker(5000);
+  const [scope, setScope] = useTrendScope();
 
   const { data, loading, error, refresh } = useApi<{ analysis: AssetAnalysis; degraded: string[] }>(
-    `/api/market-analysis?symbol=${encodeURIComponent(symbol)}`,
+    `/api/market-analysis?symbol=${encodeURIComponent(symbol)}&scope=${scope}`,
+    [scope],
   );
   const [showWhy, setShowWhy] = useState(false);
   const [showWatchlist, setShowWatchlist] = useState(false);
@@ -62,6 +66,7 @@ export default function MarketDetailPage({ params }: { params: Promise<{ symbol:
               <DirectionBadge direction={a.score.direction} />
               <QualityTag quality={a.score.evidenceQuality} />
             </div>
+            <TrendScopeSwitch scope={scope} onChange={setScope} className="mt-3" />
             <div className="mt-1 text-sm uppercase tracking-widest text-mute">
               {a.asset.name} · {a.asset.group}
               {a.asset.sector ? ` · ${a.asset.sector}` : ""}

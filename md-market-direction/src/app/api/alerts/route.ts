@@ -5,7 +5,7 @@ import { buildContext } from "@/lib/engine/context";
 import { analyseAsset } from "@/lib/engine/analyze";
 import { evaluateAlerts } from "@/lib/engine/alerts";
 import { resolveAsset } from "@/lib/data/universe";
-import { fail, ok, resolveMode } from "@/lib/api";
+import { fail, ok, resolveMode, resolveScope } from "@/lib/api";
 import type { Alert, AlertKind } from "@/lib/db/schema";
 import type { AssetAnalysis } from "@/lib/types";
 
@@ -24,13 +24,14 @@ export async function GET(req: Request) {
   if ("response" in auth) return auth.response;
   const { searchParams } = new URL(req.url);
   const mode = resolveMode(searchParams.get("mode"), auth.user);
+  const scope = resolveScope(searchParams.get("scope"), auth.user);
   const alerts = store.read().alerts.filter((a) => a.userId === auth.user.id);
 
   if (searchParams.get("evaluate") === "true" && alerts.length) {
     const ctx = await buildContext();
     const map = new Map<string, AssetAnalysis>();
     for (const symbol of new Set(alerts.map((a) => a.symbol))) {
-      const analysis = await analyseAsset(ctx, symbol, { mode });
+      const analysis = await analyseAsset(ctx, symbol, { mode, scope });
       if (analysis) map.set(symbol.toUpperCase(), analysis);
     }
     const hits = evaluateAlerts(alerts, map, ctx.now);

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import type { Direction, EvidenceQuality, Impact } from "@/lib/types";
+import type { Direction, EvidenceQuality, Impact, TrendScope } from "@/lib/types";
+import { TREND_SCOPES } from "@/lib/config/scoring";
 
 /* ----------------------------------- text ---------------------------------- */
 
@@ -176,5 +177,41 @@ export function GhostButton({
     >
       {children}
     </button>
+  );
+}
+
+/**
+ * Trend scope switch — which timeframes are allowed to define the trend.
+ *
+ * Placed on every screen that scores a market rather than buried in settings,
+ * because it changes what the number means.
+ */
+export function TrendScopeSwitch({
+  scope,
+  onChange,
+  className = "",
+}: {
+  scope: TrendScope;
+  onChange: (next: TrendScope) => void;
+  className?: string;
+}) {
+  return (
+    <div className={`flex flex-wrap items-center gap-2 ${className}`}>
+      <span className="text-[10px] uppercase tracking-widest text-faint">Trend from</span>
+      <div className="flex border border-hairline">
+        {(Object.keys(TREND_SCOPES) as TrendScope[]).map((key) => (
+          <button
+            key={key}
+            onClick={() => onChange(key)}
+            title={TREND_SCOPES[key].blurb}
+            className={`px-2.5 py-1 font-display text-[10px] font-semibold uppercase tracking-widest transition ${
+              scope === key ? "bg-gold text-void" : "text-mute hover:text-gold"
+            }`}
+          >
+            {key === "htf" ? "1W · 1D · 4H" : "All timeframes"}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
