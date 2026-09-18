@@ -5,14 +5,23 @@ data. Setup is about ten minutes and needs no terminal.
 
 ---
 
-## 1. Get a market data key
+## 1. Get a market data token
 
-Create a free account at **[twelvedata.com](https://twelvedata.com/pricing)** and
-copy your API key.
+**If you trade with OANDA — use OANDA.** It returns *your broker's own prices*,
+so the app matches the charts you are already looking at, rather than being
+close-ish. It covers forex, metals, indices and commodities: 27 of the 51
+markets, and the ones a discretionary trader actually watches.
 
-The free tier allows **8 requests per minute and 800 per day**. That is not much,
-so the app is built around it (see *How the budget is spent* below) — you do not
-need a paid plan to get real prices on the markets that matter.
+> OANDA → **Manage API Access** → **Generate** a personal access token. Copy it.
+> No account ID is needed. Note whether the account is *practice* or *live*.
+
+**Otherwise, or to also cover stocks and crypto:** create a free account at
+**[twelvedata.com](https://twelvedata.com/pricing)** and copy the API key. Its
+free tier allows 8 requests/minute and 800/day, so the app restricts it to a
+shortlist (see *How the budget is spent*).
+
+You can use both. Each symbol is routed to whichever provider covers it, and
+anything neither covers stays on clearly-labelled demo data.
 
 ## 2. Import the repo into Vercel
 
@@ -32,9 +41,11 @@ In the import screen's **Environment Variables** section:
 
 | Name | Value | Why |
 |---|---|---|
-| `TWELVE_DATA_API_KEY` | your key | **Turns on real prices.** Without it the app runs on demo data. |
+| `OANDA_API_TOKEN` | your OANDA token | **Turns on real prices** for forex, metals, indices, commodities. |
+| `OANDA_ENVIRONMENT` | `practice` or `live` | Must match the account the token came from. |
 | `AUTH_SECRET` | any long random string | Signs session cookies. Required in production. |
 | `MD_PUBLIC_MODE` | `true` | Market pages open without a login. |
+| `TWELVE_DATA_API_KEY` | *(optional)* | Adds live stocks, crypto, DXY and yields. |
 
 Optional, to tune cost and coverage:
 
@@ -89,6 +100,17 @@ while that happens.
 
 To cover more markets, either raise `MD_LIVE_SYMBOLS` and the budget together on
 a paid plan, or swap the provider — see below.
+
+## What OANDA deliberately does not map
+
+A wrong mapping is worse than none, so these fall through to Twelve Data or demo
+rather than being guessed:
+
+- **US10Y / US02Y** — this app treats these as *yields*. OANDA's `USB10Y_USD` is
+  a bond *price*, which moves inversely. Mapping them would silently invert every
+  cross-market relationship that depends on yields.
+- **DXY, VIX** — OANDA has no equivalent instrument.
+- **Individual stocks and crypto** — not offered, or region-dependent.
 
 ## Changing data provider
 

@@ -1,5 +1,5 @@
 import type { Candle, EconomicEvent, MacroSnapshot, NewsArticle, Quote, Timeframe } from "@/lib/types";
-import { providers, withFallback, isDemoMode, isLiveSymbol, markLive } from "@/lib/providers/registry";
+import { providers, withFallback, isDemoMode, isLiveSymbol, markLive, marketProviderFor } from "@/lib/providers/registry";
 import { singleton, TtlCache } from "@/lib/utils/cache";
 import { ALL_TIMEFRAMES } from "@/lib/config/scoring";
 
@@ -83,13 +83,14 @@ export async function buildContext(now = Date.now()): Promise<AnalysisContext> {
     async candles(symbol: string, tf: Timeframe) {
       // Live symbols fetch two base series and derive the other four timeframes,
       // so a six-timeframe analysis costs two requests rather than six.
-      if (isLiveSymbol(symbol) && providers.marketLive?.getSeriesBundle) {
+      const live = marketProviderFor(symbol);
+      if (live?.getSeriesBundle) {
         const entry = await bundleCache.wrap(
           symbol,
           async () => {
             const r = await withFallback(
               "market",
-              () => providers.marketLive!.getSeriesBundle!(symbol),
+              () => live.getSeriesBundle!(symbol),
               async () => {
                 const out = {} as Record<Timeframe, Candle[]>;
                 for (const t of ALL_TIMEFRAMES) out[t] = await providers.marketDemo.getHistoricalData(symbol, t);
@@ -122,10 +123,11 @@ export async function buildContext(now = Date.now()): Promise<AnalysisContext> {
     },
     async quote(symbol: string) {
       const entry = await quoteCache.wrap(symbol, async () => {
-        if (!isLiveSymbol(symbol)) return providers.marketDemo.getQuote(symbol);
+        const liveQuote = marketProviderFor(symbol);
+        if (!liveQuote) return providers.marketDemo.getQuote(symbol);
         const r = await withFallback(
           "market",
-          () => providers.marketLive!.getQuote(symbol),
+          () => liveQuote.getQuote(symbol),
           () => providers.marketDemo.getQuote(symbol),
         );
         if (r.degraded) {

@@ -12,6 +12,7 @@ import { DemoCalendarProvider } from "./demo/calendar";
 import { DemoMacroProvider } from "./demo/macro";
 import { DemoFundamentalsProvider } from "./demo/fundamentals";
 import { TwelveDataProvider } from "./live/twelveData";
+import { OandaProvider, oandaCovers } from "./live/oanda";
 import { NewsApiProvider } from "./live/newsApi";
 import { FmpCalendarProvider } from "./live/fmpCalendar";
 import { ASSETS } from "@/lib/data/universe";
@@ -31,9 +32,37 @@ const demoCalendar = new DemoCalendarProvider();
 const demoMacro = new DemoMacroProvider();
 const demoFundamentals = new DemoFundamentalsProvider();
 
-const liveMarket = process.env.TWELVE_DATA_API_KEY
+/**
+ * Market data can come from two live sources at once, routed per symbol.
+ *
+ * OANDA is preferred wherever it has the instrument, because it returns the
+ * user's OWN BROKER'S prices — the app then matches the charts they are already
+ * looking at, rather than being merely close. Twelve Data covers what OANDA does
+ * not (individual stocks, crypto, the dollar index, yields). Anything neither
+ * covers stays on clearly-labelled demo data.
+ */
+const liveOanda = process.env.OANDA_API_TOKEN
+  ? new OandaProvider(
+      process.env.OANDA_API_TOKEN,
+      process.env.OANDA_ENVIRONMENT === "live" ? "live" : "practice",
+    )
+  : null;
+
+const liveTwelve = process.env.TWELVE_DATA_API_KEY
   ? new TwelveDataProvider(process.env.TWELVE_DATA_API_KEY)
   : null;
+
+const liveMarket = liveOanda ?? liveTwelve;
+
+/** Which live provider, if any, serves this symbol. */
+export function marketProviderFor(symbol: string): MarketDataProvider | null {
+  const s = symbol.toUpperCase();
+  // OANDA's REST limits are generous, so everything it covers runs live.
+  if (liveOanda && oandaCovers(s)) return liveOanda;
+  // Twelve Data is metered, so it is restricted to the configured shortlist.
+  if (liveTwelve && LIVE_SYMBOLS.has(s)) return liveTwelve;
+  return null;
+}
 const liveNews = process.env.NEWS_API_KEY ? new NewsApiProvider(process.env.NEWS_API_KEY) : null;
 const liveCalendar = process.env.FMP_API_KEY ? new FmpCalendarProvider(process.env.FMP_API_KEY) : null;
 
@@ -59,7 +88,7 @@ export const LIVE_SYMBOLS: Set<string> = new Set(
 
 /** True when this specific symbol is CONFIGURED for a live feed. */
 export function isLiveSymbol(symbol: string): boolean {
-  return Boolean(liveMarket) && LIVE_SYMBOLS.has(symbol.toUpperCase());
+  return marketProviderFor(symbol) !== null;
 }
 
 /**
@@ -105,6 +134,8 @@ export async function withFallback<T>(
 
 export const providers = {
   market: (liveMarket ?? demoMarket) as MarketDataProvider,
+  oanda: liveOanda as MarketDataProvider | null,
+  twelve: liveTwelve as MarketDataProvider | null,
   marketDemo: demoMarket as MarketDataProvider,
   marketLive: liveMarket as MarketDataProvider | null,
   news: (liveNews ?? demoNews) as NewsProvider,
@@ -122,12 +153,17 @@ export function isDemoMode(): boolean {
   return !liveMarket || !liveNews || !liveCalendar;
 }
 
+/** How many symbols any live provider is configured to serve. */
+function configuredLiveCount(): number {
+  return ASSETS.filter((a) => marketProviderFor(a.symbol) !== null).length;
+}
+
 /** How much of the universe is actually live — shown in the UI, not implied. */
 export function liveCoverage(): {
   live: number; total: number; symbols: string[]; configured: number; pending: number;
 } {
   const confirmed = liveMarket ? confirmedLiveSymbols() : [];
-  const configured = liveMarket ? LIVE_SYMBOLS.size : 0;
+  const configured = configuredLiveCount();
   return {
     live: confirmed.length,
     total: ASSETS.length,
@@ -149,12 +185,14 @@ export function demoSources(): string[] {
 }
 
 export function budgetState() {
-  return providers.marketLive ? budget.state() : null;
+  return liveTwelve ? budget.state() : null;
 }
 
 export function providerStatus(): ProviderHealth[] {
   return [
-    providers.market.health(),
+    ...(liveOanda ? [liveOanda.health()] : []),
+    ...(liveTwelve ? [liveTwelve.health()] : []),
+    ...(liveOanda || liveTwelve ? [] : [providers.market.health()]),
     providers.news.health(),
     providers.calendar.health(),
     providers.macro.health(),
