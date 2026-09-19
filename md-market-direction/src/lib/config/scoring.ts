@@ -90,7 +90,7 @@ export function bandFor(score: number) {
   return SCORE_BANDS.find((b) => score >= b.min && score <= b.max) ?? SCORE_BANDS[3];
 }
 
-export const ALL_TIMEFRAMES: Timeframe[] = ["5M", "15M", "1H", "4H", "1D", "1W"];
+export const ALL_TIMEFRAMES: Timeframe[] = ["5M", "15M", "30M", "1H", "4H", "1D", "1W"];
 
 /**
  * Trading modes decide which timeframes matter and how much. The weights are
@@ -103,47 +103,52 @@ export const MODE_TIMEFRAMES: Record<
   scalper: {
     label: "Scalper",
     blurb: "Fast intraday execution. Weighted to 5M / 15M / 1H.",
-    weights: { "5M": 3, "15M": 3, "1H": 2, "4H": 1, "1D": 0.5, "1W": 0.25 },
+    weights: { "5M": 3, "15M": 3, "30M": 2.5, "1H": 2, "4H": 1, "1D": 0.5, "1W": 0.25 },
   },
   day: {
     label: "Day Trader",
     blurb: "Intraday swings. Weighted to 15M / 1H / 4H.",
-    weights: { "5M": 1, "15M": 2.5, "1H": 3, "4H": 2.5, "1D": 1, "1W": 0.5 },
+    weights: { "5M": 1, "15M": 2.5, "30M": 3, "1H": 3, "4H": 2.5, "1D": 1, "1W": 0.5 },
   },
   swing: {
     label: "Swing Trader",
     blurb: "Multi-day positions. Weighted to 4H / Daily / Weekly.",
-    weights: { "5M": 0.25, "15M": 0.5, "1H": 1, "4H": 2.5, "1D": 3, "1W": 3 },
+    weights: { "5M": 0.25, "15M": 0.5, "30M": 0.75, "1H": 1, "4H": 2.5, "1D": 3, "1W": 3 },
   },
   "md-momentum": {
     label: "MD Momentum",
     blurb: "Higher-timeframe momentum continuation. Weekly leads, 1H confirms.",
-    weights: { "5M": 0, "15M": 0.25, "1H": 1.5, "4H": 2.5, "1D": 3, "1W": 4 },
+    weights: { "5M": 0, "15M": 0.25, "30M": 0.75, "1H": 1.5, "4H": 2.5, "1D": 3, "1W": 4 },
   },
 };
 
 /**
- * TREND SCOPE — which timeframes are allowed to define the trend.
+ * TREND SCOPE — two separate reads of the same market.
  *
- * The 5M, 15M and 1H charts are entry tools. They say when to get in; they do not
- * say which way a market is going, and letting them vote on trend and momentum is
- * how a market that is plainly trending on the weekly ends up reading as
- * undecided. "Higher timeframes" is therefore the default: the weekly, daily and
- * 4H set the direction, and the entry charts are shown but not counted.
+ * The weekly and the daily decide direction. Everything below them is
+ * execution: it says when to get in, not which way the market is going. The two
+ * sets are therefore disjoint rather than nested — the second is not "the first
+ * plus more", it is the short end on its own, so the two scores can be compared
+ * against each other instead of one containing the other.
  *
- * "Full overview" restores the mode's own weighting across all six, for anyone
- * who does want the short end folded in.
+ *     Higher timeframes  1W, 1D                     the trend
+ *     All timeframes     4H, 1H, 30M, 15M, 5M       the execution picture
+ *
+ * This is the app's single definition of the split: the scope, the evidence
+ * lists and the higher-versus-lower read in conflict detection all derive from
+ * it, so there is no second list to drift out of step.
  */
-export const HTF_SCOPE: Timeframe[] = ["1W", "1D", "4H"];
+export const HTF_SCOPE: Timeframe[] = ["1W", "1D"];
+export const LTF_SCOPE: Timeframe[] = ["4H", "1H", "30M", "15M", "5M"];
 
 export const TREND_SCOPES: Record<TrendScope, { label: string; blurb: string }> = {
   htf: {
     label: "Higher timeframes",
-    blurb: "Weekly, daily and 4H set the trend. 1H and below are entry charts — shown, not scored.",
+    blurb: "Weekly and daily only. These decide the trend.",
   },
   all: {
-    label: "Full overview",
-    blurb: "Every timeframe counts, weighted by the trading mode.",
+    label: "All timeframes",
+    blurb: "4H, 1H, 30M, 15M and 5M — the execution charts, scored on their own.",
   },
 };
 
@@ -157,14 +162,11 @@ export function scopedWeights(
   scope: TrendScope,
 ): Partial<Record<Timeframe, number>> {
   const weights = MODE_TIMEFRAMES[mode].weights;
-  if (scope === "all") return weights;
   const out: Partial<Record<Timeframe, number>> = {};
-  for (const tf of HTF_SCOPE) {
+  for (const tf of scope === "htf" ? HTF_SCOPE : LTF_SCOPE) {
     const w = weights[tf];
     if (w) out[tf] = w;
   }
-  // A scalper narrowed to higher timeframes would otherwise be scored on weights
-  // tuned for a chart they are not looking at; the relative shape still holds.
   return out;
 }
 

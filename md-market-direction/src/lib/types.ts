@@ -16,7 +16,7 @@ export type AssetClass =
   | "commodity"
   | "bond";
 
-export type Timeframe = "5M" | "15M" | "1H" | "4H" | "1D" | "1W";
+export type Timeframe = "5M" | "15M" | "30M" | "1H" | "4H" | "1D" | "1W";
 
 export type TradingMode = "scalper" | "day" | "swing" | "md-momentum";
 

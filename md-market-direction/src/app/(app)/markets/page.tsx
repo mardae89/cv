@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useApi } from "@/lib/hooks";
-import { useTrendScope } from "@/lib/useTrendScope";
+import { useTradingMode, useTrendScope } from "@/lib/useTrendScope";
 import { symbolMatches } from "@/lib/symbols";
 import type { ScannerRow } from "@/lib/types";
 import { MarketCard } from "@/components/market-card";
@@ -36,7 +36,8 @@ export default function MarketsPage() {
   const [group, setGroup] = useState("All");
   const [query, setQuery] = useState("");
   const [scope, setScope] = useTrendScope();
-  const { data, loading, error, refresh } = useApi<ScannerResponse>(`/api/scanner?scope=${scope}`, [scope]);
+  const [mode] = useTradingMode();
+  const { data, loading, error, refresh } = useApi<ScannerResponse>(`/api/scanner?scope=${scope}&mode=${mode}`, [scope, mode]);
 
   const rows = useMemo(() => {
     if (!data) return [];

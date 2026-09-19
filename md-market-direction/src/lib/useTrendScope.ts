@@ -1,55 +1,76 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { TrendScope } from "@/lib/types";
+import type { TradingMode, TrendScope } from "@/lib/types";
 
-const KEY = "md.trendScope";
-const EVENT = "md:trendScope";
+/**
+ * VIEW PREFERENCES, HELD IN THE BROWSER.
+ *
+ * The app runs without accounts, so there is no server-side profile to save a
+ * trading style or a trend scope into. Both live here instead, and both are sent
+ * on every scoring request as ?mode= and ?scope=.
+ *
+ * Every screen subscribes, so changing either anywhere changes it everywhere
+ * without a reload.
+ */
+const EVENT = "md:viewPrefs";
 
-function read(): TrendScope {
+function read<T extends string>(key: string, allowed: readonly T[], fallback: T): T {
   try {
-    return localStorage.getItem(KEY) === "all" ? "all" : "htf";
+    const raw = localStorage.getItem(key);
+    return allowed.includes(raw as T) ? (raw as T) : fallback;
   } catch {
     // Private browsing and blocked site data both throw here.
-    return "htf";
+    return fallback;
   }
 }
 
-/**
- * Which timeframes may define the trend, remembered per browser.
- *
- * Higher timeframes is the default: the 1H and below are entry charts, and
- * letting them vote on trend and momentum is how a market that is plainly
- * trending on the weekly reads as undecided.
- *
- * Every screen that scores a market subscribes, so flipping it anywhere flips
- * it everywhere without a reload.
- */
-export function useTrendScope(): [TrendScope, (next: TrendScope) => void] {
-  // Server and first client render must agree, so the stored value is read in
-  // an effect rather than during render.
-  const [scope, setScope] = useState<TrendScope>("htf");
+function usePref<T extends string>(key: string, allowed: readonly T[], fallback: T): [T, (next: T) => void] {
+  // Server and first client render must agree, so the stored value is read in an
+  // effect rather than during render.
+  const [value, setValue] = useState<T>(fallback);
 
   useEffect(() => {
-    setScope(read());
-    const sync = () => setScope(read());
+    const sync = () => setValue(read(key, allowed, fallback));
+    sync();
     window.addEventListener(EVENT, sync);
     window.addEventListener("storage", sync);
     return () => {
       window.removeEventListener(EVENT, sync);
       window.removeEventListener("storage", sync);
     };
-  }, []);
+    // `allowed` and `fallback` are module constants at every call site.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
 
-  const update = useCallback((next: TrendScope) => {
-    setScope(next);
-    try {
-      localStorage.setItem(KEY, next);
-    } catch {
-      // Not persisting is survivable; the session still honours the choice.
-    }
-    window.dispatchEvent(new Event(EVENT));
-  }, []);
+  const update = useCallback(
+    (next: T) => {
+      setValue(next);
+      try {
+        localStorage.setItem(key, next);
+      } catch {
+        // Not persisting is survivable; the session still honours the choice.
+      }
+      window.dispatchEvent(new Event(EVENT));
+    },
+    [key],
+  );
 
-  return [scope, update];
+  return [value, update];
+}
+
+const SCOPES: readonly TrendScope[] = ["htf", "all"];
+const MODES: readonly TradingMode[] = ["scalper", "day", "swing", "md-momentum"];
+
+/**
+ * Which timeframes may define the trend. Higher timeframes is the default: the
+ * charts below the daily say when to get in, not which way the market is going.
+ */
+export function useTrendScope() {
+  return usePref("md.trendScope", SCOPES, "htf" as TrendScope);
+}
+
+/** The trading style, which decides how much each timeframe in scope counts. */
+export function useTradingMode() {
+  return usePref("md.mode", MODES, "swing" as TradingMode);
 }

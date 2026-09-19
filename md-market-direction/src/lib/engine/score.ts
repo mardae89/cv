@@ -18,9 +18,11 @@ import {
   CONFLICT_DAMPENING,
   CONFLICT_MIXED_AT,
   DEFAULT_WEIGHTS,
+  HTF_SCOPE,
+  LTF_SCOPE,
   MAX_EVIDENCE_AMPLIFICATION,
-  scopedWeights,
   NEUTRAL_BAND,
+  scopedWeights,
   voteShare,
 } from "@/lib/config/scoring";
 import { clamp } from "./indicators";
@@ -65,10 +67,16 @@ export function weightByMode<T extends { timeframe: Timeframe; strength: number 
   return total ? clamp(sum / total, -1, 1) : 0;
 }
 
-const HTF: Timeframe[] = ["1W", "1D", "4H"];
-const LTF: Timeframe[] = ["1H", "15M", "5M"];
-const HTF_WEIGHTS: Record<string, number> = { "1W": 3, "1D": 2.5, "4H": 1.5 };
-const LTF_WEIGHTS: Record<string, number> = { "1H": 2, "15M": 1.5, "5M": 1 };
+/**
+ * The higher/lower split used for the plain-English "higher timeframes remain
+ * bullish" read. Both sides are derived from HTF_SCOPE so the app has one
+ * definition of a higher timeframe rather than two that can drift apart.
+ */
+const SENIORITY: Record<Timeframe, number> = { "1W": 3, "1D": 2.5, "4H": 2, "1H": 1.5, "30M": 1.3, "15M": 1.2, "5M": 1 };
+const HTF: Timeframe[] = HTF_SCOPE;
+const LTF: Timeframe[] = LTF_SCOPE;
+const HTF_WEIGHTS: Record<string, number> = Object.fromEntries(HTF.map((tf) => [tf, SENIORITY[tf]]));
+const LTF_WEIGHTS: Record<string, number> = Object.fromEntries(LTF.map((tf) => [tf, SENIORITY[tf]]));
 
 function groupStrength(
   items: { timeframe: Timeframe; strength: number }[],

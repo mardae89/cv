@@ -20,6 +20,7 @@ import { gaussian, hashString, rng } from "@/lib/utils/random";
 export const TF_MS: Record<Timeframe, number> = {
   "5M": 5 * 60_000,
   "15M": 15 * 60_000,
+  "30M": 30 * 60_000,
   "1H": 60 * 60_000,
   "4H": 4 * 60 * 60_000,
   "1D": 24 * 60 * 60_000,
@@ -29,6 +30,7 @@ export const TF_MS: Record<Timeframe, number> = {
 export const TF_BARS: Record<Timeframe, number> = {
   "5M": 720,
   "15M": 720,
+  "30M": 760,
   "1H": 800,
   "4H": 900,
   "1D": 1300,

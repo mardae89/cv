@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { Direction, EvidenceQuality, Impact, TrendScope } from "@/lib/types";
-import { TREND_SCOPES } from "@/lib/config/scoring";
+import { HTF_SCOPE, TREND_SCOPES } from "@/lib/config/scoring";
 
 /* ----------------------------------- text ---------------------------------- */
 
@@ -208,7 +208,7 @@ export function TrendScopeSwitch({
               scope === key ? "bg-gold text-void" : "text-mute hover:text-gold"
             }`}
           >
-            {key === "htf" ? "1W · 1D · 4H" : "All timeframes"}
+            {key === "htf" ? HTF_SCOPE.join(" · ") : "All timeframes"}
           </button>
         ))}
       </div>
