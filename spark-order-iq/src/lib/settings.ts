@@ -18,7 +18,7 @@ export const DEFAULT_SETTINGS: Settings = {
     minProfit: { enabled: true, value: 15 },
   },
   weights: { pay: 25, distance: 25, hourly: 25, complexity: 15, goal: 10 },
-  visionProvider: "local-ocr",
+  visionProvider: "auto",
   anthropicApiKey: "",
   defaultPickupType: "Walmart",
   keepScreenshots: false,

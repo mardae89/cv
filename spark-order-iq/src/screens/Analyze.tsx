@@ -7,7 +7,15 @@ import { Banner, Button, Card, Field, NumberInput, ProgressBar, SectionLabel, To
 import { SAMPLE_OFFERS } from "../lib/demo";
 import { evaluateOrder, type Evaluation, type EvaluationInput } from "../lib/scoring";
 import type { DailyProgress, OfferDraft } from "../lib/types";
-import { analyzeOfferScreenshot, getProvider, needsConfirmation, toDraft, type ExtractField, type OfferExtraction } from "../lib/vision";
+import {
+  analyzeOfferScreenshot,
+  needsConfirmation,
+  resolveProvider,
+  toDraft,
+  type ExtractField,
+  type OfferExtraction,
+  type VisionProvider,
+} from "../lib/vision";
 import { useStore } from "../state/store";
 
 type Step = "capture" | "reading" | "confirm" | "result";
@@ -49,10 +57,15 @@ export function Analyze({
   const [preview, setPreview] = useState<string | null>(null);
   const [evaluation, setEvaluation] = useState<Evaluation | null>(null);
   const [showText, setShowText] = useState(false);
+  const [provider, setProvider] = useState<VisionProvider | null>(null);
+  const [elapsed, setElapsed] = useState(0);
 
   const cameraRef = useRef<HTMLInputElement>(null);
   const libraryRef = useRef<HTMLInputElement>(null);
   const previewRef = useRef<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  // Guards against a slow read landing after the driver has moved on.
+  const runRef = useRef(0);
 
   // A screenshot only ever lives in memory, and only until it's been read.
   useEffect(() => {
@@ -72,7 +85,27 @@ export function Analyze({
     onSeedConsumed();
   }, [seed, onSeedConsumed]);
 
-  const provider = getProvider(settings.visionProvider);
+  // Which reader actually runs depends on where the app is open, so ask
+  // rather than assume — and ask early, so it's known before a file arrives.
+  useEffect(() => {
+    let live = true;
+    void resolveProvider(settings.visionProvider).then((resolved) => {
+      if (live) setProvider(resolved);
+    });
+    return () => {
+      live = false;
+    };
+  }, [settings.visionProvider]);
+
+  // A visible clock on the reading step: silence for 30 seconds with no sense
+  // of progress is what makes an app feel broken.
+  useEffect(() => {
+    if (step !== "reading") return;
+    setElapsed(0);
+    const started = Date.now();
+    const tick = setInterval(() => setElapsed(Math.round((Date.now() - started) / 1000)), 1000);
+    return () => clearInterval(tick);
+  }, [step]);
 
   const dropScreenshot = () => {
     setPreview((current) => {
@@ -81,8 +114,19 @@ export function Analyze({
     });
   };
 
+  const cancelRead = () => {
+    runRef.current += 1;
+    abortRef.current?.abort();
+    abortRef.current = null;
+    if (!settings.keepScreenshots) dropScreenshot();
+    setStep("confirm");
+  };
+
   const handleFile = async (file: File | null | undefined) => {
     if (!file) return;
+    const run = ++runRef.current;
+    const controller = new AbortController();
+    abortRef.current = controller;
     setError(null);
     setEvaluation(null);
     dropScreenshot();
@@ -94,8 +138,12 @@ export function Analyze({
     try {
       const result = await analyzeOfferScreenshot(file, settings.visionProvider, {
         apiKey: settings.anthropicApiKey,
-        onProgress: (fraction, label) => setReadProgress({ fraction, label }),
+        signal: controller.signal,
+        onProgress: (fraction, label) => {
+          if (runRef.current === run) setReadProgress({ fraction, label });
+        },
       });
+      if (runRef.current !== run) return;
       setExtraction(result);
       setUnconfirmed(needsConfirmation(result));
       setDraft((current) => ({
@@ -107,6 +155,7 @@ export function Analyze({
         setError("Nothing legible came back from this image. Fill the numbers in below and analyze anyway.");
       }
     } catch (e) {
+      if (runRef.current !== run) return;
       setExtraction(null);
       setUnconfirmed([]);
       // Reading is a convenience, never a gate: fall through to the form.
@@ -116,8 +165,11 @@ export function Analyze({
           : "The reader couldn't start. The first read needs a connection — after that it works offline.",
       );
     } finally {
-      if (!settings.keepScreenshots) dropScreenshot();
-      setStep("confirm");
+      if (runRef.current === run) {
+        abortRef.current = null;
+        if (!settings.keepScreenshots) dropScreenshot();
+        setStep("confirm");
+      }
     }
   };
 
@@ -143,6 +195,9 @@ export function Analyze({
   };
 
   const restart = () => {
+    runRef.current += 1;
+    abortRef.current?.abort();
+    abortRef.current = null;
     dropScreenshot();
     setDraft(emptyDraft(settings.defaultPickupType));
     setExtraction(null);
@@ -220,8 +275,8 @@ export function Analyze({
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="label">Reader</div>
-                <div className="mt-1 text-sm font-semibold">{provider.label}</div>
-                <p className="mt-1 text-xs text-mute">{provider.description}</p>
+                <div className="mt-1 text-sm font-semibold">{provider?.label ?? "Checking…"}</div>
+                <p className="mt-1 text-xs text-mute">{provider?.description ?? "Working out the best reader for this device."}</p>
               </div>
               <Button size="sm" variant="secondary" onClick={onOpenSettings}>
                 Change
@@ -274,16 +329,24 @@ export function Analyze({
             </div>
           ) : null}
           <Card className="anim-sweep relative overflow-hidden">
-            <div className="label">{readProgress.label || "Reading…"}</div>
+            <div className="flex items-baseline justify-between">
+              <span className="label">{readProgress.label || "Reading…"}</span>
+              <span className="tnum text-xs text-mute">{elapsed}s</span>
+            </div>
             <div className="mt-3">
               <ProgressBar percent={readProgress.fraction * 100} />
             </div>
             <p className="mt-3 text-xs text-mute">
-              {settings.visionProvider === "local-ocr"
-                ? "Running on your phone. The first read downloads the reader, then it's fast."
-                : "Sending the screenshot to your configured provider."}
+              {provider?.id === "artifact-claude"
+                ? "Claude is looking at the screenshot. This usually takes 5–30 seconds."
+                : provider?.id === "local-ocr"
+                  ? "Running on your phone. The first read downloads the reader, which needs a connection."
+                  : "Sending the screenshot to your configured reader."}
             </p>
           </Card>
+          <Button size="md" variant="secondary" full onClick={cancelRead}>
+            SKIP THIS — ENTER IT BY HAND
+          </Button>
         </div>
       ) : null}
 
@@ -298,8 +361,8 @@ export function Analyze({
           {extraction && !error ? (
             <Banner tone={unconfirmed.length ? "warn" : "info"}>
               {unconfirmed.length
-                ? `Read with ${provider.label}. ${unconfirmed.length} field${unconfirmed.length > 1 ? "s need" : " needs"} confirmation.`
-                : `Read with ${provider.label}. Check the numbers before analyzing.`}
+                ? `Read with ${provider?.label ?? "the reader"}. ${unconfirmed.length} field${unconfirmed.length > 1 ? "s need" : " needs"} confirmation.`
+                : `Read with ${provider?.label ?? "the reader"}. Check the numbers before analyzing.`}
             </Banner>
           ) : null}
 

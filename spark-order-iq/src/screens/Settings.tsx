@@ -1,10 +1,10 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Header } from "../components/Header";
 import { Banner, Button, Card, Field, NumberInput, SectionLabel, Sheet, TextInput, Toggle } from "../components/ui";
 import { exportData, parseImport } from "../lib/storage";
 import { GOAL_PRESETS, RULE_META } from "../lib/settings";
 import type { RuleKey, ScoreKey, VisionProviderId } from "../lib/types";
-import { providerList } from "../lib/vision";
+import { providerList, resolveProvider } from "../lib/vision";
 import { useStore } from "../state/store";
 
 const WEIGHT_LABELS: Record<ScoreKey, string> = {
@@ -24,11 +24,24 @@ const UNIT_ADORNMENT: Record<string, { prefix?: string; suffix?: string }> = {
 };
 
 export function SettingsScreen() {
+  const [activeReader, setActiveReader] = useState<string | null>(null);
   const { settings, updateSettings, replaceSettings, orders, replaceOrders, loadSampleData, removeSampleData, hasSampleData, eraseEverything } =
     useStore();
   const [confirmErase, setConfirmErase] = useState(false);
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const importRef = useRef<HTMLInputElement>(null);
+
+  // "Automatic" resolves differently depending on where the app is open, so
+  // show the driver which reader it lands on rather than leaving it a mystery.
+  useEffect(() => {
+    let live = true;
+    void resolveProvider(settings.visionProvider).then((p) => {
+      if (live) setActiveReader(p.label);
+    });
+    return () => {
+      live = false;
+    };
+  }, [settings.visionProvider]);
 
   const setRule = (key: RuleKey, patch: Partial<{ enabled: boolean; value: number }>) => {
     const current = settings.rules[key];
@@ -207,19 +220,33 @@ export function SettingsScreen() {
         <SectionLabel>Screenshot reader</SectionLabel>
         <Card>
           <div className="space-y-2">
-            {providerList().map((provider) => {
-              const active = settings.visionProvider === provider.id;
+            {[
+              {
+                id: "auto" as VisionProviderId,
+                label: "Automatic",
+                description:
+                  activeReader && settings.visionProvider === "auto"
+                    ? `Best reader available here — right now that's ${activeReader}.`
+                    : "Claude where it's available, on-device OCR everywhere else.",
+              },
+              ...providerList().map((p) => ({
+                id: p.id as VisionProviderId,
+                label: p.label,
+                description: p.description,
+              })),
+            ].map((option) => {
+              const active = settings.visionProvider === option.id;
               return (
                 <button
-                  key={provider.id}
+                  key={option.id}
                   type="button"
-                  onClick={() => updateSettings({ visionProvider: provider.id as VisionProviderId })}
+                  onClick={() => updateSettings({ visionProvider: option.id })}
                   className={`w-full rounded-xl border px-4 py-3 text-left ${
                     active ? "border-gold bg-gold/10" : "border-line bg-panel-2"
                   }`}
                 >
-                  <div className={`text-sm font-bold ${active ? "text-gold" : ""}`}>{provider.label}</div>
-                  <p className="mt-0.5 text-xs text-mute">{provider.description}</p>
+                  <div className={`text-sm font-bold ${active ? "text-gold" : ""}`}>{option.label}</div>
+                  <p className="mt-0.5 text-xs text-mute">{option.description}</p>
                 </button>
               );
             })}

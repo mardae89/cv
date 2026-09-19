@@ -43,7 +43,7 @@ export type RuleKey =
 
 export type ScoreKey = "pay" | "distance" | "hourly" | "complexity" | "goal";
 
-export type VisionProviderId = "local-ocr" | "claude-vision" | "manual";
+export type VisionProviderId = "auto" | "artifact-claude" | "local-ocr" | "claude-vision" | "manual";
 
 /** A pickup location the driver saved themselves. Never imported from Spark. */
 export interface SavedStore {
