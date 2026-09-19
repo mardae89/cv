@@ -125,21 +125,25 @@ export const MODE_TIMEFRAMES: Record<
 /**
  * TREND SCOPE — which timeframes are allowed to define the trend.
  *
- * The 5M, 15M and 1H charts are entry tools. They say when to get in; they do not
- * say which way a market is going, and letting them vote on trend and momentum is
+ * The weekly and the daily decide direction. Everything below them — the 4H, the
+ * 1H and the intraday charts — is execution: it says when to get in, not which
+ * way the market is going. Letting the short end vote on trend and momentum is
  * how a market that is plainly trending on the weekly ends up reading as
- * undecided. "Higher timeframes" is therefore the default: the weekly, daily and
- * 4H set the direction, and the entry charts are shown but not counted.
+ * undecided, so "Higher timeframes" is the default and stops at the daily.
  *
  * "Full overview" restores the mode's own weighting across all six, for anyone
- * who does want the short end folded in.
+ * who does want the execution charts folded in.
+ *
+ * This is the app's single definition of "higher timeframe": the scope, the
+ * evidence lists and the higher-versus-lower read in conflict detection all
+ * derive from it, so there is no second list to drift out of step.
  */
-export const HTF_SCOPE: Timeframe[] = ["1W", "1D", "4H"];
+export const HTF_SCOPE: Timeframe[] = ["1W", "1D"];
 
 export const TREND_SCOPES: Record<TrendScope, { label: string; blurb: string }> = {
   htf: {
     label: "Higher timeframes",
-    blurb: "Weekly, daily and 4H set the trend. 1H and below are entry charts — shown, not scored.",
+    blurb: "Weekly and daily set the trend. 4H and below are execution charts — shown, not scored.",
   },
   all: {
     label: "Full overview",

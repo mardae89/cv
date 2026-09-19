@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useApi } from "@/lib/hooks";
-import { useTrendScope } from "@/lib/useTrendScope";
+import { useTradingMode, useTrendScope } from "@/lib/useTrendScope";
 import type { ScannerRow } from "@/lib/types";
 import { ScoreMeter } from "@/components/score";
 import { DirectionBadge, EmptyState, ErrorState, Eyebrow, GhostButton, Panel, SectionHeading, Skeleton, TrendScopeSwitch } from "@/components/primitives";
@@ -31,6 +31,7 @@ const FILTERS = {
 
 export default function ScannerPage() {
   const [scope, setScope] = useTrendScope();
+  const [mode] = useTradingMode();
   const [state, setState] = useState<Record<string, string>>({
     direction: "any", minScore: "0", class: "any", ma50: "any",
     structure: "any", momentum: "any", news: "any", eventRisk: "any", q: "",
@@ -43,8 +44,9 @@ export default function ScannerPage() {
       if (v && v !== "any" && v !== "0" && v !== "") p.set(k, v);
     });
     p.set("scope", scope);
+    p.set("mode", mode);
     return `/api/scanner?${p.toString()}`;
-  }, [state, scope]);
+  }, [state, scope, mode]);
 
   const { data, loading, error, refresh } = useApi<ScannerResponse>(query);
 

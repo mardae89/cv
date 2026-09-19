@@ -4,7 +4,7 @@ import { use, useState } from "react";
 import Link from "next/link";
 import type { AssetAnalysis } from "@/lib/types";
 import { useApi, useTicker, postJson } from "@/lib/hooks";
-import { useTrendScope } from "@/lib/useTrendScope";
+import { useTradingMode, useTrendScope } from "@/lib/useTrendScope";
 import { PriceChart } from "@/components/chart";
 import { EvidenceBreakdown, ScoreDial } from "@/components/score";
 import {
@@ -19,10 +19,11 @@ export default function MarketDetailPage({ params }: { params: Promise<{ symbol:
   const symbol = decodeURIComponent(raw).toUpperCase();
   useTicker(5000);
   const [scope, setScope] = useTrendScope();
+  const [mode] = useTradingMode();
 
   const { data, loading, error, refresh } = useApi<{ analysis: AssetAnalysis; degraded: string[] }>(
-    `/api/market-analysis?symbol=${encodeURIComponent(symbol)}&scope=${scope}`,
-    [scope],
+    `/api/market-analysis?symbol=${encodeURIComponent(symbol)}&scope=${scope}&mode=${mode}`,
+    [scope, mode],
   );
   const [showWhy, setShowWhy] = useState(false);
   const [showWatchlist, setShowWatchlist] = useState(false);

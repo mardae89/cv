@@ -6,8 +6,8 @@ import { postJson, useApi } from "@/lib/hooks";
 import type { UserPreferences } from "@/lib/db/schema";
 import type { ProviderHealth } from "@/lib/providers/types";
 import { MODE_TIMEFRAMES, TREND_SCOPES } from "@/lib/config/scoring";
-import { useTrendScope } from "@/lib/useTrendScope";
-import type { TrendScope } from "@/lib/types";
+import { useTradingMode, useTrendScope } from "@/lib/useTrendScope";
+import type { TradingMode, TrendScope } from "@/lib/types";
 import { Eyebrow, GoldButton, Panel, SectionHeading, Skeleton, StatusDot } from "@/components/primitives";
 import { TierChip } from "@/components/shell";
 import { timeAgo } from "@/lib/utils/format";
@@ -28,6 +28,9 @@ export default function SettingsPage() {
 
   const [prefs, setPrefs] = useState<UserPreferences | null>(null);
   const [scope, setScope] = useTrendScope();
+  const [mode, setMode] = useTradingMode();
+  // With no account there is no server profile; the browser holds these instead.
+  const accountless = Boolean(me.data && !me.data.user);
   const [name, setName] = useState("");
   const [saved, setSaved] = useState(false);
 
@@ -45,7 +48,7 @@ export default function SettingsPage() {
     setTimeout(() => setSaved(false), 2500);
   }
 
-  if (!prefs || !me.data) return <Skeleton className="h-96" />;
+  if (!me.data || (!prefs && !accountless)) return <Skeleton className="h-96" />;
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -66,6 +69,7 @@ export default function SettingsPage() {
         </Panel>
       ) : null}
 
+      {me.data.user ? (
       <Panel className="p-5">
         <Eyebrow className="mb-3">Profile</Eyebrow>
         <div className="grid gap-3 sm:grid-cols-2">
@@ -83,20 +87,24 @@ export default function SettingsPage() {
           <Link href="/subscription" className="text-xs uppercase tracking-widest text-gold hover:underline">Manage subscription →</Link>
         </div>
       </Panel>
+      ) : null}
 
       <Panel className="p-5">
         <Eyebrow className="mb-3">Trading style</Eyebrow>
         <div className="grid gap-2 sm:grid-cols-2">
-          {(Object.keys(MODE_TIMEFRAMES) as (keyof typeof MODE_TIMEFRAMES)[]).map((mode) => (
+          {(Object.keys(MODE_TIMEFRAMES) as TradingMode[]).map((key) => (
             <button
-              key={mode}
-              onClick={() => setPrefs({ ...prefs, mode })}
+              key={key}
+              onClick={() => {
+                setMode(key);
+                if (prefs) setPrefs({ ...prefs, mode: key });
+              }}
               className={`border px-4 py-3 text-left transition ${
-                prefs.mode === mode ? "border-gold bg-gold/10" : "border-hairline hover:border-gold/50"
+                mode === key ? "border-gold bg-gold/10" : "border-hairline hover:border-gold/50"
               }`}
             >
-              <div className="display text-sm font-bold uppercase tracking-widest">{MODE_TIMEFRAMES[mode].label}</div>
-              <div className="mt-1 text-xs text-mute">{MODE_TIMEFRAMES[mode].blurb}</div>
+              <div className="display text-sm font-bold uppercase tracking-widest">{MODE_TIMEFRAMES[key].label}</div>
+              <div className="mt-1 text-xs text-mute">{MODE_TIMEFRAMES[key].blurb}</div>
             </button>
           ))}
         </div>
@@ -127,6 +135,8 @@ export default function SettingsPage() {
         </p>
       </Panel>
 
+      {prefs ? (
+        <>
       <Panel className="p-5">
         <Eyebrow className="mb-3">Preferred markets</Eyebrow>
         <div className="flex flex-wrap gap-2">
@@ -163,6 +173,8 @@ export default function SettingsPage() {
           Push and SMS delivery can be added through the same notification abstraction without changing alert logic.
         </p>
       </Panel>
+        </>
+      ) : null}
 
       <Panel className="p-5">
         <Eyebrow className="mb-3">Data sources</Eyebrow>
@@ -213,12 +225,17 @@ export default function SettingsPage() {
           for their own trading and investment decisions.
         </p>
         <p className="mt-2 text-xs text-faint">
-          {prefs.disclaimerAcceptedAt ? `Accepted ${timeAgo(prefs.disclaimerAcceptedAt)}.` : "Not yet acknowledged."}
+          {prefs?.disclaimerAcceptedAt ? `Accepted ${timeAgo(prefs.disclaimerAcceptedAt)}.` : "Not yet acknowledged."}
         </p>
       </Panel>
 
       <div className="flex items-center gap-3 pb-4">
-        <GoldButton onClick={save}>Save settings</GoldButton>
+        {prefs ? <GoldButton onClick={save}>Save settings</GoldButton> : null}
+        {prefs ? null : (
+          <span className="text-xs text-faint">
+            Trading style and trend timeframes are saved in this browser as you change them.
+          </span>
+        )}
         {saved ? <span className="text-xs text-bull">Saved.</span> : null}
       </div>
     </div>
