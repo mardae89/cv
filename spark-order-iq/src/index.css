@@ -1,0 +1,151 @@
+@import "tailwindcss";
+
+/*
+ * Spark Order IQ — a dark, gold-accented trading-desk look.
+ * Charcoal ground, white type, one accent, and very large numbers so a
+ * decision reads in about two seconds at arm's length.
+ */
+@theme {
+  --color-ink: #08080a;
+  --color-ground: #0a0a0c;
+  --color-panel: #131317;
+  --color-panel-2: #1a1a1f;
+  --color-line: #26262d;
+  --color-mute: #8a8a96;
+  --color-gold: #f0b93b;
+  --color-gold-dim: #8a6a1c;
+  --color-take: #3ddc84;
+  --color-consider: #f5a623;
+  --color-skip: #ff5a5f;
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  --radius-card: 1.25rem;
+}
+
+@layer base {
+  html {
+    background-color: var(--color-ground);
+    color-scheme: dark;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--color-ground);
+    color: #ffffff;
+    font-family: var(--font-sans);
+    /* Room for the fixed bottom nav plus the iOS home indicator. */
+    padding-bottom: calc(5.75rem + env(safe-area-inset-bottom));
+    overscroll-behavior-y: none;
+  }
+
+  button {
+    font: inherit;
+    color: inherit;
+  }
+
+  input,
+  select,
+  textarea {
+    font: inherit;
+    color: inherit;
+  }
+
+  /* Numbers line up in tables and stat rows. */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1;
+  }
+
+  /* Strip the spinners so numeric fields stay big and tappable. */
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
+}
+
+@layer components {
+  .card {
+    background-color: var(--color-panel);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-card);
+  }
+
+  .label {
+    font-size: 0.6875rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--color-mute);
+    font-weight: 600;
+  }
+}
+
+@keyframes soi-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes soi-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  70% {
+    transform: scale(1.02);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes soi-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+.anim-rise {
+  animation: soi-rise 0.22s ease-out both;
+}
+
+.anim-pop {
+  animation: soi-pop 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+
+.anim-sweep::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(240, 185, 59, 0.22), transparent);
+  animation: soi-sweep 1.1s ease-in-out infinite;
+}
+
+/* Honour the OS setting, and the in-app toggle. */
+@media (prefers-reduced-motion: reduce) {
+  .anim-rise,
+  .anim-pop,
+  .anim-sweep::after {
+    animation: none;
+  }
+}
+
+.reduced-motion .anim-rise,
+.reduced-motion .anim-pop,
+.reduced-motion .anim-sweep::after {
+  animation: none;
+}
