@@ -614,7 +614,7 @@ function buildTimeTicks(slice: Candle[], tf: Timeframe, plotW: number, step: num
   const maxLabels = Math.max(2, Math.floor(plotW / 78));
   const visible = Math.max(1, Math.round(plotW / Math.max(1, step)));
   const every = Math.max(1, Math.ceil(visible / maxLabels));
-  const intraday = tf === "5M" || tf === "15M" || tf === "1H" || tf === "4H";
+  const intraday = tf !== "1D" && tf !== "1W";
   const out: { i: number; label: string }[] = [];
   let lastDay = "";
   slice.forEach((c, i) => {

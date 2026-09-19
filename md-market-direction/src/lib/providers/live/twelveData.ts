@@ -24,7 +24,7 @@ import { budget } from "../budget";
  */
 
 const INTERVALS: Record<Timeframe, string> = {
-  "5M": "5min", "15M": "15min", "1H": "1h", "4H": "4h", "1D": "1day", "1W": "1week",
+  "5M": "5min", "15M": "15min", "30M": "30min", "1H": "1h", "4H": "4h", "1D": "1day", "1W": "1week",
 };
 
 /** Vendor symbols differ from MD display symbols for indices and commodities. */

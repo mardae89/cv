@@ -9,7 +9,7 @@ import { TF_MS } from "./synth";
  * ones. We fetch TWO series per asset — one intraday base and one daily — and
  * build the rest locally:
  *
- *     5M  → 15M, 1H, 4H      (from the 5-minute series)
+ *     5M  → 15M, 30M, 1H, 4H (from the 5-minute series)
  *     1D  → 1W               (from the daily series)
  *
  * That takes a full six-timeframe analysis from 6 requests per asset to 2, and
@@ -63,11 +63,11 @@ export const BASE_DAILY: Timeframe = "1D";
 
 /** Which base each timeframe is derived from. */
 export const DERIVED_FROM: Record<Timeframe, Timeframe> = {
-  "5M": "5M", "15M": "5M", "1H": "5M", "4H": "5M", "1D": "1D", "1W": "1D",
+  "5M": "5M", "15M": "5M", "30M": "5M", "1H": "5M", "4H": "5M", "1D": "1D", "1W": "1D",
 };
 
 /**
- * Build all six timeframes from the two base series. Any timeframe whose base is
+ * Build every timeframe from the two base series. Any timeframe whose base is
  * missing or too short is returned empty, and the engine then reports that
  * timeframe's readings as unavailable rather than inventing them.
  */
@@ -78,6 +78,7 @@ export function buildTimeframes(
   return {
     "5M": intraday,
     "15M": intraday.length ? aggregate(intraday, "15M") : [],
+    "30M": intraday.length ? aggregate(intraday, "30M") : [],
     "1H": intraday.length ? aggregate(intraday, "1H") : [],
     "4H": intraday.length ? aggregate(intraday, "4H") : [],
     "1D": daily,

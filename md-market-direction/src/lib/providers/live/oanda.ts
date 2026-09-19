@@ -25,7 +25,7 @@ import { ASSETS, getAsset } from "@/lib/data/universe";
  */
 
 const GRANULARITY: Record<Timeframe, string> = {
-  "5M": "M5", "15M": "M15", "1H": "H1", "4H": "H4", "1D": "D", "1W": "W",
+  "5M": "M5", "15M": "M15", "30M": "M30", "1H": "H1", "4H": "H4", "1D": "D", "1W": "W",
 };
 
 /**

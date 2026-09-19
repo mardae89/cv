@@ -74,7 +74,7 @@ export default function JournalPage() {
           <Input label="Stop" value={form.stop} onChange={(v) => setForm({ ...form, stop: v })} type="number" />
           <Input label="Target" value={form.target} onChange={(v) => setForm({ ...form, target: v })} type="number" />
           <Input label="Strategy" value={form.strategy} onChange={(v) => setForm({ ...form, strategy: v })} />
-          <Select label="Timeframe" value={form.timeframe} onChange={(v) => setForm({ ...form, timeframe: v })} options={["5M", "15M", "1H", "4H", "1D", "1W"]} />
+          <Select label="Timeframe" value={form.timeframe} onChange={(v) => setForm({ ...form, timeframe: v })} options={["5M", "15M", "30M", "1H", "4H", "1D", "1W"]} />
           <Input label="MD Score at entry" value={form.mdScoreAtEntry} onChange={(v) => setForm({ ...form, mdScoreAtEntry: v })} type="number" />
           <Input label="Screenshot URL" value={form.screenshotUrl} onChange={(v) => setForm({ ...form, screenshotUrl: v })} />
           <Input label="Notes" value={form.notes} onChange={(v) => setForm({ ...form, notes: v })} />

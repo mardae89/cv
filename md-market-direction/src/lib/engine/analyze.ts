@@ -27,7 +27,7 @@ import { singleton, TtlCache } from "@/lib/utils/cache";
 
 /** How many bars represent 24 hours on each timeframe — used for "yesterday's" run. */
 const BARS_PER_DAY: Record<Timeframe, number> = {
-  "5M": 288, "15M": 96, "1H": 24, "4H": 6, "1D": 1, "1W": 0,
+  "5M": 288, "15M": 96, "30M": 48, "1H": 24, "4H": 6, "1D": 1, "1W": 0,
 };
 
 const analysisCache = singleton("analysisCache", () => new TtlCache<AssetAnalysis>(45_000, 400));
