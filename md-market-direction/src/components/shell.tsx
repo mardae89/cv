@@ -202,10 +202,61 @@ function AccountFooter({ user, className = "" }: { user: ShellUser; className?: 
   );
 }
 
+const BANNER_KEY = "md.bannerDismissed";
+
+/**
+ * Remembers that a banner was dismissed, keyed by WHAT it was saying.
+ *
+ * Dismissal is per state, not permanent: closing the demo notice keeps it closed
+ * while the app is still on demo data, but a change worth knowing about — live
+ * data arriving, or the request budget running out — is a different signature
+ * and shows again. A banner the user can silence forever is one that cannot warn
+ * them about something new.
+ */
+function useDismissed(signature: string): [boolean, () => void] {
+  const [dismissed, setDismissed] = useState(false);
+
+  useEffect(() => {
+    try {
+      setDismissed(localStorage.getItem(BANNER_KEY) === signature);
+    } catch {
+      // Private browsing and blocked site data both throw here.
+      setDismissed(false);
+    }
+  }, [signature]);
+
+  const dismiss = () => {
+    setDismissed(true);
+    try {
+      localStorage.setItem(BANNER_KEY, signature);
+    } catch {
+      // Not persisting is survivable — it reappears next load, and closes again.
+    }
+  };
+
+  return [dismissed, dismiss];
+}
+
+function DismissButton({ onClick, className }: { onClick: () => void; className: string }) {
+  return (
+    <button
+      onClick={onClick}
+      aria-label="Dismiss"
+      className={`absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 text-base leading-none opacity-60 transition hover:opacity-100 ${className}`}
+    >
+      ×
+    </button>
+  );
+}
+
 /**
  * Data-source banner. Demo data must never be mistaken for live market data, and
  * a partially-live instance must not be presented as fully live — so this states
  * the actual coverage rather than a single on/off flag.
+ *
+ * It can be closed. The quieter markers stay either way: every price card and
+ * chart carries its own demo tag, and Settings → Data Sources always shows the
+ * real state, so dismissing this does not leave sample data unlabelled.
  */
 export function DemoBanner() {
   const { data } = useApi<{
@@ -214,25 +265,29 @@ export function DemoBanner() {
     coverage: { live: number; total: number; configured: number; pending: number };
     budget: { usedToday: number; perDay: number; exhausted: boolean; reason: string | null } | null;
   }>("/api/status");
-  if (!data) return null;
 
-  const live = data.coverage?.live ?? 0;
-  const total = data.coverage?.total ?? 0;
+  const live = data?.coverage?.live ?? 0;
+  const total = data?.coverage?.total ?? 0;
+  const exhausted = data?.budget?.exhausted ?? false;
+  const signature = !data ? "" : live === 0 ? "demo" : exhausted ? "exhausted" : `live:${live}/${total}`;
+  const [dismissed, dismiss] = useDismissed(signature);
+
+  if (!data || dismissed) return null;
 
   if (live === 0) {
     return (
-      <div className="sticky top-0 z-50 border-b border-gold/30 bg-gold/10 px-4 py-2 text-center">
+      <div className="relative sticky top-0 z-50 border-b border-gold/30 bg-gold/10 py-2 pl-4 pr-10 text-center">
         <p className="display text-[10px] font-bold uppercase tracking-[0.2em] text-gold sm:text-[11px]">
           Demo mode — {data.demoSources.join(", ")} are generated sample data. Connect live data to enable real-time analysis.
         </p>
+        <DismissButton onClick={dismiss} className="text-gold" />
       </div>
     );
   }
 
-  const exhausted = data.budget?.exhausted;
   return (
     <div
-      className={`sticky top-0 z-50 border-b px-4 py-2 text-center ${
+      className={`relative sticky top-0 z-50 border-b py-2 pl-4 pr-10 text-center ${
         exhausted ? "border-bear/30 bg-bear/10" : "border-bull/25 bg-bull/5"
       }`}
     >
@@ -244,6 +299,7 @@ export function DemoBanner() {
             ? ` · ${data.coverage.pending} more warming up · the rest are marked demo on every card`
             : ` · the remaining ${total - live} are marked demo on every card`}
       </p>
+      <DismissButton onClick={dismiss} className={exhausted ? "text-bear" : "text-bull"} />
     </div>
   );
 }
