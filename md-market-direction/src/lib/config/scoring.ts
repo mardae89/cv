@@ -141,13 +141,17 @@ export const MODE_TIMEFRAMES: Record<
 export const HTF_SCOPE: Timeframe[] = ["1W", "1D"];
 export const LTF_SCOPE: Timeframe[] = ["4H", "1H", "30M", "15M", "5M"];
 
-export const TREND_SCOPES: Record<TrendScope, { label: string; blurb: string }> = {
+export const TREND_SCOPES: Record<TrendScope, { label: string; blurb: string; shortLabel: string }> = {
   htf: {
     label: "Higher timeframes",
+    // Weekly and daily analysis is swing analysis; naming it so keeps the
+    // caption on a market page in the trader's own vocabulary.
+    shortLabel: "Swing",
     blurb: "Weekly and daily only. These decide the trend.",
   },
   all: {
     label: "All timeframes",
+    shortLabel: "All",
     blurb: "4H, 1H, 30M, 15M and 5M — the execution charts, scored on their own.",
   },
 };

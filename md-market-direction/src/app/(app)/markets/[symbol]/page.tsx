@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { AssetAnalysis } from "@/lib/types";
 import { useApi, useTicker, postJson } from "@/lib/hooks";
 import { useTradingMode, useTrendScope } from "@/lib/useTrendScope";
+import { TREND_SCOPES } from "@/lib/config/scoring";
 import { PriceChart } from "@/components/chart";
 import { EvidenceBreakdown, ScoreDial } from "@/components/score";
 import {
@@ -88,7 +89,7 @@ export default function MarketDetailPage({ params }: { params: Promise<{ symbol:
                 <span className="live-dot h-1.5 w-1.5 bg-gold" /> Updated {timeAgo(a.generatedAt)}
               </span>
               <span>Source: {a.quote.source}</span>
-              <span>Mode: {a.mode}</span>
+              <span>Mode: {TREND_SCOPES[scope].shortLabel}</span>
             </div>
 
             <div className="mt-6 flex flex-wrap gap-2">
