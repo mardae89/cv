@@ -88,7 +88,6 @@ export default function MarketDetailPage({ params }: { params: Promise<{ symbol:
                 <span className="live-dot h-1.5 w-1.5 bg-gold" /> Updated {timeAgo(a.generatedAt)}
               </span>
               <span>Source: {a.quote.source}</span>
-              {a.demo ? <span className="text-gold">Demo data</span> : <span>Live</span>}
               <span>Mode: {a.mode}</span>
             </div>
 
