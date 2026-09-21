@@ -318,6 +318,29 @@ export interface MdScore {
   conflict: ConflictReport;
 }
 
+/**
+ * An estimate of how much longer the current move might run, measured from this
+ * market's own history of swing-to-swing legs and discounted by what the
+ * indicators have left. A persistence estimate, never a forecast.
+ */
+export interface MomentumRunway {
+  /** Range in hours. Null when there is no clean run to time. */
+  hoursLow: number | null;
+  hoursHigh: number | null;
+  /** Headline, already formatted: "About 6 hours – 14 hours left". */
+  label: string;
+  /** One sentence of context under the headline. */
+  detail: string;
+  state: "running" | "late" | "stalling" | "none";
+  /** The chart it was measured on — follows the trend scope. */
+  timeframe: Timeframe;
+  elapsedHours: number;
+  typicalHours: number;
+  /** 0..1 — how much room the indicators leave. */
+  fuel: number;
+  reasons: string[];
+}
+
 export interface AssetAnalysis {
   asset: Asset;
   quote: Quote;
@@ -332,6 +355,7 @@ export interface AssetAnalysis {
   crossMarket: CrossMarketReading[];
   eventRisk: EventRiskResult;
   momentumScore: number;
+  runway: MomentumRunway;
   why: string;
   whatCouldChangeIt: string[];
   previous: { score: number; direction: Direction } | null;

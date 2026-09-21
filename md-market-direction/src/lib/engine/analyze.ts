@@ -23,6 +23,7 @@ import { analyseCrossMarket } from "./crossMarket";
 import { buildScore, detectConflict, weightByMode, type CategoryInput } from "./score";
 import { buildChange, buildWhatCouldChangeIt, buildWhy } from "./narrative";
 import { clamp } from "./indicators";
+import { estimateRunway, runwayTimeframe } from "./runway";
 import { singleton, TtlCache } from "@/lib/utils/cache";
 
 /** How many bars represent 24 hours on each timeframe — used for "yesterday's" run. */
@@ -137,6 +138,12 @@ export async function analyseAsset(
   }
 
   const momentumStrength = weightByMode(core.momentum, mode, scope);
+  const runway = estimateRunway(
+    series[runwayTimeframe(scope)] ?? [],
+    score.direction,
+    scope,
+    asset.symbol,
+  );
   const analysis: AssetAnalysis = {
     asset,
     quote,
@@ -151,6 +158,7 @@ export async function analyseAsset(
     crossMarket: cross.readings,
     eventRisk,
     momentumScore: Math.round(((momentumStrength + 1) / 2) * 100),
+    runway,
     why: buildWhy(asset, score, core.technical, core.structure, eventRisk),
     whatCouldChangeIt: buildWhatCouldChangeIt(asset, score, core.technical, core.structure, eventRisk),
     previous,

@@ -142,6 +142,9 @@ export default function MarketDetailPage({ params }: { params: Promise<{ symbol:
         ) : null}
       </Panel>
 
+      {/* --------------------------- MOMENTUM RUNWAY ---------------------------- */}
+      <RunwayPanel runway={a.runway} />
+
       {/* ------------------------------- CHART ---------------------------------- */}
       <div className="bleed">
         <PriceChart symbol={a.asset.symbol} initialTimeframe="1D" />
@@ -602,5 +605,58 @@ function AlertModal({ symbol, onClose }: { symbol: string; onClose: () => void }
       </div>
       {status ? <p className="mt-3 text-xs text-gold">{status}</p> : null}
     </Modal>
+  );
+}
+
+/**
+ * How much longer this move might run. Deliberately small — one headline, a fuel
+ * bar and the inputs behind it — because it is an estimate of persistence, not a
+ * forecast, and a large panel would imply more confidence than the method has.
+ */
+function RunwayPanel({ runway }: { runway: AssetAnalysis["runway"] }) {
+  const tone =
+    runway.state === "stalling"
+      ? { text: "text-bear", bar: "bg-bear" }
+      : runway.state === "late"
+        ? { text: "text-flat", bar: "bg-flat" }
+        : runway.state === "none"
+          ? { text: "text-mute", bar: "bg-mute" }
+          : { text: "text-bull", bar: "bg-bull" };
+
+  return (
+    <Panel className="fade-up p-5 sm:p-6">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <Eyebrow>Momentum runway</Eyebrow>
+        <span className="text-[10px] uppercase tracking-widest text-faint">
+          Measured on the {runway.timeframe}
+        </span>
+      </div>
+
+      <div className={`display mt-2 text-xl font-bold tracking-tight sm:text-2xl ${tone.text}`}>
+        {runway.label}
+      </div>
+
+      {runway.state !== "none" ? (
+        <div className="mt-3 h-1 w-full bg-hairline-soft" aria-hidden>
+          <div
+            className={`h-1 ${tone.bar}`}
+            style={{ width: `${Math.round(runway.fuel * 100)}%` }}
+          />
+        </div>
+      ) : null}
+
+      <p className="mt-3 text-sm leading-relaxed text-mute">{runway.detail}</p>
+
+      {runway.state !== "none" ? (
+        <p className="mt-2 text-[10px] uppercase tracking-widest text-faint">
+          {runway.reasons.join(" · ")}
+        </p>
+      ) : null}
+
+      <p className="mt-3 text-[11px] leading-relaxed text-faint">
+        An estimate of how long moves like this one have lasted in this market, not a prediction of
+        what price will do. Anything scheduled — or unscheduled — can end it early.
+      </p>
+    </Panel>
   );
 }
