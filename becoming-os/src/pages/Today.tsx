@@ -1,7 +1,7 @@
 import { Award, Check, Dumbbell, NotebookPen, Plus, Receipt, Scale, Utensils, X } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { AthleticCard, BusinessCard, FitnessCard, PartnerFitnessCard } from "@/components/cards";
+import { AthleticCard, AudienceCard, BusinessCard, FitnessCard, PartnerFitnessCard } from "@/components/cards";
 import { useFeedback } from "@/components/feedback";
 import { Card, cx, Eyebrow, Meter, Notice, Ring } from "@/components/ui";
 import { useStore } from "@/data/store";
@@ -79,6 +79,7 @@ export function Today() {
           <FitnessCard />
           {partner && <PartnerFitnessCard o={partner} />}
           {data.profile.business_enabled && <BusinessCard />}
+          <AudienceCard compact />
           <AthleticCard />
         </div>
       </section>
@@ -236,7 +237,7 @@ function NextMilestoneCard() {
 function fmtProgress(n: number, unit: string): string {
   if (unit === "$") return money(n);
   if (unit === "lb" || unit === "mi") return `${n.toFixed(1)} ${unit}`;
-  return `${Math.round(n)} ${unit}`;
+  return `${Math.round(n).toLocaleString("en-US")} ${unit}`;
 }
 
 function ThisWeek() {

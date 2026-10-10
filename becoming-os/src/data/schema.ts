@@ -7,7 +7,7 @@ import type { ISODate } from "@/lib/types";
 export const LIST_KEYS = [
   "weights", "checkins", "symptoms", "nutrition", "photos", "workouts", "sets", "habits", "completions",
   "restDays", "tasks", "journal", "reviews", "roadmapNotes", "businesses", "offers", "customers",
-  "transactions", "payments", "deals", "metrics", "activityLogs", "achievements", "notifications",
+  "transactions", "payments", "deals", "metrics", "activityLogs", "achievements", "notifications", "audience",
 ] as const;
 export type ListKey = (typeof LIST_KEYS)[number];
 
@@ -124,6 +124,8 @@ export const TABLES: Record<ListKey, TableDef> = {
     parents: [{ field: "photo_id", table: "photos", onDelete: "set-null" }],
     defaults: { tier: "minor", detail: null, value: null, celebrated_at: null, photo_id: null },
   },
+  // Follower / subscriber / member counts, one per platform per day.
+  audience: { bucketBy: "recorded_on", unique: [["platform", "recorded_on"]], defaults: { note: null } },
   notifications: {
     bucketBy: "created_at", unique: [["dedupe_key"]], defaults: { body: null, link: null, read_at: null, cleared_at: null }, cap: 300,
     // One-off reminders (a chapter, a near milestone, a race checkpoint, an unlock) are only created once;
@@ -203,6 +205,7 @@ const INT_FIELDS: Partial<Record<ListKey | SingleKey, string[]>> = {
   offers: ["term_months"],
   metrics: ["daily_target", "weekly_target", "sort_order"],
   activityLogs: ["count"],
+  audience: ["count"],
   goals: ["weekly_training_minutes"],
   athletic: ["weekly_session_target"],
   reminderSettings: ["daily_logging_hour"],
@@ -399,10 +402,17 @@ export function validateRow(table: ListKey, r: Record<string, unknown>): void {
       range(r, "count", 0, 100000, "Count");
       text(r, "note", 300);
       break;
+    case "audience":
+      required(r, ["platform", "recorded_on", "count"]);
+      oneOf(r, "platform", ["instagram", "youtube", "skool"], "Platform");
+      dates(r, ["recorded_on"]);
+      range(r, "count", 0, 1_000_000_000, "Count");
+      text(r, "note", 300);
+      break;
     case "achievements":
       required(r, ["key", "category", "title", "achieved_on"]);
       dates(r, ["achieved_on"]);
-      oneOf(r, "category", ["weight", "business", "athletic", "habit", "level"], "Milestone category");
+      oneOf(r, "category", ["weight", "business", "audience", "athletic", "habit", "level"], "Milestone category");
       oneOf(r, "tier", ["minor", "major"], "Milestone tier");
       text(r, "key", 80);
       text(r, "title", 160);

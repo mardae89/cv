@@ -9,7 +9,7 @@ import { fmtDate } from "@/lib/dates";
 import { money, round } from "@/lib/format";
 import type { AchievementCategory } from "@/lib/types";
 
-const CAT_LABEL: Record<AchievementCategory, string> = { weight: "Weight", business: "Business", athletic: "Athletic", habit: "Consistency", level: "Levels" };
+const CAT_LABEL: Record<AchievementCategory, string> = { weight: "Weight", business: "Business", audience: "Audience", athletic: "Athletic", habit: "Consistency", level: "Levels" };
 
 export default function Achievements() {
   const { data, ev, today } = useStore();
@@ -17,7 +17,7 @@ export default function Achievements() {
   const [view, setView] = useState<string | null>(null);
   const lv = ev.level;
   const timeline = [...data.achievements].sort((a, b) => (a.achieved_on < b.achieved_on ? 1 : -1));
-  const cats = (["weight", "business", "athletic", "habit", "level"] as AchievementCategory[])
+  const cats = (["weight", "business", "audience", "athletic", "habit", "level"] as AchievementCategory[])
     .filter((c) => ev.milestones.some((m) => m.category === c));
   const shown = ev.milestones.filter((m) => cat === "all" || m.category === cat);
   const row = view ? data.achievements.find((a) => a.key === view) : null;
@@ -100,7 +100,7 @@ export default function Achievements() {
 }
 
 function Tile({ m, onOpen }: { m: Milestone; onOpen: () => void }) {
-  const fmt = (n: number) => (m.progress?.unit === "$" ? money(n) : `${round(n, 1)} ${m.progress?.unit}`);
+  const fmt = (n: number) => (m.progress?.unit === "$" ? money(n) : `${round(n, 1).toLocaleString("en-US")} ${m.progress?.unit}`);
   return (
     <button onClick={onOpen} disabled={!m.achievedOn}
       className={cx("rounded-2xl border p-4 text-left transition", m.achievedOn ? "border-gold/40 bg-gold-wash hover:border-gold" : "border-hair bg-panel")}>

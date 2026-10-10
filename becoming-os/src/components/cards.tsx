@@ -2,6 +2,7 @@ import { ArrowRight } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useStore } from "@/data/store";
 import { longestRun, PHASES, trainingWeek } from "@/lib/calc/athletic";
+import { fmtChange, fmtCount, PLATFORMS, summarize } from "@/lib/calc/audience";
 import { goalStatus, METRIC_LABEL, monthFinance } from "@/lib/calc/business";
 import { nextMilestone } from "@/lib/calc/milestones";
 import { weightProgress } from "@/lib/calc/weight";
@@ -123,6 +124,37 @@ export function BusinessCard() {
         <Stat label="Net profit" value={money(m.profit)} />
       </div>
       {next && <p className="mt-3 text-[12px] text-mute">Next: <span className="text-bone">{next.title}</span></p>}
+    </Card>
+  );
+}
+
+/** Current follower / subscriber / member counts and how they've moved. */
+export function AudienceCard({ compact }: { compact?: boolean }) {
+  const { data, today, ev } = useStore();
+  const sums = summarize(data.audience, today);
+  const next = nextMilestone(ev.milestones, "audience");
+  return (
+    <Card>
+      <CardHead eyebrow="Instagram · YouTube · Skool" title="Audience" to="/log?tab=audience" />
+      <div className="grid grid-cols-3 gap-3">
+        {PLATFORMS.map((p) => {
+          const s = sums.find((x) => x.platform.key === p.key);
+          return (
+            <Stat key={p.key} label={p.name} value={s ? fmtCount(s.current.count) : "—"}
+              sub={!s ? `No ${p.unit} yet`
+                : s.change30 !== null ? `${fmtChange(s.change30)} in 30 days`
+                : s.readings > 1 ? `${fmtChange(s.sinceStart)} since ${fmtDate(s.first.date)}`
+                : `${p.unit} · ${fmtDate(s.current.date)}`} />
+          );
+        })}
+      </div>
+      {!compact && sums.length > 0 && (
+        <p className="mt-3 text-[12px] text-mute">
+          Last recorded {fmtDate(sums.map((s) => s.current.date).sort().pop()!)}
+          {next && <> · Next: <span className="text-bone">{next.title}</span></>}
+        </p>
+      )}
+      <Link to="/log?tab=audience" className="link mt-3 inline-block text-[13px]">{sums.length ? "Update counts" : "Record your counts"} →</Link>
     </Card>
   );
 }

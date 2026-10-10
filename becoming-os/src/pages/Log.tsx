@@ -2,21 +2,25 @@ import { Check } from "lucide-react";
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { CheckinForm, PhotoUpload, SymptomForm, WeightForm } from "@/components/forms/body";
+import { AudienceForm } from "@/components/forms/audience";
 import { ActivityLogger, DealForm, KIND_LABEL, TransactionForm } from "@/components/forms/business";
 import { JournalForm, MealForm } from "@/components/forms/misc";
 import { WorkoutForm } from "@/components/forms/training";
 import { useFeedback } from "@/components/feedback";
+import { AudienceCard } from "@/components/cards";
+import { Chart, ChartCard, SERIES } from "@/components/charts";
 import { RecordList } from "@/components/RecordList";
 import { Button, Card, cx, Input, PageHeader, Segmented, Sheet } from "@/components/ui";
 import { useStore } from "@/data/store";
 import { ACTIVITY_LABEL } from "@/lib/calc/athletic";
+import { fmtCount, platformInfo, PLATFORMS, platformSeries } from "@/lib/calc/audience";
 import { paidAmount } from "@/lib/calc/business";
 import { indexHabits, isScheduled } from "@/lib/calc/habits";
 import { fmtDate, fmtShort } from "@/lib/dates";
 import { errorMessage, money, num, pace } from "@/lib/format";
-import type { DailyCheckin, JournalEntry, NutritionLog, SymptomLog, Transaction, WeightEntry, Workout } from "@/lib/types";
+import type { AudienceEntry, AudiencePlatform, DailyCheckin, JournalEntry, NutritionLog, SymptomLog, Transaction, WeightEntry, Workout } from "@/lib/types";
 
-type Tab = "body" | "training" | "nutrition" | "business" | "mind";
+type Tab = "body" | "training" | "nutrition" | "business" | "audience" | "mind";
 
 export default function Log() {
   const { data } = useStore();
@@ -26,6 +30,7 @@ export default function Log() {
     { value: "training", label: "Training" },
     { value: "nutrition", label: "Nutrition" },
     ...(data.profile.business_enabled ? [{ value: "business" as Tab, label: "Business" }] : []),
+    { value: "audience", label: "Audience" },
     { value: "mind", label: "Habits & mind" },
   ];
   const tab = (tabs.find((t) => t.value === params.get("tab"))?.value ?? "body") as Tab;
@@ -39,6 +44,7 @@ export default function Log() {
       {tab === "training" && <TrainingTab />}
       {tab === "nutrition" && <NutritionTab />}
       {tab === "business" && <BusinessTab />}
+      {tab === "audience" && <AudienceTab />}
       {tab === "mind" && <MindTab />}
     </div>
   );
@@ -219,6 +225,42 @@ function BusinessTab() {
         </Panel>
       </div>
       <Sheet open={deal} onClose={() => setDeal(false)} title="Add to pipeline"><DealForm onDone={() => setDeal(false)} /></Sheet>
+    </div>
+  );
+}
+
+function AudienceTab() {
+  const { data, remove } = useStore();
+  const [edit, setEdit] = useState<AudienceEntry | null>(null);
+  const [platform, setPlatform] = useState<AudiencePlatform>(
+    () => PLATFORMS.find((p) => data.audience.some((e) => e.platform === p.key))?.key ?? "instagram");
+  const info = platformInfo(platform);
+  const series = platformSeries(data.audience, platform);
+  const recent = [...data.audience].sort((a, b) =>
+    a.recorded_on !== b.recorded_on ? (a.recorded_on < b.recorded_on ? 1 : -1) : PLATFORMS.findIndex((p) => p.key === a.platform) - PLATFORMS.findIndex((p) => p.key === b.platform));
+  return (
+    <div className="grid gap-5 lg:grid-cols-2">
+      <Panel title="Record audience"><AudienceForm /></Panel>
+      <div className="space-y-5">
+        <AudienceCard />
+        <ChartCard title={`${info.name} ${info.unit}`}
+          action={<Segmented size="sm" value={platform} onChange={setPlatform} options={PLATFORMS.map((p) => ({ value: p.key, label: p.name }))} />}
+          empty={series.length ? false : `No ${info.name} readings yet.`}>
+          <Chart data={series.map((r) => ({ date: r.date, count: r.count }))} x="date" height={220} fmt={fmtCount} yWidth={56}
+            series={[{ key: "count", label: info.unit, color: SERIES[PLATFORMS.indexOf(info)] }]} />
+        </ChartCard>
+      </div>
+      <Panel title="Recent readings" className="lg:col-span-2">
+        <RecordList limit={12} items={recent.map((e) => {
+          const p = platformInfo(e.platform);
+          return {
+            id: e.id, primary: `${p.name} · ${fmtCount(e.count)} ${p.unit}`,
+            secondary: [fmtDate(e.recorded_on), e.note].filter(Boolean).join(" · "),
+            onEdit: () => setEdit(e), onDelete: () => remove("audience", e.id), deleteLabel: "this reading",
+          };
+        })} empty="No readings yet. Enter today's totals above." />
+      </Panel>
+      <Sheet open={!!edit} onClose={() => setEdit(null)} title="Edit reading">{edit && <AudienceForm initial={edit} onDone={() => setEdit(null)} />}</Sheet>
     </div>
   );
 }

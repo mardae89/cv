@@ -2,6 +2,7 @@ import { Award, Download, Share2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useStore } from "@/data/store";
 import { longestRun } from "@/lib/calc/athletic";
+import { fmtCount, summarize } from "@/lib/calc/audience";
 import { goalStatus, METRIC_LABEL } from "@/lib/calc/business";
 import { weightProgress } from "@/lib/calc/weight";
 import { fmtDate } from "@/lib/dates";
@@ -24,6 +25,9 @@ export function progressLine(a: Pick<AchievementRow, "category">, data: UserData
       if (!s) return "";
       const g = goalStatus({ transactions: data.transactions, payments: data.payments }, s, today);
       return `${METRIC_LABEL[g.metric]} this month: ${money(g.value)} of ${money(g.goal)}`;
+    }
+    case "audience": {
+      return summarize(data.audience ?? [], today).map((s) => `${s.platform.name} ${fmtCount(s.current.count)}`).join(" · ");
     }
     case "athletic": {
       const lr = longestRun(data.workouts);

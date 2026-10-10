@@ -6,6 +6,7 @@ import { addDays, dateRange, fmtMonth, monthEnd, monthKey, todayIn, weekStart } 
 import { money, num, round } from "../format";
 import type { AchievementCategory, AchievementRow, ISODate, UserData } from "../types";
 import { isRun, isSession } from "./athletic";
+import { AUDIENCE_STEPS, fmtCount, PLATFORMS, platformSeries } from "./audience";
 import {
   dailyMetricDeltas, firstMtdCrossing, firstSaleByCustomer, goalStatus, METRIC_LABEL, monthFinance,
   mtdSeries, monthTotals, type Ledger,
@@ -223,6 +224,39 @@ function weeksMeetingTarget(data: UserData, target: number): { week: ISODate; me
     const days = byWeek.get(week)!.sort();
     return { week, metOn: days.length >= target ? days[target - 1] : null };
   });
+}
+
+// ────────────────────────────────────────────────────────────── audience ──
+// Counted from the first reading: a total you already had when you started
+// tracking isn't a new milestone. Shows what's earned plus the next two.
+function audienceMilestones(data: UserData): Milestone[] {
+  const out: Milestone[] = [];
+  PLATFORMS.forEach((p, pi) => {
+    const s = platformSeries(data.audience ?? [], p.key);
+    if (!s.length) return;
+    const latest = s[s.length - 1].count;
+    const steps = AUDIENCE_STEPS.filter((k) => k > s[0].count);
+    let upcoming = 0;
+    const series: Milestone[] = [];
+    for (const k of steps) {
+      const hit = s.find((r) => r.count >= k) ?? null;
+      if (!hit && ++upcoming > 2) break;
+      series.push({
+        key: `audience.${p.key}.${k}`,
+        category: "audience",
+        group: p.name,
+        tier: [1000, 10_000, 100_000, 1_000_000].includes(k) ? "major" : "minor",
+        title: `${fmtCount(k)} ${p.name} ${p.unit}`,
+        requirement: `Record ${fmtCount(k)} or more ${p.name} ${p.unit}`,
+        value: k,
+        achievedOn: hit?.date ?? null,
+        progress: { current: latest, target: k, unit: p.unit },
+        order: 20 + pi,
+      });
+    }
+    out.push(...link(series));
+  });
+  return out;
 }
 
 function athleticMilestones(data: UserData, today: ISODate): Milestone[] {
@@ -479,6 +513,7 @@ export function evaluate(data: UserData, today: ISODate): Evaluation {
   const base = [
     ...weightMilestones(data),
     ...businessMilestones(data, today),
+    ...audienceMilestones(data),
     ...athleticMilestones(data, today),
     ...habitMilestones(data, today),
   ];

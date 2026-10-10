@@ -6,6 +6,7 @@ import { useFeedback } from "@/components/feedback";
 import { useSubmit } from "@/components/forms/body";
 import { PaymentForm, TransactionForm } from "@/components/forms/business";
 import { RecordList } from "@/components/RecordList";
+import { AudienceCard } from "@/components/cards";
 import { Button, Card, cx, EmptyState, Eyebrow, Field, Input, Meter, Notice, NumberInput, PageHeader, Segmented, Select, Sheet, Stat, Table, Textarea } from "@/components/ui";
 import { saveFile } from "@/data/host";
 import { useStore } from "@/data/store";
@@ -49,6 +50,7 @@ export default function Business() {
         <EmptyState title="Add your first business" action={<Button onClick={() => setNewBiz(true)}>Add business</Button>}>
           Workspaces keep revenue, offers, customers and outreach separate per business. Lost Revenue Group and Exchange Mastery templates are in onboarding — or add any business here.
         </EmptyState>
+        <div className="mt-6"><AudienceCard /></div>
         <Sheet open={newBiz} onClose={() => setNewBiz(false)} title="Add business"><BusinessForm onDone={() => setNewBiz(false)} /></Sheet>
       </div>
     );
@@ -179,6 +181,8 @@ export default function Business() {
           series={[{ key: "revenue", label: "Revenue earned", color: SERIES[0], type: "bar" }, { key: "cash", label: "Cash collected", color: SERIES[1], type: "bar" }, { key: "profit", label: "Net profit", color: SERIES[2], type: "bar" }]}
           refs={gran === "month" ? [{ y: g.goal, label: "Goal" }] : undefined} />
       </ChartCard>
+
+      <AudienceCard />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <ChartCard title="Recurring revenue by month" sub="Recurring sales earned each month">

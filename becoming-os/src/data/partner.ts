@@ -119,6 +119,7 @@ export function buildSummary(data: UserData, ev: Evaluation, today: ISODate, sha
     const allowed = (m: { key: string; category: string }) =>
       m.category === "weight" ? rank(s.weight) >= 2
         : m.category === "business" ? business
+        : m.category === "audience" ? rank(s.business) >= 1
         : m.category === "athletic" ? rank(s.training) >= 1
         : m.category === "habit" ? rank(s.habits) >= 1 &&
           (m.key !== "habit.workouts_30" || rank(s.training) >= 1) &&

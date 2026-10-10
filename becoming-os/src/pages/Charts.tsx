@@ -1,3 +1,4 @@
+import { fmtCount, PLATFORMS, platformSeries } from "@/lib/calc/audience";
 import { useMemo, useState } from "react";
 import { Chart, ChartCard, GOLD, monthTick, NEUTRAL, type SeriesDef } from "@/components/charts";
 import { Card, Field, Input, PageHeader, Pill, Segmented, Select, Stat, Toggle } from "@/components/ui";
@@ -71,6 +72,10 @@ export default function Charts() {
       points: (f, t) => longestRunProgression(data.workouts).filter((p) => p.date >= f && p.date <= t).map((p) => ({ date: p.date, value: p.distance })) },
     { key: "habits", label: "Habit completion per week", group: "Habits", grain: "week", fmt: (v) => `${Math.round(v)}%`, summary: "avg",
       points: (f, t) => buckets("week", f, t).map((w) => ({ date: w, value: periodScore(data.habits, idx, w < f ? f : w, addDays(w, 6) > t ? t : addDays(w, 6)).pct })) },
+    ...PLATFORMS.map((p): MetricDef => ({
+      key: `audience.${p.key}`, label: `${p.name} ${p.unit}`, group: "Audience", grain: "day", fmt: fmtCount, summary: "last-first",
+      points: (f, t) => platformSeries(data.audience, p.key).filter((r) => r.date >= f && r.date <= t).map((r) => ({ date: r.date, value: r.count })),
+    })),
     { key: "milestones", label: "Milestones (cumulative)", group: "Milestones", grain: "day", fmt: (v) => String(Math.round(v)), summary: "last",
       points: (f, t) => {
         const ds = ev.unlocked.filter((m) => m.category !== "level").map((m) => m.achievedOn!).sort();

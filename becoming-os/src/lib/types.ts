@@ -387,7 +387,20 @@ export interface ActivityLog {
   note: string | null;
 }
 
-export type AchievementCategory = "weight" | "business" | "athletic" | "habit" | "level";
+export type AudiencePlatform = "instagram" | "youtube" | "skool";
+
+/** The follower / subscriber / member count on one platform, as read on one day. */
+export interface AudienceEntry {
+  id: string;
+  user_id: string;
+  platform: AudiencePlatform;
+  recorded_on: ISODate;
+  count: number;
+  note: string | null;
+  created_at?: string;
+}
+
+export type AchievementCategory = "weight" | "business" | "audience" | "athletic" | "habit" | "level";
 
 export interface AchievementRow {
   id: string;
@@ -479,4 +492,5 @@ export interface UserData {
   metrics: ActivityMetric[];
   activityLogs: ActivityLog[];
   achievements: AchievementRow[];
+  audience: AudienceEntry[];
 }

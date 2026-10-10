@@ -219,6 +219,16 @@ export function buildDemo(uid: string): DemoPlan {
     closed_on: stage === "won" || stage === "lost" ? addDays("2026-10-20", i * 6 + 9) : null,
   }));
 
+  // ── audience: one reading of each total a week (sample numbers)
+  const audience = days.filter((d) => dow(d) === 1 || d === DEMO_TODAY).flatMap((d) => {
+    const weeks = (Date.parse(d) - Date.parse(START)) / 6.048e8;
+    return [
+      { platform: "instagram", recorded_on: d, count: Math.round(1840 + weeks * 95 + weeks * weeks * 4 + rand() * 30), note: null },
+      { platform: "youtube", recorded_on: d, count: Math.round(412 + weeks * 31 + rand() * 8), note: null },
+      { platform: "skool", recorded_on: d, count: Math.round(38 + weeks * 6.5 + rand() * 2), note: d === DEMO_TODAY ? "Demo reading" : null },
+    ];
+  });
+
   return [
     { table: "body_goals", rows: u([{ start_weight: 250, start_date: START, target_loss: 50, stretch_loss: 60, start_waist: 46, pace: "steady", activity_level: "light", preferred_activities: ["Walking", "Strength training", "Cycling"] }]) },
     { table: "athletic_profiles", rows: u([{ readiness: "cleared_by_clinician", assessed_on: "2026-10-28", injury_notes: "Demo: mild ankle sprain, cleared for gradual return.", phase: "return_to_running", weekly_session_target: 4, training_days: [1, 2, 4, 6], goal_text: "Complete a 10K", race_name: "Spring 10K (demo)", race_date: "2027-05-15" }]) },
@@ -243,5 +253,6 @@ export function buildDemo(uid: string): DemoPlan {
     { table: "transactions", rows: u(transactions) },
     { table: "payments", rows: u(payments) },
     { table: "deals", rows: u(deals) },
+    { table: "audience", rows: u(audience) },
   ];
 }
