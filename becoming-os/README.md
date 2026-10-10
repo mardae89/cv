@@ -5,10 +5,17 @@
 
 A private, two-person transformation tracker for **Oct 10, 2026 – May 24, 2027**
 (226 days between the dates; 227 calendar dates counting both). Each of you has your
-own login and records; you choose exactly what the other can see.
+own records; you choose exactly what the other can see.
 
-React + TypeScript + Vite + Tailwind on Supabase (Postgres, Auth, Storage) — the same
-stack Lovable generates. Setup: **[DEPLOY.md](DEPLOY.md)**.
+**Nothing to set up.** No database, no accounts, no keys. It's one self-contained
+HTML page (React + TypeScript + Vite + Tailwind, built into a single file):
+
+- **As your private claude.ai page** — records sync across your devices and between
+  the two of you, each person's records private to them.
+- **As a plain file** (`dist-page/becoming-os.html`) — open it in any browser; records
+  stay in that browser only.
+
+How to start: **[DEPLOY.md](DEPLOY.md)**.
 
 ---
 
@@ -26,8 +33,8 @@ stack Lovable generates. Setup: **[DEPLOY.md](DEPLOY.md)**.
 | Roadmap | `/roadmap` | Eight chapters with planned and re-planned targets, actual results, notes |
 | Milestones | `/achievements` | Level, XP, every milestone (locked/unlocked), permanent timeline, shareable cards |
 | Charts | `/charts` | Every metric with date ranges and previous-period comparison |
-| Together | `/together` | Invite code, partner progress (as shared), shared milestones and reflections |
-| Settings | `/settings` | Goals, readiness, privacy, reminders, JSON/CSV export, reset |
+| Together | `/together` | Partner progress (as shared), shared milestones and reflections, your sharing levels |
+| Settings | `/settings` | Goals, readiness, privacy, reminders, where your records are stored, backup export/import, reset |
 
 ## How the numbers work
 
@@ -77,49 +84,53 @@ results at no more than your pace setting (≤1% of body weight and ≤2 lb per 
 If the goal can't be reached safely by May 24, the roadmap shows a later date rather
 than an unsafe rate.
 
+## Where records live
+
+All storage goes through one small engine (`src/data/engine.ts`) that enforces the
+rules a database would: unique dates (one weigh-in per day, one check-in per day…),
+records that must belong to a parent (a set to its workout, a payment to its sale),
+deletes that cascade or unlink, payments only against sales and never above the sale
+amount. Records are grouped by month into documents, saved in the background with
+retries; the app shows "Saving…" or the error if a save can't get through.
+
+| Running as | Stored in | Syncs? |
+|---|---|---|
+| Your claude.ai page | The page's own database: `data/users/<you>/…` | Across your devices, live |
+| Any other browser / the downloaded file | IndexedDB in that browser | No — export backups |
+
 ## Privacy
 
-Enforced in Postgres with row-level security, not by hiding things on screen:
-
-- Every row belongs to one user; only the owner can insert, update or delete it.
-- A partner can read rows only through an active partnership, and only at the level
-  the owner chose per category — weight (hidden / % of goal / pounds / full),
-  training, habits, health, photos, milestones, business.
+- On the claude.ai page, each person's records sit under `data/users/<their id>/`,
+  which the platform keeps private to that person — **including from the page's
+  owner**. Not a screen-level filter: the other person's app can't read it.
+- The only thing your partner can read is a summary your own app writes to
+  `shared/<your id>` from your sharing levels per category — weight (hidden / % of
+  goal / pounds / full), training, habits, health, photos, milestones, business.
+  A category set to hidden never leaves your private space; milestones in a hidden
+  category are left out too.
 - Defaults: weight as % of goal, training and habit summaries, milestones shared;
   **health, photos, journal and all business finances private.**
-- Summaries reach the partner through `get_partner_overview()`, which returns only
-  the fields the owner's settings allow.
 - Journal entries and reflections are shared one at a time, never by default.
-- Photos live in a private bucket and are served through short-lived signed URLs.
+- Photos are stored downscaled in your private space and never in the summary.
 
 ## Tests
 
 ```bash
-npm test             # 57 unit tests: dates, weight, business, habits, training, XP, milestones, roadmap, reviews
+npm test             # unit tests: dates, weight, business, habits, training, XP, milestones,
+                     # roadmap, reviews, the storage engine and the partner summary
 npm run typecheck
-DATABASE_URL=postgres://… npm run test:db   # RLS tests, run as real authenticated/anon roles
-npm run test:e2e     # Playwright: the 15 core workflows, end to end, against a running stack
+npm run test:e2e     # Playwright: the 15 core workflows (browser storage), plus two people
+                     # sharing through a stand-in for the claude.ai page database
+npm run build:page   # → dist-page/becoming-os.html and the claude.ai page variant
 ```
-
-The E2E run signs up two test accounts, confirms starting weights, logs weigh-ins (and
-a typo that gets caught), unlocks and celebrates the 5 lb milestone, records a sale,
-an expense and gig income and checks revenue/cash/profit stay separate, unlocks and
-re-locks revenue milestones by adding and deleting a sale, logs a workout, completes
-a habit, edits a weigh-in and watches the milestone re-lock, connects the accounts
-and checks through the REST API that the database withholds what isn't shared,
-completes a weekly review, checks the countdown, and signs out and back in.
-
-`scripts/local-stack.sh` runs a Supabase-compatible stack (Postgres + GoTrue +
-PostgREST + Storage) without the Supabase CLI; `supabase start` works too.
 
 ## Layout
 
 ```
-supabase/migrations/   schema, RLS policies, sharing functions, storage bucket
-supabase/tests/        SQL tests for the access policies
 src/lib/calc/          pure calculation engines (no I/O) — the source of every number
-src/data/              Supabase client, auth, data loading, milestone sync, partner reads
+src/data/              storage engine, storage back-ends, host detection, partner summary
 src/components/        design system, charts, forms, celebration
 src/pages/             one file per screen
 tests/                 unit (Vitest) and end-to-end (Playwright)
+dist-page/             the built single-file app (plain file + claude.ai page variant)
 ```
