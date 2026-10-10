@@ -186,7 +186,7 @@ export default function Onboarding() {
     try {
       for (const { table, rows } of buildDemo(s.uid)) {
         for (let k = 0; k < rows.length; k += 500) {
-          const { error } = await supabase.from(table).insert(rows.slice(k, k + 500));
+          const { error } = await supabase.from(table).insert(rows.slice(k, k + 500), { defaultToNull: false });
           if (error) throw error;
         }
       }

@@ -130,7 +130,7 @@ export default function Progress() {
 
       <Card>
         <h2 className="mb-2 text-[24px] leading-none">All weigh-ins</h2>
-        <RecordList items={[...data.weights].reverse().map((w) => ({
+        <RecordList limit={14} items={[...data.weights].reverse().map((w) => ({
           id: w.id, primary: w.weight !== null ? `${w.weight} lb` : `Waist ${w.waist_in} in`,
           secondary: [fmtDate(w.entry_date), w.waist_in && w.weight !== null && `waist ${w.waist_in} in`, w.flagged && "confirmed unusual change", w.note].filter(Boolean).join(" · "),
           onEdit: () => setEdit(w), onDelete: () => remove("weights", w.id), deleteLabel: "this weigh-in",

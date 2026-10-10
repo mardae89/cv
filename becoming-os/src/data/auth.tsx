@@ -1,4 +1,5 @@
 import type { Session, User } from "@supabase/supabase-js";
+import { useQueryClient } from "@tanstack/react-query";
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { supabase } from "./supabase";
 
@@ -13,6 +14,7 @@ const Ctx = createContext<AuthState>({ session: null, user: null, loading: true,
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({ session: null, user: null, loading: true, recovering: false });
+  const qc = useQueryClient();
 
   useEffect(() => {
     let alive = true;
@@ -20,6 +22,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (alive) setState((s) => ({ ...s, session: data.session, user: data.session?.user ?? null, loading: false }));
     });
     const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      // Drop every cached record on sign-out so nothing lingers on a shared device.
+      if (event === "SIGNED_OUT") qc.clear();
       setState((s) => ({
         session,
         user: session?.user ?? null,
@@ -31,7 +35,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       alive = false;
       sub.subscription.unsubscribe();
     };
-  }, []);
+  }, [qc]);
 
   return <Ctx.Provider value={state}>{children}</Ctx.Provider>;
 }

@@ -359,11 +359,11 @@ export function Sheet({ open, onClose, title, children, wide }: { open: boolean;
   );
 }
 
-export function Table({ head, rows, empty }: { head: ReactNode[]; rows: ReactNode[][]; empty?: ReactNode }) {
+export function Table({ head, rows, empty, minWidth }: { head: ReactNode[]; rows: ReactNode[][]; empty?: ReactNode; minWidth?: number }) {
   if (!rows.length) return <div className="py-6 text-center text-[13px] text-faint">{empty ?? "Nothing here yet."}</div>;
   return (
     <div className="-mx-5 overflow-x-auto px-5">
-      <table className="w-full min-w-[480px] text-left text-[13px]">
+      <table className="w-full text-left text-[13px]" style={minWidth ? { minWidth } : undefined}>
         <thead>
           <tr className="border-b border-hair">
             {head.map((h, i) => <th key={i} className="eyebrow py-2 pr-3 font-semibold">{h}</th>)}

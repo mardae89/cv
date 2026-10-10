@@ -487,7 +487,7 @@ export function evaluate(data: UserData, today: ISODate): Evaluation {
   const earned = base.filter((m) => m.achievedOn);
   const xp = computeXP(data, earned.map((m) => ({ achievedOn: m.achievedOn, tier: m.tier, category: m.category })));
   const dates = levelDates(xp.byDay, earned.map((m) => m.achievedOn!));
-  const levels: Milestone[] = LEVELS.slice(1).map((l, i) => ({
+  const levels: Milestone[] = link(LEVELS.slice(1).map((l, i) => ({
     key: `level.${l.level}`,
     category: "level",
     group: "Levels",
@@ -497,7 +497,7 @@ export function evaluate(data: UserData, today: ISODate): Evaluation {
     achievedOn: dates.get(l.level) && dates.get(l.level)! <= today ? dates.get(l.level)! : null,
     progress: null,
     order: i,
-  }));
+  })));
   const milestones = [...base, ...levels];
   return {
     milestones,
@@ -517,6 +517,16 @@ export function nextMilestone(ms: Milestone[], category?: AchievementCategory): 
     const br = best.progress!.current / best.progress!.target;
     return r > br + 1e-9 ? m : best;
   });
+}
+
+/** The n locked milestones closest to unlocking, closest first. */
+export function closestMilestones(ms: Milestone[], n: number): Milestone[] {
+  return ms
+    .filter((m) => !m.achievedOn && m.progress && m.progress.target > 0)
+    .map((m) => ({ m, r: m.progress!.current / m.progress!.target }))
+    .sort((a, b) => b.r - a.r || a.m.order - b.m.order)
+    .slice(0, n)
+    .map((x) => x.m);
 }
 
 export interface AchievementDiff {

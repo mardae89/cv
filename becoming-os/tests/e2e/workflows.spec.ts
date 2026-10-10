@@ -25,11 +25,13 @@ async function settle(page: Page) {
 
 async function celebrate(page: Page, title: RegExp | string) {
   // Waits for the celebration for `title`, stepping past any other one first.
+  // Decides from one snapshot of the dialog so it can't click past the one it wants.
   const d = page.getByRole("dialog", { name: "Milestone unlocked" });
-  const h = d.getByRole("heading", { name: title });
+  const matches = (text: string) => (typeof title === "string" ? text.includes(title) : title.test(text));
   await expect(async () => {
-    if (await h.isVisible()) return;
-    if (await d.isVisible()) await d.getByRole("button", { name: /^(Continue|Next)$/ }).click({ timeout: 2000 });
+    const text = await d.innerText({ timeout: 500 }).catch(() => null);
+    if (text !== null && matches(text)) return;
+    if (text !== null) await d.getByRole("button", { name: /^(Continue|Next)$/ }).click({ timeout: 2000 });
     throw new Error(`waiting for the “${title}” celebration`);
   }).toPass({ timeout: 20_000 });
 }

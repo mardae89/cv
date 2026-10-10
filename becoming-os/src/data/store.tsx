@@ -1,7 +1,7 @@
 // The data layer: loads every table the signed-in user owns, recomputes all
 // metrics and milestones client-side whenever any of it changes, and keeps
 // the stored achievements and in-app reminders in step with the records.
-import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useIsFetching, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { evaluate, type Evaluation, type Milestone } from "@/lib/calc/milestones";
 import { hourIn, todayIn } from "@/lib/dates";
@@ -204,7 +204,7 @@ export function DataProvider({ children, fallback, error: renderError }: {
 
   const insert = useCallback(async <T,>(key: ListKey, row: Record<string, unknown> | Record<string, unknown>[]) => {
     const rows = (Array.isArray(row) ? row : [row]).map((r) => ({ user_id: uid, ...r }));
-    const { data: out, error } = await supabase.from(LIST_TABLES[key].table).insert(rows).select();
+    const { data: out, error } = await supabase.from(LIST_TABLES[key].table).insert(rows, { defaultToNull: false }).select();
     if (error) throw new Error(errorMessage(error));
     await invalidate(key);
     return out as T[];
@@ -261,9 +261,12 @@ export function DataProvider({ children, fallback, error: renderError }: {
   }, [qc, uid, invalidate]);
 
   // ── keep stored achievements in step with the rules
+  // Only reconcile once every table has settled, so a half-refreshed snapshot
+  // (e.g. right after a bulk load) can never add or remove milestones.
+  const fetching = useIsFetching({ queryKey: ["t", uid] });
   const syncing = useRef(false);
   useEffect(() => {
-    if (!data || !ev || syncing.current) return;
+    if (!data || !ev || syncing.current || fetching > 0) return;
     const stored = data.achievements;
     const byKey = new Map(stored.map((r) => [r.key, r]));
     const keys = new Set(ev.unlocked.map((m) => m.key));
@@ -304,7 +307,7 @@ export function DataProvider({ children, fallback, error: renderError }: {
         syncing.current = false;
       }
     })();
-  }, [data, ev, uid, invalidate]);
+  }, [data, ev, uid, invalidate, fetching]);
 
   // ── in-app reminders (computed on open; deduplicated per period)
   const reminded = useRef("");

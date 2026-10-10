@@ -215,7 +215,7 @@ export default function Business() {
 
       <Card>
         <h3 className="mb-2 text-[20px] leading-none">Transactions · {fmtMonth(month)}</h3>
-        <TransactionList items={[...data.transactions].filter((t) => t.txn_date >= month && t.txn_date <= monthEnd(month)).reverse()} />
+        <TransactionList limit={25} items={[...data.transactions].filter((t) => t.txn_date >= month && t.txn_date <= monthEnd(month)).reverse()} />
       </Card>
 
       <Sheet open={add} onClose={() => setAdd(false)} title="Record transaction" wide><TransactionForm onDone={() => setAdd(false)} /></Sheet>

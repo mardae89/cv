@@ -9,7 +9,7 @@ import { useStore } from "@/data/store";
 import { isSession } from "@/lib/calc/athletic";
 import { periodFinance } from "@/lib/calc/business";
 import { dayScore, habitStreak, indexHabits, isScheduled, periodScore } from "@/lib/calc/habits";
-import { nextMilestone } from "@/lib/calc/milestones";
+import { closestMilestones, nextMilestone } from "@/lib/calc/milestones";
 import { currentChapter } from "@/lib/calc/roadmap";
 import { xpBetween } from "@/lib/calc/xp";
 import { addDays, countdown, fmtDate, fmtLongDate, fmtShort, weekStart } from "@/lib/dates";
@@ -215,6 +215,19 @@ function NextMilestoneCard() {
         </>
       ) : (
         <p className="mt-2 text-[13px] text-mute">Log your first records to see what's next.</p>
+      )}
+      {m && closestMilestones(ev.milestones, 4).filter((x) => x.key !== m.key).length > 0 && (
+        <div className="mt-6">
+          <div className="eyebrow mb-2">Also within reach</div>
+          <ul className="space-y-3">
+            {closestMilestones(ev.milestones, 4).filter((x) => x.key !== m.key).slice(0, 3).map((x) => (
+              <li key={x.key}>
+                <Meter thin value={x.progress!.current} max={x.progress!.target} label={<span className="text-bone/90">{x.title}</span>}
+                  right={<span className="text-[11.5px] font-normal text-mute">{fmtProgress(x.progress!.current, x.progress!.unit)} / {fmtProgress(x.progress!.target, x.progress!.unit)}</span>} />
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
       <div className="mt-auto pt-5">
         <div className="flex items-center justify-between border-t border-hair pt-4 text-[12.5px]">

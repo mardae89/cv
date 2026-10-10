@@ -50,13 +50,16 @@ export function Chart({ data, x, series, fmt = (v) => String(v), xFmt = fmtShort
   height?: number; yDomain?: [unknown, unknown]; refs?: { y: number; label: string }[]; legend?: boolean; yWidth?: number;
 }) {
   const showLegend = legend ?? series.length > 1;
+  // Bars and areas encode length, so their axis always includes zero.
+  const zeroBased = series.some((s) => s.type === "bar" || s.type === "area");
+  const domain = yDomain ?? (zeroBased ? [(min: number) => Math.min(0, min), "auto"] : ["auto", "auto"]);
   return (
     <div style={{ height }} className="w-full">
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }} barGap={2} barCategoryGap="28%">
           <CartesianGrid stroke="#1d1d21" vertical={false} />
           <XAxis dataKey={x} {...axis} tickFormatter={xFmt} minTickGap={24} />
-          <YAxis {...axis} width={yWidth} domain={(yDomain ?? ["auto", "auto"]) as never} tickFormatter={(v) => fmt(Number(v))} allowDecimals />
+          <YAxis {...axis} width={yWidth} domain={domain as never} tickFormatter={(v) => fmt(Number(v))} allowDecimals />
           <Tooltip content={<TooltipBox fmt={fmt} xFmt={xFmt} />} cursor={{ stroke: "#3a3a40", strokeWidth: 1, fill: "rgba(255,255,255,0.03)" }} />
           {showLegend && <Legend verticalAlign="top" align="left" height={28} iconType="circle" iconSize={8}
             formatter={(v) => <span className="text-[11.5px] text-mute">{v}</span>} />}
