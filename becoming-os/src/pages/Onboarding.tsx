@@ -1,13 +1,13 @@
 import { ArrowLeft, Sparkles } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useFeedback } from "@/components/feedback";
 import { Button, Card, cx, DayPicker, Field, Input, Notice, NumberInput, Segmented, Select, Textarea, Toggle } from "@/components/ui";
-import { LIST_KEYS, type ListKey, type SingleKey } from "@/data/schema";
+import { LIST_KEYS, SINGLE_DEFAULTS, type ListKey, type SingleKey } from "@/data/schema";
 import { useStore } from "@/data/store";
 import { READINESS_LABEL } from "@/lib/calc/athletic";
 import { paceRate } from "@/lib/calc/weight";
-import { fmtDate, MISSION_END } from "@/lib/dates";
+import { diffDays, fmtDate, isISODate, MISSION_END } from "@/lib/dates";
 import { buildDemo, DEMO_TODAY } from "@/lib/demo";
 import { errorMessage, num, round } from "@/lib/format";
 import { ACTIVITY_OPTIONS, BUSINESS_TEMPLATES, HABIT_TEMPLATES, habitFromTemplate } from "@/lib/templates";
@@ -52,10 +52,17 @@ export default function Onboarding() {
   const [i, setI] = useState(0);
   const step = steps[Math.min(i, steps.length - 1)];
   const [busy, setBusy] = useState(false);
+  // Each step starts at its heading, not wherever the last one was scrolled to.
+  useEffect(() => window.scrollTo(0, 0), [i]);
 
   // body
   const g = data.goals;
+  const hasStart = g?.start_weight != null;
   const [startWeight, setStartWeight] = useState(g?.start_weight ? String(g.start_weight) : "");
+  // What's typed in "Target weight" while it's being edited (it's otherwise worked out from the target loss).
+  const [targetText, setTargetText] = useState<string | null>(null);
+  // The first weigh-in this setup created, so saving the step again corrects it instead of leaving the old number.
+  const [startEntryId, setStartEntryId] = useState<string | null>(null);
   const [startDate, setStartDate] = useState(g?.start_date ?? today);
   const [waist, setWaist] = useState(g?.start_waist ? String(g.start_waist) : "");
   const [targetLoss, setTargetLoss] = useState(g?.target_loss ? String(g.target_loss) : "");
@@ -82,12 +89,13 @@ export default function Onboarding() {
   const [baseExp, setBaseExp] = useState(b?.baseline_expenses !== null && b?.baseline_expenses !== undefined ? String(b.baseline_expenses) : "");
   const [workspaces, setWorkspaces] = useState<string[]>(data.businesses.length ? [] : ["lrg", "em"]);
 
-  // habits
+  // habits — business picks only show (and save) while business tracking is on.
   const [habitPicks, setHabitPicks] = useState<string[]>(
-    data.habits.length ? [] : HABIT_TEMPLATES.filter((t) => t.defaultOn && (!t.business || bizOn)).map((t) => t.name));
+    data.habits.length ? [] : HABIT_TEMPLATES.filter((t) => t.defaultOn).map((t) => t.name));
+  const habitChoices = HABIT_TEMPLATES.filter((t) => !t.business || bizOn);
 
-  // privacy
-  const [share, setShare] = useState<ShareSettings | null>(s.shareSettings);
+  // privacy (a missing record starts from the private defaults rather than hiding the step)
+  const [share, setShare] = useState<ShareSettings>(s.shareSettings ?? (SINGLE_DEFAULTS.shareSettings as unknown as ShareSettings));
   // reminders
   const [hour, setHour] = useState(String(s.reminderSettings?.daily_logging_hour ?? 20));
 
@@ -97,7 +105,11 @@ export default function Onboarding() {
   const finish = async () => {
     setBusy(true);
     try {
-      await s.saveProfile({ onboarding_done: true, ...(askName && name.trim() ? { display_name: name.trim() } : {}) });
+      // Skipping keeps what's chosen on screen: the name, the plan and whether business is tracked.
+      await s.saveProfile({
+        onboarding_done: true, business_enabled: bizOn, ...(preset ? { plan_preset: preset } : {}),
+        ...(askName && name.trim() ? { display_name: name.trim() } : {}),
+      });
       nav("/", { replace: true });
     } catch (e) {
       toast(errorMessage(e), "error");
@@ -128,7 +140,8 @@ export default function Onboarding() {
     setPreset(key);
     if (key === "primary") setBizOn(true);
     if (key === "partner") setBizOn(false);
-    if (g) return; // never overwrite saved goals
+    if (hasStart) return; // never overwrite a saved starting weight
+    setTargetText(null);
     if (key === "primary") {
       setStartWeight("267");
       setTargetLoss("50");
@@ -141,57 +154,93 @@ export default function Onboarding() {
     }
   };
 
+  const changeStartWeight = (v: string) => {
+    setStartWeight(v);
+    // A target weight typed before the starting weight becomes the target loss once both are known.
+    if (targetText && num(targetText) && num(v)) setTargetLoss(String(round(num(v) - num(targetText), 1)));
+  };
+  const changeTargetLoss = (v: string) => {
+    setTargetLoss(v);
+    setTargetText(null);
+  };
+  const changeTargetWeight = (v: string) => {
+    setTargetText(v);
+    if (!v) setTargetLoss("");
+    else if (num(startWeight) && num(v)) setTargetLoss(String(round(num(startWeight) - num(v), 1)));
+  };
+
   const saveBody = () => run(async () => {
-    const sw = num(startWeight);
-    if (!startWeight) return; // skipped
-    if (sw < 70 || sw > 700) throw new Error("Enter a starting weight between 70 and 700 lb.");
-    const tl = num(targetLoss);
-    if (tl <= 0) throw new Error("Enter how many pounds you want to lose.");
+    // Without a starting weight the rest of the step still saves; targets wait for the weight.
+    const sw = startWeight ? num(startWeight) : null;
+    if (sw !== null && (sw < 70 || sw > 700)) throw new Error("Enter a starting weight between 70 and 700 lb.");
+    if (sw === null && targetText) throw new Error("Enter your starting weight so the target weight can be worked out, or clear the target weight.");
+    const tl = targetLoss ? num(targetLoss) : null;
+    if (sw !== null && !(tl && tl > 0)) throw new Error("Enter how many pounds you want to lose.");
+    if (tl !== null && !(tl > 0)) throw new Error("Enter how many pounds you want to lose.");
     const sl = stretchLoss ? num(stretchLoss) : null;
-    if (sl !== null && sl < tl) throw new Error("The stretch goal should be at least the main goal.");
+    if (sl !== null && tl !== null && sl < tl) throw new Error("The stretch goal should be at least the main goal.");
+    if (sw !== null && !isISODate(startDate)) throw new Error("Enter the date of this weigh-in.");
+    if (sw !== null && startDate > today) throw new Error("The weigh-in date can't be in the future.");
+    const waistIn = waist ? num(waist) : null;
     await s.saveSingle("goals", {
-      start_weight: sw, start_date: startDate, target_loss: tl, stretch_loss: sl,
-      start_waist: waist ? num(waist) : null, pace, activity_level: activity || null,
+      start_weight: sw, start_date: sw !== null ? startDate : g?.start_date ?? null, target_loss: tl, stretch_loss: sl,
+      start_waist: waistIn, pace, activity_level: activity || null,
       health_notes: healthNotes.trim() || null, preferred_activities: prefs,
       weekly_training_minutes: minutes ? Math.round(num(minutes)) : null,
     });
-    // The confirmed start becomes the first weigh-in if that day has none.
-    if (!data.weights.some((w) => w.entry_date === startDate)) {
-      await s.insert("weights", { entry_date: startDate, weight: sw, waist_in: waist ? num(waist) : null, note: "Starting weight" });
+    if (sw === null) return;
+    // The confirmed start becomes the first weigh-in if that day has none; saving
+    // the step again corrects the one this setup made.
+    const mine = startEntryId ? data.weights.find((w) => w.id === startEntryId) : undefined;
+    const sameDay = data.weights.find((w) => w.entry_date === startDate);
+    const entry = { entry_date: startDate, weight: sw, waist_in: waistIn, note: "Starting weight" };
+    if (mine && (!sameDay || sameDay.id === mine.id)) return s.update("weights", mine.id, entry);
+    if (mine) {
+      // Moved onto a day that already has a weigh-in: that one stands.
+      await s.remove("weights", mine.id);
+      setStartEntryId(null);
+    }
+    if (!sameDay) {
+      const [row] = await s.insert<{ id: string }>("weights", entry);
+      setStartEntryId(row.id);
     }
   });
 
   const saveTraining = () => run(async () => {
+    const dated = readiness === "under_care" || readiness === "cleared_by_clinician";
+    if (dated && assessedOn > today) throw new Error("The assessment date can't be in the future.");
     await s.saveSingle("athletic", {
-      readiness: readiness || null, assessed_on: assessedOn || null, injury_notes: injuryNotes.trim() || null,
+      readiness: readiness || null, assessed_on: dated && assessedOn ? assessedOn : null, injury_notes: injuryNotes.trim() || null,
       training_days: days, weekly_session_target: Math.max(1, Math.min(14, Math.round(num(target) || 3))),
       goal_text: goalText.trim() || "Complete a 10K",
     });
   });
 
   const saveBusiness = () => run(async () => {
+    if ((baseRev !== "" && num(baseRev) < 0) || (baseExp !== "" && num(baseExp) < 0)) throw new Error("Monthly revenue and expenses can't be negative.");
     await s.saveSingle("businessSettings", {
       goal_metric: metric,
       baseline_revenue: baseRev === "" ? null : num(baseRev),
       baseline_expenses: baseExp === "" ? null : num(baseExp),
       baseline_confirmed_on: baseRev === "" && baseExp === "" ? null : today,
     });
+    let order = data.businesses.length;
     for (const key of workspaces) {
       const t = BUSINESS_TEMPLATES.find((x) => x.key === key)!;
       if (data.businesses.some((b) => b.name === t.name)) continue;
-      const [biz] = await s.insert<{ id: string }>("businesses", { name: t.name, kind: t.kind, description: t.description, sort_order: data.businesses.length });
+      const [biz] = await s.insert<{ id: string }>("businesses", { name: t.name, kind: t.kind, description: t.description, sort_order: order++ });
       await s.insert("offers", t.offers.map((o) => ({ ...o, business_id: biz.id })));
       await s.insert("metrics", t.metrics.map((m, idx) => ({ ...m, business_id: biz.id, sort_order: idx })));
     }
   });
 
   const saveHabits = () => run(async () => {
-    const picks = HABIT_TEMPLATES.filter((t) => habitPicks.includes(t.name) && !data.habits.some((h) => h.name === t.name));
+    const picks = habitChoices.filter((t) => habitPicks.includes(t.name) && !data.habits.some((h) => h.name === t.name));
     if (picks.length) await s.insert("habits", picks.map((t, idx) => habitFromTemplate(t, today, data.habits.length + idx)));
   });
 
   const savePrivacy = () => run(async () => {
-    if (share) await s.saveSingle("shareSettings", { ...share });
+    await s.saveSingle("shareSettings", { ...share });
   });
 
   const saveReminders = () => run(async () => {
@@ -227,13 +276,14 @@ export default function Onboarding() {
   };
 
   const tl = num(targetLoss), sw = num(startWeight), sl = stretchLoss ? num(stretchLoss) : null;
-  const weeks = 32.3;
+  // Weeks from the weigh-in to the end of the mission.
+  const weeks = diffDays(isISODate(startDate) ? startDate : today, MISSION_END) / 7;
 
   return (
     <div className="mx-auto max-w-2xl">
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6 flex items-center justify-between gap-3">
         <div className="eyebrow text-gold">Setup · step {Math.min(i, steps.length - 1) + 1} of {steps.length}</div>
-        <button className="text-[13px] text-mute hover:text-bone" onClick={finish}>Skip setup for now</button>
+        <button className="-my-3 shrink-0 py-3 text-[13px] text-mute hover:text-bone" onClick={finish} disabled={busy}>Skip setup for now</button>
       </div>
       {s.host.notice && <p role="status" className="mb-6 rounded-lg border border-line bg-raised px-4 py-3 text-[13px] text-mute">{s.host.notice}</p>}
       <div className="mb-8 flex gap-1.5">
@@ -245,7 +295,7 @@ export default function Onboarding() {
           <h1 className="text-[42px] leading-none">Welcome{data.profile.display_name ? `, ${data.profile.display_name}` : ""}.</h1>
           <p className="mt-3 text-[15px] text-mute">A few questions so targets come from your real numbers. Every step can be skipped and finished later — nothing is invented in the meantime.</p>
           {askName && (
-            <Field label="Your name" hint="Shown on your dashboard. Optional." className="mt-6 max-w-sm">
+            <Field label="Your name" hint="Optional. You can change it later in Settings." className="mt-6 max-w-sm">
               <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} autoComplete="given-name" />
             </Field>
           )}
@@ -279,23 +329,24 @@ export default function Onboarding() {
           <h1 className="text-[38px] leading-none">Body baseline</h1>
           <p className="text-[14px] text-mute">Weigh in on your usual scale and enter the number. Targets are calculated from it.</p>
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label={preset === "primary" && !g ? "Confirm your starting weight" : "Starting weight"}
-              hint={preset === "primary" && !g && startWeight === "267" ? "Pre-filled with the 267 lb from your plan — change it to today's scale reading." : undefined}>
-              <NumberInput value={startWeight} onChange={setStartWeight} suffix="lb" placeholder="e.g. 230.4" />
+            <Field label={preset === "primary" && !hasStart ? "Confirm your starting weight" : "Starting weight"}
+              hint={preset === "primary" && !hasStart && startWeight === "267" ? "Pre-filled with the 267 lb from your plan — change it to today's scale reading." : undefined}>
+              <NumberInput value={startWeight} onChange={changeStartWeight} suffix="lb" placeholder="e.g. 230.4" />
             </Field>
             <Field label="Weigh-in date"><Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} max={today} /></Field>
             <Field label={preset === "primary" ? "Target loss (50–60 lb)" : "Pounds to lose"} hint="You can enter a target weight instead, below.">
-              <NumberInput value={targetLoss} onChange={setTargetLoss} suffix="lb" />
+              <NumberInput value={targetLoss} onChange={changeTargetLoss} suffix="lb" />
             </Field>
             <Field label="Target weight" hint="Calculated from your baseline.">
-              <NumberInput value={sw && tl ? String(round(sw - tl, 1)) : ""} onChange={(v) => sw && v && setTargetLoss(String(round(sw - num(v), 1)))} suffix="lb" />
+              <NumberInput value={targetText ?? (sw && tl ? String(round(sw - tl, 1)) : "")} onChange={changeTargetWeight}
+                onBlur={() => sw && setTargetText(null)} suffix="lb" />
             </Field>
             <Field label="Stretch goal (optional)"><NumberInput value={stretchLoss} onChange={setStretchLoss} suffix="lb" /></Field>
             <Field label="Waist (optional)"><NumberInput value={waist} onChange={setWaist} suffix="in" /></Field>
           </div>
           {sw > 0 && tl > 0 && (
             <Notice tone="gold" title={`Target: ${round(sw - tl, 1)} lb${sl ? ` · stretch ${round(sw - sl, 1)} lb` : ""}`}>
-              Reaching {tl} lb by {fmtDate(MISSION_END)} averages {round(tl / weeks, 2)} lb/week. Your pace setting caps planning at {paceRate(pace, sw)} lb/week;
+              {weeks > 0 && <>Reaching {tl} lb by {fmtDate(MISSION_END)} averages {round(tl / weeks, 2)} lb/week. </>}Your pace setting caps planning at {paceRate(pace, sw)} lb/week;
               if the goal needs more than that, the roadmap shows a later date rather than an unsafe one.
             </Notice>
           )}
@@ -319,7 +370,7 @@ export default function Onboarding() {
           <Field group label="Activities you enjoy">
             <div className="flex flex-wrap gap-2">
               {ACTIVITY_OPTIONS.map((o) => (
-                <button key={o} type="button" onClick={() => setPrefs((p) => (p.includes(o) ? p.filter((x) => x !== o) : [...p, o]))}
+                <button key={o} type="button" aria-pressed={prefs.includes(o)} onClick={() => setPrefs((p) => (p.includes(o) ? p.filter((x) => x !== o) : [...p, o]))}
                   className={cx("rounded-full border px-3 py-1.5 text-[13px]", prefs.includes(o) ? "border-gold bg-gold-wash text-gold" : "border-line text-mute")}>{o}</button>
               ))}
             </div>
@@ -341,7 +392,7 @@ export default function Onboarding() {
           <Field group label="Where are you right now?">
             <div className="grid gap-2">
               {(Object.keys(READINESS_LABEL) as Readiness[]).map((r) => (
-                <button key={r} type="button" onClick={() => setReadiness(r)}
+                <button key={r} type="button" aria-pressed={readiness === r} onClick={() => setReadiness(r)}
                   className={cx("rounded-xl border px-4 py-3 text-left text-[14px]", readiness === r ? "border-gold bg-gold-wash text-bone" : "border-line text-mute")}>
                   {READINESS_LABEL[r]}
                 </button>
@@ -351,7 +402,7 @@ export default function Onboarding() {
           {(readiness === "under_care" || readiness === "cleared_by_clinician") && (
             <Field label="Date assessed"><Input type="date" value={assessedOn} max={today} onChange={(e) => setAssessedOn(e.target.value)} /></Field>
           )}
-          <Field label="Injury notes (private)"><Textarea value={injuryNotes} onChange={(e) => setInjuryNotes(e.target.value)} placeholder="What hurts, when, what makes it worse" /></Field>
+          <Field label="Injury notes (private)"><Textarea value={injuryNotes} onChange={(e) => setInjuryNotes(e.target.value)} maxLength={2000} placeholder="What hurts, when, what makes it worse" /></Field>
           <Field group label="Preferred training days"><DayPicker value={days} onChange={setDays} /></Field>
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Sessions per week"><NumberInput value={target} onChange={setTarget} step="1" /></Field>
@@ -401,11 +452,11 @@ export default function Onboarding() {
           <h1 className="text-[38px] leading-none">Daily system</h1>
           <p className="text-[14px] text-mute">Pick a starting set. Each has its own schedule — weekdays, weekends, or specific days — and you can edit everything later. Rest days pause training habits.</p>
           <div className="grid gap-2 sm:grid-cols-2">
-            {HABIT_TEMPLATES.filter((t) => !t.business || bizOn).map((t) => {
+            {habitChoices.map((t) => {
               const exists = data.habits.some((h) => h.name === t.name);
               const on = exists || habitPicks.includes(t.name);
               return (
-                <button key={t.name} type="button" disabled={exists}
+                <button key={t.name} type="button" disabled={exists} aria-pressed={on}
                   onClick={() => setHabitPicks((p) => (p.includes(t.name) ? p.filter((x) => x !== t.name) : [...p, t.name]))}
                   className={cx("rounded-xl border px-4 py-3 text-left", on ? "border-gold bg-gold-wash" : "border-line")}>
                   <div className="text-[14px] text-bone">{t.name}</div>
@@ -418,7 +469,7 @@ export default function Onboarding() {
         </section>
       )}
 
-      {step === "privacy" && share && (
+      {step === "privacy" && (
         <section className="animate-rise space-y-5">
           <h1 className="text-[38px] leading-none">What your partner can see</h1>
           <p className="text-[14px] text-mute">
@@ -464,7 +515,7 @@ export function PrivacyEditor({ value, onChange, business }: { value: ShareSetti
   const row = (label: string, sub: string, control: React.ReactNode) => (
     <div className="flex flex-col gap-2 border-b border-hair py-4 last:border-0 sm:flex-row sm:items-center sm:justify-between">
       <div><div className="text-[14px] text-bone">{label}</div><div className="text-[12px] text-mute">{sub}</div></div>
-      {control}
+      <div role="group" aria-label={label} className="flex flex-col">{control}</div>
     </div>
   );
   return (

@@ -2,7 +2,6 @@ import { useState, type FormEvent } from "react";
 import { useStore } from "@/data/store";
 import { checkAudience, fmtCount, platformInfo, PLATFORMS, platformSeries, readingOn } from "@/lib/calc/audience";
 import { fmtDate } from "@/lib/dates";
-import { num } from "@/lib/format";
 import type { AudienceEntry, AudiencePlatform } from "@/lib/types";
 import { useFeedback } from "../feedback";
 import { Button, Field, Input, NumberInput } from "../ui";
@@ -10,9 +9,13 @@ import { useSubmit } from "./body";
 
 const blank = (): Record<AudiencePlatform, string> => ({ instagram: "", youtube: "", skool: "" });
 
+/** Reads a total the way the apps show it: "12500", "12,500", "12 500", or abbreviated like "12.5K" or "1.2M". */
 function parseCount(raw: string, label: string): number {
-  const n = num(raw.replace(/[,\s]/g, ""));
-  if (!Number.isFinite(n) || n < 0) throw new Error(`${label} can't be negative.`);
+  const m = /^(-?)(\d+(?:\.\d+)?|\.\d+)([km]?)$/i.exec(raw.replace(/[,\s]/g, ""));
+  if (!m) throw new Error(`${label}: enter a number, like 12500, 12,500 or 12.5K.`);
+  if (m[1]) throw new Error(`${label} can't be negative.`);
+  const scale = { "": 1, k: 1_000, m: 1_000_000 }[m[3].toLowerCase() as "" | "k" | "m"];
+  const n = scale === 1 ? Number(m[2]) : Math.round(Number(m[2]) * scale);
   if (!Number.isInteger(n)) throw new Error(`${label} must be a whole number.`);
   if (n > 1_000_000_000) throw new Error(`${label} looks too large — check for extra digits.`);
   return n;
@@ -39,6 +42,10 @@ export function AudienceForm({ initial, onDone }: { initial?: AudienceEntry; onD
       const filled = shown.filter((p) => counts[p.key].trim() !== "");
       if (!filled.length) throw new Error("Enter at least one count.");
       const rows = filled.map((p) => ({ platform: p.key, count: parseCount(counts[p.key], `${p.name} ${p.unit}`) }));
+      const clash = initial && data.audience.find((e) => e.id !== initial.id && e.platform === initial.platform && e.recorded_on === date);
+      if (clash) {
+        throw new Error(`There's already a ${platformInfo(clash.platform).name} reading for ${fmtDate(date)} (${fmtCount(clash.count)}). Choose another date, or edit that reading instead.`);
+      }
       const reasons = rows.flatMap((r) => checkAudience(r.count, date, r.platform, data.audience, initial?.id).reasons.map((x) => `${platformInfo(r.platform).name}: ${x}`));
       if (reasons.length) {
         const ok = await confirm({
@@ -69,13 +76,15 @@ export function AudienceForm({ initial, onDone }: { initial?: AudienceEntry; onD
           const series = platformSeries(data.audience, p.key).filter((r) => !initial || r.date !== initial.recorded_on);
           const sameDay = series.find((r) => r.date === date);
           const last = readingOn(series.filter((r) => r.date !== date), date);
-          const hint = sameDay && !initial
-            ? `${fmtCount(sameDay.count)} already recorded for this date — saving replaces it.`
+          const hint = sameDay
+            ? initial
+              ? `${fmtCount(sameDay.count)} is already recorded for this date — choose another date.`
+              : `${fmtCount(sameDay.count)} already recorded for this date — saving replaces it.`
             : last ? `Last: ${fmtCount(last.count)} on ${fmtDate(last.date)}` : "First reading";
           return (
             <Field key={p.key} label={`${p.name} ${p.unit}`} hint={hint}>
-              <NumberInput value={counts[p.key]} onChange={(v) => setCounts((c) => ({ ...c, [p.key]: v }))}
-                step="1" min="0" inputMode="numeric" placeholder="0" aria-label={`${p.name} ${p.unit}`} />
+              <NumberInput type="text" value={counts[p.key]} onChange={(v) => setCounts((c) => ({ ...c, [p.key]: v }))}
+                inputMode="numeric" autoComplete="off" placeholder="0" aria-label={`${p.name} ${p.unit}`} />
             </Field>
           );
         })}

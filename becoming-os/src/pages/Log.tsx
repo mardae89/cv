@@ -1,5 +1,5 @@
 import { Check } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { CheckinForm, PhotoUpload, SymptomForm, WeightForm } from "@/components/forms/body";
 import { AudienceForm } from "@/components/forms/audience";
@@ -34,10 +34,21 @@ export default function Log() {
     { value: "mind", label: "Habits & mind" },
   ];
   const tab = (tabs.find((t) => t.value === params.get("tab"))?.value ?? "body") as Tab;
+  // On a phone the tabs scroll sideways: keep the open one in view (e.g. arriving from "Update counts").
+  const bar = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const box = bar.current;
+    const on = box?.querySelector<HTMLElement>('[aria-checked="true"]');
+    if (!box || !on) return;
+    const b = box.getBoundingClientRect();
+    const r = on.getBoundingClientRect();
+    if (r.right > b.right - 16) box.scrollLeft += r.right - b.right + 16;
+    else if (r.left < b.left + 16) box.scrollLeft -= b.left + 16 - r.left;
+  }, [tab]);
   return (
     <div>
       <PageHeader eyebrow="Logging centre" title="Record it" sub="Quick entries for everything. Every record is editable later, and every total recalculates." />
-      <div className="-mx-4 mb-6 overflow-x-auto px-4">
+      <div ref={bar} className="-mx-4 mb-6 overflow-x-auto px-4">
         <Segmented value={tab} onChange={(v) => setParams({ tab: v }, { replace: true })} options={tabs} />
       </div>
       {tab === "body" && <BodyTab />}
@@ -154,13 +165,13 @@ function NutritionTab() {
   const water = data.checkins.find((c) => c.checkin_date === date)?.water_oz;
   return (
     <div className="grid gap-5 lg:grid-cols-2">
-      <Panel title="Log a meal"><MealForm key={date} date={date} /></Panel>
+      <Panel title="Log a meal"><MealForm date={date} onDateChange={setDate} /></Panel>
       <Card>
         <div className="mb-4 flex items-center justify-between gap-3">
           <h2 className="text-[24px] leading-none">Day total</h2>
           <Input type="date" value={date} max={today} onChange={(e) => setDate(e.target.value)} className="w-auto py-2" aria-label="Day" />
         </div>
-        <div className="grid grid-cols-5 gap-2 text-center">
+        <div className="grid grid-cols-3 gap-2 text-center sm:grid-cols-5">
           {[["Calories", Math.round(sum("calories"))], ["Protein", `${Math.round(sum("protein_g"))}g`], ["Carbs", `${Math.round(sum("carbs_g"))}g`], ["Fat", `${Math.round(sum("fat_g"))}g`], ["Water", water != null ? `${water}oz` : "—"]].map(([k, v]) => (
             <div key={k} className="rounded-xl bg-raised px-1 py-3"><div className="eyebrow mb-1 text-[9px]">{k}</div><div className="num text-[16px] font-semibold">{v}</div></div>
           ))}
@@ -232,8 +243,9 @@ function BusinessTab() {
 function AudienceTab() {
   const { data, remove } = useStore();
   const [edit, setEdit] = useState<AudienceEntry | null>(null);
-  const [platform, setPlatform] = useState<AudiencePlatform>(
-    () => PLATFORMS.find((p) => data.audience.some((e) => e.platform === p.key))?.key ?? "instagram");
+  // Until one is picked, the chart shows the first platform that has readings.
+  const [picked, setPlatform] = useState<AudiencePlatform | null>(null);
+  const platform = picked ?? PLATFORMS.find((p) => data.audience.some((e) => e.platform === p.key))?.key ?? "instagram";
   const info = platformInfo(platform);
   const series = platformSeries(data.audience, platform);
   const recent = [...data.audience].sort((a, b) =>

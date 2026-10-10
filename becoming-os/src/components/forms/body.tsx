@@ -47,7 +47,9 @@ export function WeightForm({ initial, onDone }: { initial?: WeightEntry; onDone?
       if (!d.ok) throw new Error("You can't log a weigh-in for a future date.");
       const w = weight ? num(weight) : null;
       if (w !== null && (w < 70 || w > 700)) throw new Error("Weight must be between 70 and 700 lb.");
-      let flagged = false;
+      // A second save on the same day updates that day's entry; a box left empty keeps what's there.
+      const keep = initial ? undefined : existing;
+      let flagged = w === null ? keep?.flagged ?? false : false;
       if (w !== null) {
         const c = checkWeight(w, date, data.weights, data.goals?.start_weight ?? null, initial?.id ?? existing?.id);
         if (!c.ok) {
@@ -60,7 +62,10 @@ export function WeightForm({ initial, onDone }: { initial?: WeightEntry; onDone?
           flagged = true;
         }
       }
-      const row = { entry_date: date, weight: w, waist_in: waist ? num(waist) : null, note: note.trim() || null, flagged };
+      const row = {
+        entry_date: date, weight: w ?? keep?.weight ?? null, waist_in: waist ? num(waist) : keep?.waist_in ?? null,
+        note: note.trim() || keep?.note || null, flagged,
+      };
       if (initial) await update("weights", initial.id, row);
       else await upsert("weights", row, "user_id,entry_date");
       if (!initial) {
@@ -69,7 +74,7 @@ export function WeightForm({ initial, onDone }: { initial?: WeightEntry; onDone?
         setNote("");
       }
       onDone?.();
-      return initial ? "Weigh-in updated." : existing ? `Replaced the weigh-in for ${fmtDate(date)}.` : "Weigh-in saved.";
+      return initial ? "Weigh-in updated." : existing ? `Updated the weigh-in for ${fmtDate(date)}.` : "Weigh-in saved.";
     });
   };
 
@@ -81,7 +86,12 @@ export function WeightForm({ initial, onDone }: { initial?: WeightEntry; onDone?
         <Field label="Waist (optional)"><NumberInput value={waist} onChange={setWaist} suffix="in" /></Field>
         <Field label="Note"><Input value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} placeholder="optional" /></Field>
       </div>
-      {existing && !initial && <p className="text-[12px] text-faint">You already logged {existing.weight} lb on this date — saving replaces it (one weigh-in per day).</p>}
+      {existing && !initial && (
+        <p className="text-[12px] text-faint">
+          You already logged {[existing.weight != null && `${existing.weight} lb`, existing.waist_in != null && `a ${existing.waist_in} in waist`].filter(Boolean).join(" and ")} on
+          this date — saving updates it (one weigh-in per day). Boxes left empty keep what's there.
+        </p>
+      )}
       <Button type="submit" busy={busy} className="w-full">{initial ? "Save changes" : "Save weigh-in"}</Button>
     </form>
   );
@@ -99,11 +109,28 @@ export function CheckinForm({ initial, onDone }: { initial?: DailyCheckin; onDon
   const [fatigue, setFatigue] = useState<number | null>(base?.fatigue ?? null);
   const [water, setWater] = useState(base?.water_oz != null ? String(base.water_oz) : "");
   const [note, setNote] = useState(base?.note ?? "");
+  // Show what's saved for the chosen date (blank if nothing), and follow it when it's
+  // edited or deleted elsewhere, so "Update" never overwrites it with stale values.
+  const baseKey = initial ? "" : `${date}|${base ? JSON.stringify(base) : ""}`;
+  const [loaded, setLoaded] = useState(baseKey);
+  if (loaded !== baseKey) {
+    setLoaded(baseKey);
+    setSleep(base?.sleep_hours != null ? String(base.sleep_hours) : "");
+    setQuality(base?.sleep_quality ?? null);
+    setEnergy(base?.energy ?? null);
+    setSoreness(base?.soreness ?? null);
+    setFatigue(base?.fatigue ?? null);
+    setWater(base?.water_oz != null ? String(base.water_oz) : "");
+    setNote(base?.note ?? "");
+  }
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
     run(async () => {
       if (date > today) throw new Error("You can't log a check-in for a future date.");
+      if (!sleep && quality === null && energy === null && soreness === null && fatigue === null && !water && !note.trim()) {
+        throw new Error(initial ? "Fill in at least one thing, or delete this check-in instead." : "Fill in at least one thing before saving.");
+      }
       if (sleep && (num(sleep) < 0 || num(sleep) > 24)) throw new Error("Sleep must be between 0 and 24 hours.");
       const row = {
         checkin_date: date, sleep_hours: sleep ? num(sleep) : null, sleep_quality: quality, energy, soreness, fatigue,
@@ -151,9 +178,10 @@ export function SymptomForm({ initial, onDone }: { initial?: SymptomLog; onDone?
   const submit = (e: FormEvent) => {
     e.preventDefault();
     run(async () => {
+      if (!area.trim()) throw new Error("Say where it hurts — for example Ankle or Knee.");
       if (pain === null) throw new Error("Choose a pain level from 0 to 10.");
       if (date > today) throw new Error("You can't log symptoms for a future date.");
-      const row = { log_date: date, body_area: area.trim() || "Ankle", side, pain_level: pain, pain_type: type || null, during: during || null, note: note.trim() || null };
+      const row = { log_date: date, body_area: area.trim(), side, pain_level: pain, pain_type: type || null, during: during || null, note: note.trim() || null };
       if (initial) await update("symptoms", initial.id, row);
       else await insert("symptoms", row);
       if (!initial) {
@@ -292,7 +320,7 @@ export function PhotoUpload({ onDone }: { onDone?: () => void }) {
       <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-line px-4 py-6 text-center text-[13px] text-mute hover:border-gold/60">
         <Camera className="h-6 w-6 text-gold" />
         {file ? <span className="text-bone">{file.name}</span> : <span>Take or choose a progress photo</span>}
-        <input ref={input} type="file" accept="image/*" capture="environment" className="sr-only" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+        <input ref={input} type="file" accept="image/*" className="sr-only" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
       </label>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Date"><Input type="date" value={date} max={today} onChange={(e) => setDate(e.target.value)} /></Field>

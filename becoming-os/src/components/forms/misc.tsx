@@ -6,11 +6,16 @@ import { useFeedback } from "../feedback";
 import { Button, Field, Input, NumberInput, Segmented, Textarea, Toggle } from "../ui";
 import { useSubmit } from "./body";
 
-export function MealForm({ initial, date: initialDate, onDone }: { initial?: NutritionLog; date?: string; onDone?: () => void }) {
+/** With `onDateChange`, the date follows the caller's (the Log page keeps it in step with the day it shows). */
+export function MealForm({ initial, date: shownDate, onDateChange, onDone }: {
+  initial?: NutritionLog; date?: string; onDateChange?: (date: string) => void; onDone?: () => void;
+}) {
   const { data, today, insert, update } = useStore();
   const { confirm } = useFeedback();
   const { busy, run } = useSubmit();
-  const [date, setDate] = useState(initial?.log_date ?? initialDate ?? today);
+  const [ownDate, setOwnDate] = useState(initial?.log_date ?? shownDate ?? today);
+  const date = onDateChange && shownDate ? shownDate : ownDate;
+  const setDate = onDateChange ?? setOwnDate;
   const [meal, setMeal] = useState<Meal>(initial?.meal ?? "breakfast");
   const [desc, setDesc] = useState(initial?.description ?? "");
   const [cal, setCal] = useState(initial?.calories != null ? String(initial.calories) : "");
