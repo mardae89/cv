@@ -1,0 +1,77 @@
+@import "@fontsource-variable/inter";
+@import "@fontsource/cormorant-garamond/500.css";
+@import "@fontsource/cormorant-garamond/600.css";
+@import "@fontsource/cormorant-garamond/500-italic.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* BECOMING OS is a single, deliberately dark theme: matte black ground,
+   white type, gold reserved for progress and achievement. */
+:root {
+  --ink: #0a0a0b;
+  --panel: #111113;
+  --raised: #18181b;
+  --line: #2a2a2f;
+  --hair: #1d1d21;
+  --bone: #f4f2ec;
+  --mute: #a09fa6;
+  --faint: #6c6b73;
+  --gold: #c9a24c;
+  --gold-hi: #e4c77f;
+  --gold-dim: #6d5a2b;
+  --gold-wash: rgba(201, 162, 76, 0.1);
+  --alert: #d9735f;
+  --calm: #8fb3a0;
+  /* The same colours as RGB channels, so Tailwind opacity modifiers work. */
+  --c-ink: 10 10 11;
+  --c-panel: 17 17 19;
+  --c-raised: 24 24 27;
+  --c-line: 42 42 47;
+  --c-hair: 29 29 33;
+  --c-bone: 244 242 236;
+  --c-mute: 160 159 166;
+  --c-faint: 108 107 115;
+  --c-gold: 201 162 76;
+  --c-gold-hi: 228 199 127;
+  --c-gold-dim: 109 90 43;
+  --c-alert: 217 115 95;
+  --c-calm: 143 179 160;
+  color-scheme: dark;
+}
+
+html, body, #root { min-height: 100%; }
+body {
+  @apply bg-ink text-bone font-sans antialiased;
+  font-feature-settings: "cv11", "ss01";
+  -webkit-tap-highlight-color: transparent;
+}
+
+@layer base {
+  h1, h2, h3 { @apply font-display font-semibold tracking-tight; }
+  input, select, textarea, button { font: inherit; }
+  :focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+  /* Grid items may shrink below their content, so long text truncates instead of widening the page. */
+  .grid > * { min-width: 0; }
+  input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
+  input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.75); }
+}
+
+@layer components {
+  .eyebrow { @apply text-[10.5px] font-semibold uppercase tracking-eyebrow text-mute; }
+  .num { font-variant-numeric: tabular-nums lining-nums; }
+  .display-num { @apply font-display; font-variant-numeric: lining-nums proportional-nums; }
+  .card { @apply min-w-0 rounded-2xl border border-hair bg-panel; }
+  .hairline { @apply border-hair; }
+  .input {
+    @apply w-full rounded-xl border border-line bg-raised px-3.5 py-3 text-[15px] text-bone placeholder:text-faint
+      outline-none transition focus:border-gold/70 disabled:opacity-50;
+  }
+  .link { @apply text-gold underline-offset-4 hover:underline; }
+  .safe-bottom { padding-bottom: max(env(safe-area-inset-bottom), 0px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}
