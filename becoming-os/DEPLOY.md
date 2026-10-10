@@ -9,7 +9,7 @@ There is nothing to deploy and nothing to configure. Pick one of two ways to run
 The app is published as a private page in your claude.ai account. Open it on any
 device where you're signed in to Claude; your records follow you.
 
-1. Open the page (link in your Claude conversation, or **claude.ai → Artifacts →
+1. Open the page — https://claude.ai/artifact/L5rmT6CBggnFhJZnXZfckY (or **claude.ai → Artifacts →
    BECOMING OS**). On a phone you can add it to your home screen from the browser.
 2. **You:** go through setup → **Body, business and a 10K** → confirm your starting
    weight (pre-filled with 267 lb from your plan — change it to today's scale
