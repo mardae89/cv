@@ -1,8 +1,10 @@
 import { defineConfig, devices } from "@playwright/test";
 import { existsSync } from "node:fs";
 
-// Runs against a local Supabase-compatible stack (see scripts/local-stack.sh
-// or `supabase start`). Set PW_CHROMIUM to use a preinstalled browser.
+// Runs against the Vite dev server with no backend: each test opens fresh
+// browser contexts, so the app starts in device mode with empty IndexedDB.
+// An already-running server on 8080 is reused; set E2E_BASE_URL to test a
+// different build instead. Set PW_CHROMIUM to use a preinstalled browser.
 const executablePath = process.env.PW_CHROMIUM ?? (existsSync("/opt/pw-browsers/chromium") ? "/opt/pw-browsers/chromium" : undefined);
 
 export default defineConfig({

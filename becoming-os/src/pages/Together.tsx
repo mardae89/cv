@@ -1,10 +1,10 @@
 import { HardDrive, Users } from "lucide-react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { PartnerFitnessCard } from "@/components/cards";
 import { Chart, ChartCard, GOLD, NEUTRAL } from "@/components/charts";
 import { useSubmit } from "@/components/forms/body";
-import { Button, Card, Eyebrow, Meter, Notice, PageHeader, Pill, Stat } from "@/components/ui";
+import { Button, Card, Eyebrow, Meter, Notice, PageHeader, Pill, Segmented, Stat } from "@/components/ui";
 import { DEFAULT_SHARE, type SharedSummary } from "@/data/partner";
 import { useStore } from "@/data/store";
 import { ACTIVITY_LABEL, isSession, PHASES } from "@/lib/calc/athletic";
@@ -13,7 +13,6 @@ import { indexHabits, periodScore } from "@/lib/calc/habits";
 import { fmtDate, fmtShort, weekStart } from "@/lib/dates";
 import { money, num, pct, plural } from "@/lib/format";
 import type { ShareSettings } from "@/lib/types";
-import { PrivacyEditor } from "./Onboarding";
 
 export default function Together() {
   const { host, partners } = useStore();
@@ -66,7 +65,7 @@ function DeviceOnly() {
         <HardDrive className="mb-3 h-6 w-6 text-gold" />
         <h2 className="text-[26px] leading-none">Sharing needs the published page</h2>
         <div className="mt-3 space-y-2 text-[13.5px] text-mute">
-          <p>Your records here are saved in this browser only, so there's nothing for your partner to see from here.</p>
+          <p>Your records here aren't synced anywhere, so there's nothing for your partner to see from here.</p>
           <p>Sharing works on the published BECOMING OS page: its owner invites the other person by email as an Editor from the page's Share menu, and each of you sees the other's shared summary on this screen.</p>
           <p>To bring what you've logged here onto the page, save a backup in <Link to="/settings#data" className="link">Settings → Your data</Link> and restore it there.</p>
         </div>
@@ -147,7 +146,13 @@ function PartnerView({ p }: { p: SharedSummary }) {
       </Card>
 
       <div className="grid gap-4 md:grid-cols-2">
-        <PartnerFitnessCard o={p} />
+        {p.weight ? <PartnerFitnessCard o={p} /> : (
+          <Card>
+            <Eyebrow className="mb-1">{name}</Eyebrow>
+            <h3 className="mb-4 text-[24px] leading-none">Weight progress</h3>
+            <NotShared what="Weight" />
+          </Card>
+        )}
         <Card>
           <Eyebrow className="mb-1">{name}</Eyebrow>
           <h3 className="mb-4 text-[24px] leading-none">Training & business</h3>
@@ -231,7 +236,43 @@ function PartnerView({ p }: { p: SharedSummary }) {
   );
 }
 
-const SHARE_KEYS = ["weight", "training", "habits", "health", "photos", "milestones", "business"] as const;
+const SHARE_KEYS = ["weight", "training", "habits", "milestones", "business"] as const;
+
+/** Only the levels the shared summary actually honours. Health details and
+ *  photos never leave your private space, so they get no control here. */
+function ShareEditor({ value, onChange, business }: { value: ShareSettings; onChange: (v: ShareSettings) => void; business: boolean }) {
+  const set = <K extends keyof ShareSettings>(k: K, v: ShareSettings[K]) => onChange({ ...value, [k]: v });
+  // Older settings may say "full" where the summary only has one level.
+  const on = (v: string) => (v === "none" ? "none" : "summary");
+  const row = (label: string, sub: string, control: ReactNode) => (
+    <div className="flex flex-col gap-2 border-b border-hair py-4 last:border-0 sm:flex-row sm:items-center sm:justify-between">
+      <div><div className="text-[14px] text-bone">{label}</div><div className="text-[12px] text-mute">{sub}</div></div>
+      {control}
+    </div>
+  );
+  return (
+    <Card className="py-1">
+      {row("Weight progress", "% of goal hides pounds and weights. Weight milestones need pounds or more. Full adds your weigh-in chart.",
+        <Segmented size="sm" value={value.weight} onChange={(v) => set("weight", v)} options={[
+          { value: "none", label: "Hidden" }, { value: "percent", label: "% of goal" }, { value: "pounds", label: "Pounds lost" }, { value: "full", label: "Full detail" }]} />)}
+      {row("Training", "Summary: sessions, distance, longest run. Full: also your recent workouts.",
+        <Segmented size="sm" value={value.training} onChange={(v) => set("training", v)} options={[
+          { value: "none", label: "Hidden" }, { value: "summary", label: "Summary" }, { value: "full", label: "Full" }]} />)}
+      {row("Habits", "Completion percentages for today and this week. Individual habits aren't shared.",
+        <Segmented size="sm" value={on(value.habits)} onChange={(v) => set("habits", v)} options={[
+          { value: "none", label: "Hidden" }, { value: "summary", label: "Shared" }]} />)}
+      {row("Milestones", "Your achievement timeline (category limits above still apply).",
+        <Segmented size="sm" value={value.milestones} onChange={(v) => set("milestones", v)} options={[
+          { value: "none", label: "Hidden" }, { value: "full", label: "Shared" }]} />)}
+      {business && row("Business", "Progress toward the monthly goal only. Transactions and customers aren't shared.",
+        <Segmented size="sm" value={on(value.business)} onChange={(v) => set("business", v)} options={[
+          { value: "none", label: "Private" }, { value: "summary", label: "Goal only" }]} />)}
+      <p className="pb-4 pt-1 text-[12px] text-faint">
+        Health details and progress photos are never shared. Journal entries and reflections stay private unless you mark an individual entry as shared.
+      </p>
+    </Card>
+  );
+}
 
 function SharingSettings() {
   const { host, shareSettings, data, saveSingle } = useStore();
@@ -253,7 +294,7 @@ function SharingSettings() {
             : "Saved with your records. They take effect once your records are on the published page; nothing is shared from this browser."}
         </p>
       </div>
-      <PrivacyEditor value={value} onChange={setDraft} business={data.profile.business_enabled} />
+      <ShareEditor value={value} onChange={setDraft} business={data.profile.business_enabled} />
       <Button busy={busy} disabled={!dirty} onClick={() => run(async () => {
         await saveSingle("shareSettings", { ...value });
         setDraft(null);

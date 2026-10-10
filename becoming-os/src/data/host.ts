@@ -2,7 +2,7 @@
 //   • inside the published claude.ai page → that page's private database,
 //     synced across devices and between the two of you
 //   • anywhere else (a saved copy, a website) → this browser's own storage
-import { DeviceStore, MemoryStore, SharedPageStore, type ClaudeDb, type DocStore } from "./docstore";
+import { DeviceStore, MemoryStore, SharedPageStore, type ClaudeDb, type DocStore, type StorageError } from "./docstore";
 
 interface ClaudeUser {
   id(): Promise<string | null>;
@@ -65,7 +65,14 @@ export async function detectHost(): Promise<Host> {
       try {
         await store.set(`data/users/${uid}/hello`, { seen: new Date().toISOString().slice(0, 10) });
         return { mode: "shared-page", store, uid, displayName: name, notice: null, user, downloads, framed: isFramed() };
-      } catch {
+      } catch (e) {
+        // Only a refusal means view-only access. Anything else (a network blip, a busy
+        // platform) would strand records in this browser, so show the retry screen instead.
+        if ((e as StorageError)?.code !== "invalid_argument") {
+          throw new Error((e as StorageError)?.code === "revoked"
+            ? "Access to this page changed. Reload to continue."
+            : "Couldn't reach this page's storage. Check your connection and try again.");
+        }
         const local = await deviceStore();
         return {
           mode: "device", store: local.store, uid: "local", displayName: name, user, downloads, framed: isFramed(),

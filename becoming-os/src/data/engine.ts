@@ -7,7 +7,7 @@ import type { Profile } from "@/lib/types";
 import type { DocStore, StoredDoc } from "./docstore";
 import { StorageError } from "./docstore";
 import {
-  bucketOf, LIST_KEYS, SINGLE_DEFAULTS, SINGLE_KEYS, TABLES, validateRow, validateSingle, ValidationError,
+  bucketOf, LIST_KEYS, normalize, SINGLE_DEFAULTS, SINGLE_KEYS, TABLES, validateProfile, validateRow, validateSingle, ValidationError,
   type ListKey, type Row, type SingleKey,
 } from "./schema";
 
@@ -23,6 +23,10 @@ export interface SaveStatus {
   pending: number;
   /** Last storage failure, cleared by the next successful save. */
   error: string | null;
+  /** True while a failed save will be tried again by itself; false when it needs the person to act. */
+  retrying: boolean;
+  /** Why changes from other devices aren't arriving, when they aren't. */
+  sync: string | null;
   lastSavedAt: number | null;
 }
 
@@ -36,8 +40,11 @@ export interface ExportFile {
   images?: Record<string, string>;
 }
 
-const PAGE_CHARS = 150_000;
+/** Bytes per stored page; a document may hold 256 KiB. */
+const PAGE_BYTES = 150_000;
 const CONCURRENCY = 6;
+/** Storage answers that another attempt can't change (too large, storage full, access gone). */
+const PERMANENT = new Set(["invalid_argument", "quota_exceeded", "revoked", "transform_error"]);
 
 export function newId(): string {
   const c = globalThis.crypto as Crypto | undefined;
@@ -72,6 +79,12 @@ const UNIQUE_MESSAGE: Partial<Record<ListKey, string>> = {
 
 type BucketKey = string; // "t~<table>~<bucket>" | "s~<single>" | "profile"
 
+/** Page 0 keeps a fixed id; the others carry their version, so a new write never overwrites the pages the current page 0 names. */
+const pageId = (key: BucketKey, i: number, ver: string) => (i === 0 ? `${key}~0` : `${key}~${i}~${ver}`);
+
+/** Sortable, so a later reset always wins over an earlier one. */
+const newEpoch = () => `${Date.now().toString(36).padStart(9, "0")}-${newId().slice(0, 6)}`;
+
 function validTimeZone(tz: unknown): tz is string {
   if (typeof tz !== "string" || !tz) return false;
   try {
@@ -86,18 +99,44 @@ export class Engine {
   private state: EngineState;
   private listeners = new Set<() => void>();
   private statusListeners = new Set<() => void>();
-  private status: SaveStatus = { pending: 0, error: null, lastSavedAt: null };
+  private status: SaveStatus = { pending: 0, error: null, retrying: false, sync: null, lastSavedAt: null };
   private chains = new Map<BucketKey, Promise<void>>();
   private queued = new Map<BucketKey, Promise<void>>();
+  /** Chunks being written, or waiting for a write slot. */
   private inflight = new Set<BucketKey>();
-  private failed = new Set<BucketKey>();
-  /** Page count and version last stored for each chunk, for cleanup and echo detection. */
-  private stored = new Map<BucketKey, { pages: number; ver: string }>();
+  /** Chunks whose last write failed → whether that failure is permanent (no automatic retry). */
+  private failed = new Map<BucketKey, boolean>();
+  /**
+   * For each chunk: the version page 0 names, the versions it builds on, and
+   * the extra page ids to delete once a newer page 0 is stored.
+   */
+  private stored = new Map<BucketKey, { ver: string; after: string[]; extra: Set<string> }>();
+  /**
+   * Rows changed here that no other device has built on yet, per chunk (row id → change number).
+   * When another device writes a version of the chunk that doesn't include ours (it was
+   * offline, or both saved at once), these rows keep their local state and everything else
+   * comes from the other version, so neither side's rows are lost.
+   */
+  private dirty = new Map<BucketKey, Map<string, number>>();
+  /** Our recent versions of each chunk, and the last change number each one carried. */
+  private acks = new Map<BucketKey, { ver: string; mark: number }[]>();
+  private seq = 0;
+  /** Bumped by reset (and so import); a newer one from another device means "start over from storage". */
+  private epoch = "";
   private active = 0;
   private waiting: (() => void)[] = [];
-  private retryTimer: ReturnType<typeof setTimeout> | null = null;
-  private retryDelay = 3000;
+  private retryTimers = new Map<BucketKey, ReturnType<typeof setTimeout>>();
+  private retryDelays = new Map<BucketKey, number>();
   private unwatch: (() => void) | null = null;
+  private watchTimer: ReturnType<typeof setTimeout> | null = null;
+  private watchDelay = 1000;
+  private closed = false;
+  /**
+   * Versions already reflected in our state (written here, loaded, or taken
+   * from another device). A snapshot carrying one of these is old news — often
+   * a late echo of our own earlier save — and must not overwrite newer edits.
+   */
+  private seen = new Set<string>();
   readonly base: string;
 
   private constructor(readonly store: DocStore, readonly uid: string, profile: Profile) {
@@ -117,17 +156,55 @@ export class Engine {
     e.hydrate(docs);
     if (!docs.some((d) => d.id === "profile")) {
       for (const k of SINGLE_KEYS) {
-        if (k === "shareSettings" || k === "reminderSettings") e.state.singles[k] = { id: k, user_id: uid, ...SINGLE_DEFAULTS[k] };
+        // Only fill in what's missing: a first run that half-saved may already have stored these.
+        if ((k === "shareSettings" || k === "reminderSettings") && !e.state.singles[k]) {
+          e.state.singles[k] = { id: k, user_id: uid, ...SINGLE_DEFAULTS[k] };
+        }
       }
-      await Promise.all([e.persist("profile"), e.persist("s~shareSettings"), e.persist("s~reminderSettings")]);
+      try {
+        await Promise.all([e.persist("profile"), e.persist("s~shareSettings"), e.persist("s~reminderSettings")]);
+      } catch (err) {
+        // Nobody holds this engine, so stop its retries: a late retry would
+        // overwrite the profile a later successful open goes on to save.
+        e.close();
+        throw err;
+      }
     }
-    e.unwatch = store.watch(e.base, (all) => e.applyRemote(all));
+    e.startWatch();
     return e;
   }
 
   close() {
+    this.closed = true;
     this.unwatch?.();
-    if (this.retryTimer) clearTimeout(this.retryTimer);
+    this.unwatch = null;
+    for (const t of this.retryTimers.values()) clearTimeout(t);
+    this.retryTimers.clear();
+    if (this.watchTimer) clearTimeout(this.watchTimer);
+  }
+
+  /** Listen for other devices; if the listener dies, say so and reconnect when that can help. */
+  private startWatch() {
+    if (this.closed) return;
+    this.unwatch = this.store.watch(this.base, (all) => {
+      this.watchDelay = 1000;
+      if (this.status.sync) this.setStatus({ sync: null });
+      this.applyRemote(all);
+    }, (err) => {
+      if (this.closed) return;
+      this.unwatch = null;
+      if (err.code === "unavailable" || err.code === "resource_exhausted") {
+        this.setStatus({ sync: "Changes from your other devices are paused. Reconnecting…" });
+        const delay = this.watchDelay;
+        this.watchDelay = Math.min(delay * 2, 60_000);
+        this.watchTimer = setTimeout(() => {
+          this.watchTimer = null;
+          this.startWatch();
+        }, delay);
+      } else {
+        this.setStatus({ sync: "Changes from your other devices have stopped arriving. Reload the page to see them." });
+      }
+    });
   }
 
   // ─────────────────────────────────────────────────────────── reading ──
@@ -168,7 +245,7 @@ export class Engine {
     const i = list.findIndex((r) => r.id === id);
     if (i < 0) throw new ValidationError("That record no longer exists.");
     const before = list[i];
-    const after: Row = { ...before, ...stripMeta(patch), id, updated_at: nowIso() } as Row;
+    const after: Row = normalize(table, { ...before, ...stripMeta(patch), id, updated_at: nowIso() } as Row);
     validateRow(table, after);
     this.checkCross(table, after, list, id);
     const next = [...list];
@@ -220,7 +297,7 @@ export class Engine {
 
   async saveSingle(key: SingleKey, patch: Record<string, unknown>): Promise<Row> {
     const before = this.state.singles[key] ?? { id: key, user_id: this.uid, ...SINGLE_DEFAULTS[key] };
-    const after = { ...before, ...stripMeta(patch), id: key, user_id: this.uid, updated_at: nowIso() } as Row;
+    const after = normalize(key, { ...before, ...stripMeta(patch), id: key, user_id: this.uid, updated_at: nowIso() } as Row);
     validateSingle(key, after);
     this.commit({ singles: { ...this.state.singles, [key]: after } });
     await this.persist(`s~${key}`);
@@ -231,32 +308,48 @@ export class Engine {
     const next = { ...this.state.profile, ...patch, id: this.uid };
     if (!validTimeZone(next.timezone)) throw new ValidationError(`Unknown time zone: ${next.timezone}`);
     if (typeof next.display_name === "string") next.display_name = next.display_name.slice(0, 60);
+    validateProfile(next as unknown as Record<string, unknown>);
     this.commit({ profile: next });
     await this.persist("profile");
   }
 
-  /** Load many rows at once (demo data, imports) with the same row rules. */
-  async bulk(plan: { tables?: Partial<Record<ListKey, Record<string, unknown>[]>>; singles?: Partial<Record<SingleKey, Record<string, unknown>>> }) {
-    const tables = { ...this.state.tables };
+  /** Load many rows at once (demo data, imports) with the same rules as insert, all or nothing. */
+  async bulk(plan: BulkPlan) {
+    const { tables, singles, keys } = this.stage(this.state.tables, this.state.singles, plan, true);
+    this.commit({ tables, singles });
+    await this.persistAll(keys);
+  }
+
+  /** Check a bulk plan row by row against `base` and return the resulting state. Throws on the first bad row. */
+  private stage(base: Record<ListKey, Row[]>, baseSingles: Record<SingleKey, Row | null>, plan: BulkPlan, mark: boolean) {
+    const tables = { ...base };
     const keys = new Set<BucketKey>();
+    // LIST_KEYS lists parents before children, so links are checked against rows staged just before.
     for (const t of LIST_KEYS) {
       const rows = plan.tables?.[t];
       if (!rows?.length) continue;
-      const prepared = rows.map((r) => this.prepare(t, r));
-      tables[t] = [...tables[t], ...prepared];
-      this.touch(t, prepared).forEach((k) => keys.add(k));
+      const list = [...tables[t]];
+      const added: Row[] = [];
+      for (const input of rows) {
+        const r = this.prepare(t, input);
+        this.checkCross(t, r, list, null, tables);
+        list.push(r);
+        added.push(r);
+      }
+      tables[t] = list;
+      this.touch(t, added, mark).forEach((k) => keys.add(k));
+      Object.assign(tables, this.applyCap(t, tables, keys, mark));
     }
-    const singles = { ...this.state.singles };
+    const singles = { ...baseSingles };
     for (const k of SINGLE_KEYS) {
       const s = plan.singles?.[k];
       if (!s) continue;
-      const row = { ...(singles[k] ?? SINGLE_DEFAULTS[k]), ...s, id: k, user_id: this.uid } as Row;
+      const row = normalize(k, { ...(singles[k] ?? SINGLE_DEFAULTS[k]), ...stripMeta(s), id: k, user_id: this.uid } as Row);
       validateSingle(k, row);
       singles[k] = row;
       keys.add(`s~${k}`);
     }
-    this.commit({ tables, singles });
-    await this.persistAll(keys);
+    return { tables, singles, keys };
   }
 
   /** Delete every record (and photo) this person has stored. */
@@ -268,6 +361,10 @@ export class Engine {
     for (const d of all) if (d.id.startsWith("t~")) await this.store.remove(`${this.base}/${d.id}`);
     for (const k of SINGLE_KEYS) if (k !== "shareSettings" && k !== "reminderSettings") await this.store.remove(`${this.base}/s~${k}`);
     this.stored.clear();
+    this.dirty.clear();
+    this.acks.clear();
+    // Other open devices see the new epoch on the profile and reload from storage.
+    this.epoch = newEpoch();
     this.commit({
       tables: emptyTables(),
       singles: { ...emptySingles(), shareSettings: this.state.singles.shareSettings, reminderSettings: this.state.singles.reminderSettings },
@@ -293,15 +390,27 @@ export class Engine {
   /** Replace everything with a backup file's contents. */
   async importAll(file: ExportFile): Promise<void> {
     if (file?.app !== "becoming-os" || file.version !== 1 || !file.tables) throw new ValidationError("That file isn't a BECOMING OS backup.");
-    await this.reset();
     const tables: Partial<Record<ListKey, Record<string, unknown>[]>> = {};
-    for (const t of LIST_KEYS) tables[t] = (file.tables[t] ?? []) as Record<string, unknown>[];
+    for (const t of LIST_KEYS) tables[t] = (Array.isArray(file.tables[t]) ? file.tables[t] : []) as Record<string, unknown>[];
     const singles: Partial<Record<SingleKey, Record<string, unknown>>> = {};
     for (const k of SINGLE_KEYS) if (file.singles?.[k]) singles[k] = file.singles[k] as Record<string, unknown>;
+    const { id: _ignore, ...profile } = file.profile ?? ({} as Profile);
+    void _ignore;
+    // Check everything (row rules, links, uniqueness, payments) before reset()
+    // wipes the current records, so a bad file leaves what's already here untouched.
+    try {
+      const kept = { ...emptySingles(), shareSettings: this.state.singles.shareSettings, reminderSettings: this.state.singles.reminderSettings };
+      this.stage(emptyTables(), kept, { tables, singles }, false);
+      validateProfile({ ...this.state.profile, ...profile });
+      for (const data of Object.values(file.images ?? {})) {
+        if (typeof data !== "string" || data.length > 240_000) throw new ValidationError("It contains a photo that's too large.");
+      }
+    } catch (e) {
+      throw new ValidationError(`That backup can't be loaded, so nothing was changed. ${e instanceof Error ? e.message : ""}`.trim());
+    }
+    await this.reset();
     await this.bulk({ tables, singles });
     for (const [id, data] of Object.entries(file.images ?? {})) await this.putImage(id, data);
-    const { id: _ignore, ...profile } = file.profile;
-    void _ignore;
     await this.saveProfile({ ...profile, timezone: validTimeZone(profile.timezone) ? profile.timezone : this.state.profile.timezone });
   }
 
@@ -330,12 +439,16 @@ export class Engine {
       user_id: this.uid,
       created_at: typeof input.created_at === "string" ? input.created_at : nowIso(),
     } as Row;
+    normalize(table, row);
     validateRow(table, row);
     return row;
   }
 
-  /** Uniqueness, parent links and the money rules that span rows. */
-  private checkCross(table: ListKey, r: Row, list: Row[], selfId: string | null) {
+  /** Uniqueness, parent links and the money rules that span rows. `tables` is the state the row joins. */
+  private checkCross(table: ListKey, r: Row, list: Row[], selfId: string | null, tables = this.state.tables) {
+    if (!selfId && list.some((o) => o.id === r.id)) {
+      throw new ValidationError(UNIQUE_MESSAGE[table] ?? "That entry already exists — edit the existing one instead.");
+    }
     for (const set of TABLES[table].unique ?? []) {
       if (list.some((o) => o.id !== r.id && o.id !== selfId && set.every((f) => o[f] === r[f]))) {
         throw new ValidationError(UNIQUE_MESSAGE[table] ?? "That entry already exists — edit the existing one instead.");
@@ -347,35 +460,47 @@ export class Engine {
         if (p.required) throw new ValidationError(`Missing ${p.field.replace(/_id$/, "").replace(/_/g, " ")}.`);
         continue;
       }
-      if (!this.state.tables[p.table].some((x) => x.id === v)) throw new ValidationError("The linked record no longer exists.");
+      if (!tables[p.table].some((x) => x.id === v)) throw new ValidationError("The linked record no longer exists.");
     }
     if (table === "payments") {
-      const t = this.state.tables.transactions.find((x) => x.id === r.transaction_id);
+      const t = tables.transactions.find((x) => x.id === r.transaction_id);
       if (!t || t.kind !== "sale") throw new ValidationError("Payments can only be recorded against sales.");
-      const paid = this.state.tables.payments.filter((p) => p.transaction_id === t.id && p.id !== r.id && p.id !== selfId)
+      // `list` includes earlier rows of the same batch, so a multi-row insert can't overshoot either.
+      const paid = list.filter((p) => p.transaction_id === t.id && p.id !== r.id && p.id !== selfId)
         .reduce((s, p) => s + Number(p.amount), 0);
       if (paid + Number(r.amount) > Number(t.amount) + 0.004) {
         throw new ValidationError(`Cash collected ($${(paid + Number(r.amount)).toFixed(2)}) would exceed the sale amount ($${Number(t.amount).toFixed(2)}).`);
       }
     }
     if (table === "transactions" && selfId) {
-      const paid = this.state.tables.payments.filter((p) => p.transaction_id === selfId).reduce((s, p) => s + Number(p.amount), 0);
+      const paid = tables.payments.filter((p) => p.transaction_id === selfId).reduce((s, p) => s + Number(p.amount), 0);
       if (paid > 0 && r.kind !== "sale") throw new ValidationError("Remove the recorded payments before changing this sale's type.");
       if (paid > Number(r.amount) + 0.004) throw new ValidationError(`Sale amount can't be less than cash already collected ($${paid.toFixed(2)}).`);
     }
   }
 
-  private touch(table: ListKey, rows: Row[]): Set<BucketKey> {
-    return new Set(rows.map((r) => `t~${table}~${bucketOf(table, r)}`));
+  /** The chunks these rows live in; with `mark`, also note the rows as changed here until stored. */
+  private touch(table: ListKey, rows: Row[], mark = true): Set<BucketKey> {
+    const keys = new Set<BucketKey>();
+    for (const r of rows) {
+      const k = `t~${table}~${bucketOf(table, r)}`;
+      keys.add(k);
+      if (!mark) continue;
+      let m = this.dirty.get(k);
+      if (!m) this.dirty.set(k, (m = new Map()));
+      m.set(r.id, ++this.seq);
+    }
+    return keys;
   }
 
-  private applyCap(table: ListKey, tables: Record<ListKey, Row[]>, keys: Set<BucketKey>) {
-    const cap = TABLES[table].cap;
+  private applyCap(table: ListKey, tables: Record<ListKey, Row[]>, keys: Set<BucketKey>, mark = true) {
+    const { cap, capKeep } = TABLES[table];
     const list = tables[table];
     if (!cap || list.length <= cap) return tables;
-    const sorted = [...list].sort((a, b) => (String(a.created_at) < String(b.created_at) ? -1 : 1));
+    const kept = (r: Row) => (capKeep?.(r) ? 1 : 0);
+    const sorted = [...list].sort((a, b) => kept(a) - kept(b) || (String(a.created_at) < String(b.created_at) ? -1 : 1));
     const drop = new Set(sorted.slice(0, list.length - cap).map((r) => r.id));
-    this.touch(table, list.filter((r) => drop.has(r.id))).forEach((k) => keys.add(k));
+    this.touch(table, list.filter((r) => drop.has(r.id)), mark).forEach((k) => keys.add(k));
     return { ...tables, [table]: list.filter((r) => !drop.has(r.id)) };
   }
 
@@ -402,19 +527,21 @@ export class Engine {
     const prev = this.chains.get(key) ?? Promise.resolve();
     const p = prev.catch(() => undefined).then(async () => {
       this.queued.delete(key);
-      await this.slot();
+      // Counted as busy while it waits for a slot, too.
       this.inflight.add(key);
-      this.setStatus({ pending: this.queued.size + this.inflight.size });
+      await this.slot();
       try {
         await this.writeKey(key);
         this.failed.delete(key);
-        this.retryDelay = 3000;
-        this.setStatus({ error: this.failed.size ? this.status.error : null, lastSavedAt: Date.now() });
+        this.retryDelays.delete(key);
+        this.setStatus({ error: this.failed.size ? this.status.error : null, retrying: this.willRetry(), lastSavedAt: Date.now() });
       } catch (e) {
-        this.failed.add(key);
+        const code = e instanceof StorageError ? e.code : "unavailable";
         const msg = e instanceof StorageError ? e.message : "Couldn't save. Will keep trying.";
-        this.setStatus({ error: msg });
-        this.scheduleRetry();
+        const permanent = PERMANENT.has(code);
+        this.failed.set(key, permanent);
+        if (!permanent) this.scheduleRetry(key);
+        this.setStatus({ error: msg, retrying: this.willRetry() });
         throw e instanceof StorageError ? e : new StorageError("unavailable", msg);
       } finally {
         this.inflight.delete(key);
@@ -424,17 +551,23 @@ export class Engine {
     });
     this.queued.set(key, p);
     this.chains.set(key, p);
+    this.setStatus({ pending: this.queued.size + this.inflight.size });
     return p;
   }
 
-  private scheduleRetry() {
-    if (this.retryTimer) return;
-    this.retryTimer = setTimeout(() => {
-      this.retryTimer = null;
-      const keys = [...this.failed];
-      this.retryDelay = Math.min(this.retryDelay * 2, 60_000);
-      keys.forEach((k) => this.persist(k).catch(() => undefined));
-    }, this.retryDelay);
+  private willRetry() {
+    return [...this.failed.values()].some((permanent) => !permanent);
+  }
+
+  /** Try a failed chunk again later, backing off per chunk (3 s, 6 s, … 60 s). */
+  private scheduleRetry(key: BucketKey) {
+    if (this.retryTimers.has(key) || this.closed) return;
+    const delay = this.retryDelays.get(key) ?? 3000;
+    this.retryTimers.set(key, setTimeout(() => {
+      this.retryTimers.delete(key);
+      this.retryDelays.set(key, Math.min(delay * 2, 60_000));
+      this.persist(key).catch(() => undefined);
+    }, delay));
   }
 
   private async slot() {
@@ -452,30 +585,65 @@ export class Engine {
 
   private async writeKey(key: BucketKey) {
     if (key === "profile") {
-      await this.store.set(`${this.base}/profile`, { row: this.state.profile });
+      const ver = newId().slice(0, 8);
+      this.seen.add(ver);
+      await this.store.set(`${this.base}/profile`, { row: this.state.profile, ver, epoch: this.epoch });
       return;
     }
     if (key.startsWith("s~")) {
+      const ver = newId().slice(0, 8);
+      this.seen.add(ver);
       const single = key.slice(2) as SingleKey;
       const row = this.state.singles[single];
-      if (row) await this.store.set(`${this.base}/${key}`, { row });
+      if (row) await this.store.set(`${this.base}/${key}`, { row, ver });
       else await this.store.remove(`${this.base}/${key}`);
       return;
     }
+    // If another device rewrote this chunk since we last heard, fold its rows in first.
+    await this.pullChunk(key);
     const [, table, bucket] = key.split("~") as [string, ListKey, string];
+    const ver = newId().slice(0, 8);
+    this.seen.add(ver);
+    const mark = this.seq;
     const rows = this.state.tables[table].filter((r) => bucketOf(table, r) === bucket);
     const pages = paginate(rows);
-    const ver = newId().slice(0, 8);
-    // Extra pages first, page 0 last: page 0 names the version, so a reader
-    // never mixes pages from two different writes.
-    for (let i = pages.length - 1; i >= 0; i--) {
-      await this.store.set(`${this.base}/${key}~${i}`, { table, bucket, page: i, pages: pages.length, ver, rows: pages[i] });
+    const ids = pages.map((_, i) => pageId(key, i, ver));
+    let st = this.stored.get(key);
+    if (!st) this.stored.set(key, (st = { ver: "", after: [], extra: new Set() }));
+    // The versions this one includes, so other devices can tell it was built on theirs.
+    const after = [st.ver, ...st.after].filter(Boolean).slice(0, 8);
+    // Extra pages first, under ids of their own, then page 0 — which names the
+    // version — last. Whether a reader looks mid-write or the tab closes
+    // part-way, page 0 always names a complete set of pages.
+    for (let i = pages.length - 1; i >= 1; i--) {
+      st.extra.add(ids[i]);
+      await this.store.set(`${this.base}/${ids[i]}`, { table, bucket, page: i, pages: pages.length, ver, rows: pages[i] });
     }
-    const prev = this.stored.get(key);
-    if (prev && prev.pages > pages.length) {
-      for (let i = pages.length; i < prev.pages; i++) await this.store.remove(`${this.base}/${key}~${i}`).catch(() => undefined);
+    await this.store.set(`${this.base}/${ids[0]}`, { table, bucket, page: 0, pages: pages.length, ver, after, rows: pages[0] });
+    st.ver = ver;
+    st.after = after;
+    // These rows stay "ours" until another device writes a version built on this one.
+    this.acks.set(key, [...(this.acks.get(key) ?? []), { ver, mark }].slice(-8));
+    // The previous version's pages go only now that nothing points at them.
+    const stale = [...st.extra].filter((id) => !ids.includes(id));
+    st.extra = new Set(ids.slice(1));
+    for (const id of stale) await this.store.remove(`${this.base}/${id}`).catch(() => undefined);
+  }
+
+  /** Read a chunk straight from storage and take it if it's a version we haven't seen. */
+  private async pullChunk(key: BucketKey) {
+    const head = await this.store.get(`${this.base}/${key}~0`);
+    const ver = head?.ver;
+    if (!head || typeof ver !== "string" || this.seen.has(ver)) return;
+    const docs: StoredDoc[] = [{ id: `${key}~0`, data: head }];
+    for (let i = 1; i < (Number(head.pages) || 1); i++) {
+      // Pages written before page ids carried their version sit at "<key>~<i>".
+      let id = pageId(key, i, ver);
+      let page = await this.store.get(`${this.base}/${id}`);
+      if (!page) page = await this.store.get(`${this.base}/${(id = `${key}~${i}`)}`);
+      if (page) docs.push({ id, data: page });
     }
-    this.stored.set(key, { pages: pages.length, ver });
+    this.takeChunks([...readChunks(docs).values()], key);
   }
 
   /** Build state from stored documents. */
@@ -484,55 +652,136 @@ export class Engine {
     const singles = emptySingles();
     let profile = this.state.profile;
     for (const d of docs) {
-      if (d.id === "profile" && d.data.row) profile = { ...profile, ...(d.data.row as Profile), id: this.uid };
-      else if (d.id.startsWith("s~")) {
+      if (typeof d.data.ver === "string" && !d.id.startsWith("t~")) this.seen.add(d.data.ver);
+      if (d.id === "profile" && d.data.row) {
+        profile = { ...profile, ...(d.data.row as Profile), id: this.uid };
+        this.epoch = typeof d.data.epoch === "string" ? d.data.epoch : "";
+      } else if (d.id.startsWith("s~")) {
         const k = d.id.slice(2) as SingleKey;
         if ((SINGLE_KEYS as readonly string[]).includes(k) && d.data.row) singles[k] = d.data.row as Row;
       }
     }
-    for (const [key, rows] of groupChunks(docs, this.stored)) {
-      const table = key.split("~")[1] as ListKey;
-      if ((LIST_KEYS as readonly string[]).includes(table)) tables[table].push(...rows);
+    for (const c of readChunks(docs).values()) {
+      if (!(LIST_KEYS as readonly string[]).includes(c.table)) continue;
+      // An incomplete set (pages lost to an older, interrupted save) still gives back what it can.
+      if (c.complete) this.seen.add(c.ver);
+      this.stored.set(c.key, { ver: c.ver, after: c.after, extra: new Set(c.others) });
+      tables[c.table].push(...c.rows);
     }
     for (const t of LIST_KEYS) tables[t] = dedupe(tables[t]);
     this.state = { rev: this.state.rev + 1, profile, tables, singles };
   }
 
-  /** Another device (or tab) changed something: take its chunks unless ours are mid-save. */
+  /** Another device (or tab) changed something. */
   private applyRemote(docs: StoredDoc[]) {
+    if (this.closed) return;
+    const head = docs.find((d) => d.id === "profile");
+    const epoch = typeof head?.data.epoch === "string" ? head.data.epoch : "";
+    if (epoch > this.epoch) {
+      // Records were reset (or a backup loaded) elsewhere: start over from what's stored.
+      this.epoch = epoch;
+      this.dirty.clear();
+      this.acks.clear();
+      this.stored.clear();
+      this.hydrate(docs);
+      this.listeners.forEach((l) => l());
+      // A save that started before this would put old rows back; follow it with the current state.
+      for (const k of this.inflight) if (k.startsWith("t~")) this.persist(k).catch(() => undefined);
+      return;
+    }
+    // Settings and the profile are whole records: the latest write wins, unless ours is still on its way.
     const busy = (k: BucketKey) => this.queued.has(k) || this.inflight.has(k) || this.failed.has(k);
+    const old = (d: StoredDoc) => typeof d.data.ver === "string" && this.seen.has(d.data.ver);
+    const take = (d: StoredDoc) => typeof d.data.ver === "string" && this.seen.add(d.data.ver);
     let changed = false;
-    const tables = { ...this.state.tables };
     const singles = { ...this.state.singles };
     let profile = this.state.profile;
     for (const d of docs) {
-      if (d.id === "profile" && !busy("profile") && d.data.row) {
+      if (d.id === "profile" && !busy("profile") && d.data.row && !old(d)) {
         const next = { ...profile, ...(d.data.row as Profile), id: this.uid };
+        take(d);
         if (JSON.stringify(next) !== JSON.stringify(profile)) {
           profile = next;
           changed = true;
         }
-      } else if (d.id.startsWith("s~") && !busy(d.id) && d.data.row) {
+      } else if (d.id.startsWith("s~") && !busy(d.id) && d.data.row && !old(d)) {
         const k = d.id.slice(2) as SingleKey;
+        take(d);
         if ((SINGLE_KEYS as readonly string[]).includes(k) && JSON.stringify(singles[k]) !== JSON.stringify(d.data.row)) {
           singles[k] = d.data.row as Row;
           changed = true;
         }
       }
     }
-    const known = new Map(this.stored);
-    for (const [key, rows] of groupChunks(docs, this.stored)) {
-      if (busy(key)) continue;
-      const before = known.get(key);
-      const after = this.stored.get(key);
-      if (before && after && before.ver === after.ver) continue;
-      const [, table, bucket] = key.split("~") as [string, ListKey, string];
-      if (!(LIST_KEYS as readonly string[]).includes(table)) continue;
-      tables[table] = dedupe([...tables[table].filter((r) => bucketOf(table, r) !== bucket), ...rows]);
+    if (changed) this.commit({ singles, profile });
+    this.takeChunks([...readChunks(docs).values()]);
+  }
+
+  /**
+   * Take chunk versions we haven't seen. Rows changed here and not yet stored
+   * keep their local state; every other row comes from the stored version.
+   * When that merge kept local rows, the chunk is saved again so storage holds both.
+   */
+  private takeChunks(chunks: ChunkRead[], writing?: BucketKey) {
+    const tables = { ...this.state.tables };
+    const rewrite: BucketKey[] = [];
+    let changed = false;
+    for (const c of chunks) {
+      // A page 0 whose pages aren't all there yet is mid-write; a later snapshot completes it.
+      if (!c.complete || this.seen.has(c.ver) || !(LIST_KEYS as readonly string[]).includes(c.table)) continue;
+      this.seen.add(c.ver);
+      const st = this.stored.get(c.key);
+      if (!st) this.stored.set(c.key, { ver: c.ver, after: c.after, extra: new Set(c.extra) });
+      else {
+        st.ver = c.ver;
+        st.after = c.after;
+        // While our own write of this chunk is out, we can't tell whose page 0 is current: keep its pages.
+        if (c.key === writing || !this.inflight.has(c.key)) c.extra.forEach((id) => st.extra.add(id));
+      }
+      // Built on one of our versions: it already holds those changes (and any deletes since are deliberate).
+      const acks = this.acks.get(c.key) ?? [];
+      let known = acks.length - 1;
+      while (known >= 0 && !c.after.includes(acks[known].ver)) known--;
+      if (known >= 0) {
+        const { mark } = acks[known];
+        this.acks.set(c.key, acks.slice(known + 1));
+        const mine = this.dirty.get(c.key);
+        if (mine) for (const [id, n] of mine) if (n <= mark) mine.delete(id);
+      }
+      const local = this.dirty.get(c.key);
+      let rows = c.rows;
+      if (local?.size) {
+        const mine = this.state.tables[c.table].filter((r) => local.has(r.id) && bucketOf(c.table, r) === c.bucket);
+        rows = [...rows.filter((r) => !local.has(r.id)), ...mine];
+        if (c.key !== writing) rewrite.push(c.key);
+      }
+      tables[c.table] = dedupe([...tables[c.table].filter((r) => bucketOf(c.table, r) !== c.bucket), ...rows]);
       changed = true;
     }
-    if (changed) this.commit({ tables, singles, profile });
+    if (changed) this.commit({ tables });
+    for (const k of rewrite) this.persist(k).catch(() => undefined);
   }
+}
+
+type BulkPlan = {
+  tables?: Partial<Record<ListKey, Record<string, unknown>[]>>;
+  singles?: Partial<Record<SingleKey, Record<string, unknown>>>;
+};
+
+interface ChunkRead {
+  key: BucketKey;
+  table: ListKey;
+  bucket: string;
+  ver: string;
+  /** Versions this one was built on, newest first. */
+  after: string[];
+  rows: Row[];
+  /** Every page from 1 to pages-1 of page 0's version is present. */
+  complete: boolean;
+  /** Ids of this version's other pages (and old-style page ids), removed once a newer version is stored. */
+  extra: string[];
+  /** Ids of every page but page 0, whatever its version. */
+  others: string[];
 }
 
 function stripMeta(r: Record<string, unknown>) {
@@ -547,12 +796,15 @@ function dedupe(rows: Row[]): Row[] {
   return [...m.values()];
 }
 
+const utf8 = new TextEncoder();
+
+/** Split rows into pages that stay well inside a stored document's 256 KiB, measured in bytes. */
 function paginate(rows: Row[]): Row[][] {
   const pages: Row[][] = [[]];
   let size = 0;
   for (const r of rows) {
-    const n = JSON.stringify(r).length + 1;
-    if (size + n > PAGE_CHARS && pages[pages.length - 1].length) {
+    const n = utf8.encode(JSON.stringify(r)).length + 1;
+    if (size + n > PAGE_BYTES && pages[pages.length - 1].length) {
       pages.push([]);
       size = 0;
     }
@@ -562,23 +814,36 @@ function paginate(rows: Row[]): Row[][] {
   return pages;
 }
 
-/** Group chunk pages into rows per chunk, keeping only pages from the version page 0 names. */
-function groupChunks(docs: StoredDoc[], stored: Map<BucketKey, { pages: number; ver: string }>): Map<BucketKey, Row[]> {
+/** Group stored pages into chunks, keeping only the pages of the version page 0 names. */
+function readChunks(docs: StoredDoc[]): Map<BucketKey, ChunkRead> {
   const byKey = new Map<BucketKey, StoredDoc[]>();
   for (const d of docs) {
     if (!d.id.startsWith("t~")) continue;
-    const key = d.id.slice(0, d.id.lastIndexOf("~"));
+    const [, t, b] = d.id.split("~");
+    const key = `t~${typeof d.data.table === "string" ? d.data.table : t}~${typeof d.data.bucket === "string" ? d.data.bucket : b}`;
     byKey.set(key, [...(byKey.get(key) ?? []), d]);
   }
-  const out = new Map<BucketKey, Row[]>();
+  const out = new Map<BucketKey, ChunkRead>();
   for (const [key, pages] of byKey) {
-    const head = pages.find((p) => p.data.page === 0);
+    const head = pages.find((p) => p.id === `${key}~0`);
     if (!head) continue;
-    const ver = head.data.ver as string;
-    const rows = pages.filter((p) => p.data.ver === ver).sort((a, b) => Number(a.data.page) - Number(b.data.page))
-      .flatMap((p) => (Array.isArray(p.data.rows) ? (p.data.rows as Row[]) : []));
-    stored.set(key, { pages: Math.max(Number(head.data.pages) || 1, pages.length), ver });
-    out.set(key, rows);
+    const ver = String(head.data.ver ?? "");
+    const rowsOf = (p: StoredDoc) => (Array.isArray(p.data.rows) ? (p.data.rows as Row[]) : []);
+    const rows = [...rowsOf(head)];
+    let complete = true;
+    for (let i = 1; i < (Number(head.data.pages) || 1); i++) {
+      const page = pages.find((p) => p.data.page === i && p.data.ver === ver);
+      if (page) rows.push(...rowsOf(page));
+      else complete = false;
+    }
+    const [, table, bucket] = key.split("~") as [string, ListKey, string];
+    const others = pages.filter((p) => p !== head);
+    out.set(key, {
+      key, table, bucket, ver, rows, complete,
+      after: Array.isArray(head.data.after) ? (head.data.after as unknown[]).filter((v): v is string => typeof v === "string") : [],
+      extra: others.filter((p) => p.data.ver === ver || p.id === `${key}~${p.data.page}`).map((p) => p.id),
+      others: others.map((p) => p.id),
+    });
   }
   return out;
 }

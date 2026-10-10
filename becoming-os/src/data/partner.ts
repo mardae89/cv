@@ -113,13 +113,19 @@ export function buildSummary(data: UserData, ev: Evaluation, today: ISODate, sha
   }
 
   if (s.milestones === "full") {
-    const allowed = (cat: string) =>
-      cat === "weight" ? rank(s.weight) >= 2
-        : cat === "business" ? rank(s.business) >= 1
-        : cat === "athletic" ? rank(s.training) >= 1
-        : cat === "habit" ? rank(s.habits) >= 1
+    const business = rank(s.business) >= 1 && data.profile.business_enabled;
+    // A few habit milestones are really about another category, so they
+    // follow that category's setting too.
+    const allowed = (m: { key: string; category: string }) =>
+      m.category === "weight" ? rank(s.weight) >= 2
+        : m.category === "business" ? business
+        : m.category === "athletic" ? rank(s.training) >= 1
+        : m.category === "habit" ? rank(s.habits) >= 1 &&
+          (m.key !== "habit.workouts_30" || rank(s.training) >= 1) &&
+          (m.key !== "habit.biz_30" || business) &&
+          (m.key !== "habit.sleep_recovery" || s.health === "full")
         : true;
-    out.achievements = ev.unlocked.filter((m) => allowed(m.category)).slice(-60)
+    out.achievements = ev.unlocked.filter(allowed).slice(-60)
       .map((m) => ({ id: m.key, key: m.key, category: m.category, tier: m.tier, title: m.title, achieved_on: m.achievedOn! }));
   }
 

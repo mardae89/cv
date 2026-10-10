@@ -6,7 +6,7 @@ import { useStore } from "@/data/store";
 import { errorMessage } from "@/lib/format";
 
 export default function Notifications() {
-  const { notifications, update, remove } = useStore();
+  const { notifications, update } = useStore();
   const { toast } = useFeedback();
   const unread = notifications.filter((n) => !n.read_at);
   const markRead = async (ids: string[]) => {
@@ -21,7 +21,9 @@ export default function Notifications() {
   };
   const clear = async () => {
     try {
-      await remove("notifications", notifications.filter((n) => n.read_at).map((n) => n.id));
+      // Kept (hidden) rather than deleted, so a reminder for the current period doesn't come back.
+      const cleared_at = new Date().toISOString();
+      await Promise.all(notifications.filter((n) => n.read_at).map((n) => update("notifications", n.id, { cleared_at })));
     } catch (e) {
       toast(errorMessage(e), "error");
     }

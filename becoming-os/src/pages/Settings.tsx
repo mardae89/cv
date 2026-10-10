@@ -49,7 +49,7 @@ export default function Settings() {
       </Section>
       <Section id="privacy" title="Privacy & sharing" sub={s.host.mode === "shared-page"
         ? "Your partner sees only a summary built from these choices, never your records, and can't edit anything of yours."
-        : "These choices apply on your shared BECOMING OS page. In this browser nothing is shared."}><PrivacySettings /></Section>
+        : "Nothing is shared from this browser. These choices only take effect on your shared BECOMING OS page, for example after restoring a backup there."}><PrivacySettings /></Section>
       <Section id="reminders" title="Reminders"><ReminderSettingsCard /></Section>
       <Section id="data" title="Your data"><DataSettings /></Section>
       <Section id="demo" title={data.profile.demo_mode ? "Sample data" : "Danger zone"}><DangerZone /></Section>

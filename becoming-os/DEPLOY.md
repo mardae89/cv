@@ -41,14 +41,14 @@ Download `dist-page/becoming-os.html` and open it in any browser (or put it on a
 static host). Records are kept in **that browser on that device only**:
 
 - No sync between devices and no partner sharing.
-- Clearing the browser's site data deletes them. Use **Settings → Export backup**
-  regularly; **Import backup** restores one (or moves you to another device, or onto
+- Clearing the browser's site data deletes them. Use **Settings → Your data → Save backup**
+  regularly; **Restore from backup** brings one back (or moves you to another device, or onto
   the claude.ai page).
 
 ## Backups
 
-**Settings → Export backup** saves everything (records, settings, photos) as one
-JSON file. **Import backup** replaces what's stored with the file's contents. Business
+**Settings → Your data → Save backup** saves everything (records, settings, photos) as one
+JSON file. **Restore from backup** replaces what's stored with the file's contents. Business
 transactions also export as CSV from the Business screen.
 
 ## What isn't included

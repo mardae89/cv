@@ -59,8 +59,12 @@ function SaveError() {
     <div role="status">
       {err && (
         <div className="border-b border-alert/40 bg-panel px-4 py-2 text-center text-[12px] text-alert">
-          <span className="font-semibold">Not saved yet.</span> {err}{/keep trying/i.test(err) ? "" : " Retrying automatically."} Keep this page open until this clears.
+          <span className="font-semibold">Not saved yet.</span> {err}
+          {saveStatus.retrying ? " Retrying automatically — keep this page open until this clears." : " Your next change will try again."}
         </div>
+      )}
+      {!err && saveStatus.sync && (
+        <div className="border-b border-line bg-raised px-4 py-2 text-center text-[12px] text-mute">{saveStatus.sync}</div>
       )}
     </div>
   );

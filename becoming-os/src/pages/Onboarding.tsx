@@ -235,6 +235,7 @@ export default function Onboarding() {
         <div className="eyebrow text-gold">Setup · step {Math.min(i, steps.length - 1) + 1} of {steps.length}</div>
         <button className="text-[13px] text-mute hover:text-bone" onClick={finish}>Skip setup for now</button>
       </div>
+      {s.host.notice && <p role="status" className="mb-6 rounded-lg border border-line bg-raised px-4 py-3 text-[13px] text-mute">{s.host.notice}</p>}
       <div className="mb-8 flex gap-1.5">
         {steps.map((x, k) => <div key={x} className={cx("h-1 flex-1 rounded-full", k <= i ? "bg-gold" : "bg-raised")} />)}
       </div>
@@ -423,7 +424,7 @@ export default function Onboarding() {
           <p className="text-[14px] text-mute">
             {s.host.mode === "shared-page"
               ? "Your records stay private to you. Your partner only sees a summary built from these choices, and can't change anything of yours. You can change these any time."
-              : "These choices apply when you use your shared BECOMING OS page. In this browser nothing is shared; your records stay on this device."}
+              : "Nothing is shared from this browser; your records stay on this device. These choices only take effect on your shared BECOMING OS page, for example after restoring a backup there."}
           </p>
           <PrivacyEditor value={share} onChange={setShare} business={bizOn} />
           <Nav back={back} skip={next} save={savePrivacy} busy={busy} />
@@ -483,13 +484,10 @@ export function PrivacyEditor({ value, onChange, business }: { value: ShareSetti
       {row("Health details", "Sleep, symptoms, nutrition, injury notes.",
         <Segmented size="sm" value={value.health} onChange={(v) => set("health", v)} options={[
           { value: "none", label: "Private" }, { value: "full", label: "Shared" }]} />)}
-      {row("Progress photos", "Photos are private unless shared here.",
-        <Segmented size="sm" value={value.photos} onChange={(v) => set("photos", v)} options={[
-          { value: "none", label: "Private" }, { value: "full", label: "Shared" }]} />)}
       {business && row("Business", "Summary: progress toward the monthly goal only. Full: every transaction and customer.",
         <Segmented size="sm" value={value.business} onChange={(v) => set("business", v)} options={[
           { value: "none", label: "Private" }, { value: "summary", label: "Goal only" }, { value: "full", label: "Full" }]} />)}
-      <p className="pb-4 pt-1 text-[12px] text-faint">Journal entries and reflections are private unless you mark an individual entry as shared.</p>
+      <p className="pb-4 pt-1 text-[12px] text-faint">Progress photos always stay private. Journal entries and reflections are private unless you mark an individual entry as shared.</p>
     </Card>
   );
 }

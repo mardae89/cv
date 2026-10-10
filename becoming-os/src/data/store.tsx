@@ -50,6 +50,37 @@ function useNow(): Date {
   return now;
 }
 
+/**
+ * Writes one document at a time, newest content wins: a write never starts
+ * while the previous one is out (the page database wants one write at a time
+ * per document, and an older write landing last would leave stale content),
+ * and content already stored isn't sent again.
+ */
+export function serialPublisher(write: (data: Record<string, unknown>) => Promise<void>, onError: (e: unknown) => void) {
+  let stored = "";
+  let want: { fp: string; data: Record<string, unknown> } | null = null;
+  let running: Promise<void> | null = null;
+  const drain = async () => {
+    while (want && want.fp !== stored) {
+      const job = want;
+      try {
+        await write(job.data);
+        stored = job.fp;
+      } catch (e) {
+        onError(e);
+        // Stop unless something newer is waiting; the next change tries again.
+        if (want === job) break;
+      }
+    }
+    running = null;
+  };
+  return (fp: string, data: Record<string, unknown>): Promise<void> => {
+    want = { fp, data };
+    running ??= drain();
+    return running;
+  };
+}
+
 function toUserData(s: ReturnType<Engine["getState"]>): UserData {
   const d: Record<string, unknown> = { profile: s.profile, goals: s.singles.goals, athletic: s.singles.athletic, businessSettings: s.singles.businessSettings };
   for (const k of LIST_KEYS) if (k !== "notifications") d[k] = s.tables[k];
@@ -98,7 +129,7 @@ function Loaded({ host, engine, children }: { host: Host; engine: Engine; childr
   const shareSettings = (state.singles.shareSettings ?? null) as unknown as ShareSettings | null;
   const reminderSettings = (state.singles.reminderSettings ?? null) as unknown as ReminderSettings | null;
   const notifications = useMemo(
-    () => ([...state.tables.notifications] as unknown as AppNotification[]).sort((a, b) => (a.created_at < b.created_at ? 1 : -1)),
+    () => (state.tables.notifications.filter((n) => !n.cleared_at) as unknown as AppNotification[]).sort((a, b) => (a.created_at < b.created_at ? 1 : -1)),
     [state.tables.notifications],
   );
 
@@ -184,29 +215,44 @@ function Loaded({ host, engine, children }: { host: Host; engine: Engine; childr
     if (host.mode !== "shared-page") return;
     let alive = true;
     const take = (docs: { id: string; data: Record<string, unknown> }[]) => {
-      if (alive) setPartners(docs.filter((d) => d.id !== uid && d.data.partner_id).map((d) => d.data as unknown as SharedSummary));
+      if (alive) setPartners(docs.filter((d) => d.id !== uid && d.data.partner_id).map((d) => ({ ...d.data, partner_id: d.id }) as unknown as SharedSummary));
+    };
+    let stop = () => {};
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    let delay = 1000;
+    // If the listener dies on a passing fault, listen again (backing off); otherwise it stays stopped.
+    const listen = () => {
+      stop = host.store.watch("shared", (docs) => {
+        delay = 1000;
+        take(docs);
+      }, (err) => {
+        if (!alive) return;
+        if (err.code !== "unavailable" && err.code !== "resource_exhausted") return console.error("Partner updates stopped", err);
+        retry = setTimeout(listen, delay);
+        delay = Math.min(delay * 2, 60_000);
+      });
     };
     host.store.list("shared").then(take).catch(() => undefined);
-    const stop = host.store.watch("shared", take);
+    listen();
     return () => {
       alive = false;
+      clearTimeout(retry);
       stop();
     };
   }, [host, uid]);
 
-  const published = useRef<string>("");
+  const publish = useMemo(() => serialPublisher(
+    (summary) => host.store.set(`shared/${uid}`, summary),
+    (e) => console.error("Couldn't publish the partner summary", e),
+  ), [host, uid]);
   useEffect(() => {
     if (host.mode !== "shared-page") return;
     const t = setTimeout(() => {
       const summary = buildSummary(data, ev, today, shareSettings, uid);
-      const fp = summaryFingerprint(summary);
-      if (fp === published.current) return;
-      host.store.set(`shared/${uid}`, summary as unknown as Record<string, unknown>)
-        .then(() => { published.current = fp; })
-        .catch((e) => console.error("Couldn't publish the partner summary", e));
+      publish(summaryFingerprint(summary), summary as unknown as Record<string, unknown>);
     }, 1200);
     return () => clearTimeout(t);
-  }, [host, data, ev, today, shareSettings, uid]);
+  }, [host, data, ev, today, shareSettings, uid, publish]);
 
   const store: Store = {
     uid, host, engine, data, ev, today, shareSettings, reminderSettings, notifications, partners, saveStatus,

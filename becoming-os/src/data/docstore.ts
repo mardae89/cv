@@ -112,13 +112,20 @@ const tx = <T,>(db: IDBDatabase, mode: IDBTransactionMode, fn: (s: IDBObjectStor
     t.onabort = () => reject(t.error ?? new Error("Storage transaction aborted."));
   });
 
+/** The browser dropped the connection (iOS Safari does this; so does clearing site data). */
+const dropped = (e: unknown) => {
+  const name = (e as DOMException)?.name;
+  return name === "InvalidStateError" || name === "UnknownError";
+};
+
 /** IndexedDB in this browser. Other tabs of the same app hear about changes. */
 export class DeviceStore implements DocStore {
   readonly kind: StoreKind = "device";
   private channel: BroadcastChannel | null = null;
   private watchers = new Map<string, Set<(docs: StoredDoc[]) => void>>();
+  private reopening: Promise<IDBDatabase> | null = null;
 
-  private constructor(private db: IDBDatabase) {
+  private constructor(private db: IDBDatabase, private opener: () => Promise<IDBDatabase>) {
     try {
       this.channel = new BroadcastChannel("becoming-os-device");
       this.channel.onmessage = (e) => {
@@ -130,24 +137,57 @@ export class DeviceStore implements DocStore {
     }
   }
 
-  static async open(): Promise<DeviceStore> {
-    if (typeof indexedDB === "undefined") throw new Error("IndexedDB is unavailable.");
-    return new DeviceStore(await idb());
+  /** `opener` is for tests; the app always uses this browser's IndexedDB. */
+  static async open(opener?: () => Promise<IDBDatabase>): Promise<DeviceStore> {
+    if (!opener && typeof indexedDB === "undefined") throw new Error("IndexedDB is unavailable.");
+    const open = opener ?? idb;
+    return new DeviceStore(await open(), open);
+  }
+
+  /** Stop hearing other tabs (tests). */
+  close() {
+    this.channel?.close();
+    this.channel = null;
+  }
+
+  /** Run a transaction, reopening the database once if the browser dropped the connection. */
+  private async run<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest<T>): Promise<T> {
+    const db = this.db;
+    try {
+      return await tx(db, mode, fn);
+    } catch (e) {
+      if (!dropped(e)) throw e;
+      if (this.db === db) {
+        this.reopening ??= this.opener().then(
+          (fresh) => {
+            this.db = fresh;
+            this.reopening = null;
+            return fresh;
+          },
+          (err) => {
+            this.reopening = null;
+            throw err;
+          },
+        );
+        await this.reopening;
+      }
+      return tx(this.db, mode, fn);
+    }
   }
 
   async list(collection: string) {
-    const rows = await tx<{ path: string; data: Record<string, unknown> }[]>(this.db, "readonly", (s) =>
+    const rows = await this.run<{ path: string; data: Record<string, unknown> }[]>("readonly", (s) =>
       s.index("collection").getAll(collection) as IDBRequest<{ path: string; data: Record<string, unknown> }[]>);
     return rows.map((r) => ({ id: leaf(r.path), data: r.data })).sort((a, b) => (a.id < b.id ? -1 : 1));
   }
   async get(path: string) {
-    const r = await tx<{ data: Record<string, unknown> } | undefined>(this.db, "readonly", (s) =>
+    const r = await this.run<{ data: Record<string, unknown> } | undefined>("readonly", (s) =>
       s.get(path) as IDBRequest<{ data: Record<string, unknown> } | undefined>);
     return r ? r.data : null;
   }
   async set(path: string, data: Record<string, unknown>) {
     try {
-      await tx(this.db, "readwrite", (s) => s.put({ path, collection: parent(path), data: clone(data) }));
+      await this.run("readwrite", (s) => s.put({ path, collection: parent(path), data: clone(data) }));
     } catch (e) {
       const name = (e as DOMException)?.name;
       throw new StorageError(name === "QuotaExceededError" ? "quota_exceeded" : "unavailable",
@@ -156,7 +196,7 @@ export class DeviceStore implements DocStore {
     this.channel?.postMessage({ collection: parent(path) });
   }
   async remove(path: string) {
-    await tx(this.db, "readwrite", (s) => s.delete(path));
+    await this.run("readwrite", (s) => s.delete(path));
     this.channel?.postMessage({ collection: parent(path) });
   }
   watch(collection: string, onChange: (docs: StoredDoc[]) => void) {
@@ -188,7 +228,8 @@ export interface ClaudeDb {
 }
 
 const FRIENDLY: Record<string, string> = {
-  invalid_argument: "This page doesn't let your account save here. Ask the owner to invite you as an Editor.",
+  // Also what an over-size document gets, so this can't assume it's about access.
+  invalid_argument: "Storage refused this change. If an entry is very long, shorten it; if your access to this page changed, reload.",
   quota_exceeded: "The page's storage is full. Export a backup and remove old photos to make room.",
   resource_exhausted: "Saving too quickly. Waiting a moment before trying again.",
   unavailable: "Couldn't reach storage. Will keep trying.",
@@ -202,7 +243,11 @@ function wrap(e: unknown): StorageError {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** The claude.ai page's database. Documents carry `_k` (their own id) so they can be paged in order. */
+/**
+ * The claude.ai page's database. Documents carry `_k` (their own id) so they can be paged in order.
+ * Pages hold 1000 (the most a query returns), so a document written without `_k` (by hand, say)
+ * is only missed past the first 1000 documents of a collection.
+ */
 export class SharedPageStore implements DocStore {
   readonly kind: StoreKind = "shared-page";
   constructor(private db: ClaudeDb) {}
@@ -228,12 +273,12 @@ export class SharedPageStore implements DocStore {
     const out: StoredDoc[] = [];
     let after: string | null = null;
     for (;;) {
-      let q = this.db.collection(collection).orderBy("_k").limit(500);
+      let q = this.db.collection(collection).orderBy("_k").limit(1000);
       if (after !== null) q = q.where("_k", ">", after);
       const snap = await this.retry(() => q.get());
       const docs = snap.docs.filter((d) => d.exists);
       out.push(...docs.map((d) => ({ id: d.id, data: d.data() ?? {} })));
-      if (snap.docs.length < 500) break;
+      if (snap.docs.length < 1000) break;
       after = snap.docs[snap.docs.length - 1].id;
     }
     return out;
@@ -251,7 +296,8 @@ export class SharedPageStore implements DocStore {
   watch(collection: string, onChange: (docs: StoredDoc[]) => void, onError?: (e: StorageError) => void) {
     return this.db.collection(collection).onSnapshot(
       (snap) => onChange(snap.docs.filter((d) => d.exists).map((d) => ({ id: d.id, data: d.data() ?? {} }))),
-      (e) => onError?.(wrap(e)),
+      // Without a handler, leave the error to the platform, which reports it.
+      onError ? (e) => onError(wrap(e)) : undefined,
     );
   }
 }
