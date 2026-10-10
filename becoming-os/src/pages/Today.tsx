@@ -4,7 +4,6 @@ import { Link } from "react-router-dom";
 import { AthleticCard, BusinessCard, FitnessCard, PartnerFitnessCard } from "@/components/cards";
 import { useFeedback } from "@/components/feedback";
 import { Card, cx, Eyebrow, Meter, Notice, Ring } from "@/components/ui";
-import { usePartnerOverview } from "@/data/partner";
 import { useStore } from "@/data/store";
 import { isSession } from "@/lib/calc/athletic";
 import { periodFinance } from "@/lib/calc/business";
@@ -19,7 +18,7 @@ export function Today() {
   const s = useStore();
   const { data, today } = s;
   const c = countdown(today);
-  const partner = usePartnerOverview();
+  const partner = s.partners[0];
   const chapter = currentChapter(today);
 
   const missing: { label: string; to: string }[] = [];
@@ -78,13 +77,7 @@ export function Today() {
         </div>
         <div className="grid gap-4 md:grid-cols-2">
           <FitnessCard />
-          {partner.data ? <PartnerFitnessCard o={partner.data} /> : s.partnership?.status !== "active" ? (
-            <Card className="flex flex-col justify-center">
-              <Eyebrow className="mb-2">Together</Eyebrow>
-              <p className="text-[13px] text-mute">Connect your partner's account to see shared progress side by side — each of you controls what's visible.</p>
-              <Link to="/together" className="link mt-3 text-[13px]">Connect accounts →</Link>
-            </Card>
-          ) : null}
+          {partner && <PartnerFitnessCard o={partner} />}
           {data.profile.business_enabled && <BusinessCard />}
           <AthleticCard />
         </div>

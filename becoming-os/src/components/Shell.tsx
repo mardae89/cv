@@ -1,6 +1,6 @@
 import {
   Award, BarChart3, Bell, Briefcase, CheckSquare, Home, LineChart, Map, Menu, NotebookPen,
-  Plus, Settings, Users, Activity,
+  Plus, Settings, Users, Activity, X,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
@@ -41,8 +41,54 @@ export function Wordmark({ className }: { className?: string }) {
   );
 }
 
+const NOTICE_KEY = "becoming.dismissedNotice";
+
+function dismissedNotice(): string | null {
+  try {
+    return sessionStorage.getItem(NOTICE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/** A failed save, kept on screen until a retry succeeds. Never blocks the page. */
+function SaveError() {
+  const { saveStatus } = useStore();
+  const err = saveStatus.error;
+  return (
+    <div role="status">
+      {err && (
+        <div className="border-b border-alert/40 bg-panel px-4 py-2 text-center text-[12px] text-alert">
+          <span className="font-semibold">Not saved yet.</span> {err}{/keep trying/i.test(err) ? "" : " Retrying automatically."} Keep this page open until this clears.
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Why records are kept where they are (e.g. view-only access), dismissible for this visit. */
+function HostNotice() {
+  const { host } = useStore();
+  const [dismissed, setDismissed] = useState(dismissedNotice);
+  if (!host.notice || dismissed === host.notice) return null;
+  const dismiss = () => {
+    try {
+      sessionStorage.setItem(NOTICE_KEY, host.notice!);
+    } catch {
+      // storage blocked: hide it for this view only
+    }
+    setDismissed(host.notice);
+  };
+  return (
+    <div className="flex items-start gap-3 border-b border-line bg-raised px-4 py-2.5 text-[12px] text-mute">
+      <p className="mx-auto max-w-page flex-1">{host.notice}</p>
+      <button onClick={dismiss} aria-label="Dismiss notice" className="-m-1 shrink-0 p-1 text-faint hover:text-bone"><X className="h-4 w-4" /></button>
+    </div>
+  );
+}
+
 export function Shell() {
-  const { data, notifications, today } = useStore();
+  const { data, notifications, today, host, saveStatus } = useStore();
   const [more, setMore] = useState(false);
   const loc = useLocation();
   const unread = notifications.filter((n) => !n.read_at).length;
@@ -54,7 +100,7 @@ export function Shell() {
   return (
     <div className="min-h-screen lg:flex">
       {/* desktop rail */}
-      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-hair px-4 py-6 lg:flex">
+      <aside className="sticky top-[env(safe-area-inset-top,0px)] hidden h-screen w-60 shrink-0 flex-col border-r border-hair px-4 py-6 lg:flex">
         <Wordmark className="mb-8 px-2" />
         <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto">
           {items.map((n) => (
@@ -70,19 +116,27 @@ export function Shell() {
           {unread > 0 && <span className="ml-auto rounded-full bg-gold px-1.5 text-[11px] font-bold text-ink">{unread}</span>}
         </NavLink>
         <div className="mt-4 border-t border-hair px-3 pt-4 text-[11px] leading-relaxed text-faint">
-          {data.profile.display_name || "Signed in"}<br />{fmtDate(today)}
+          {data.profile.display_name && <>{data.profile.display_name}<br /></>}{fmtDate(today)}<br />
+          {saveStatus.pending ? "Saving…" : host.mode === "shared-page" ? "Saved on this page" : "Saved in this browser only"}
         </div>
       </aside>
 
       <div className="min-w-0 flex-1">
-        {/* mobile top bar */}
-        <div className="sticky top-0 z-30 flex items-center justify-between border-b border-hair bg-ink/90 px-4 pb-3 pt-[max(env(safe-area-inset-top),12px)] backdrop-blur lg:hidden">
-          <Wordmark />
-          <Link to="/notifications" aria-label={`Notifications${unread ? `, ${unread} unread` : ""}`} className="relative p-2 text-mute">
-            <Bell className="h-5 w-5" />
-            {unread > 0 && <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-gold" />}
-          </Link>
+        {/* Sticks below the top safe-area inset (the page host pads for it); the
+            ::before strip covers that inset so content doesn't show through. */}
+        <div className="sticky top-[env(safe-area-inset-top,0px)] z-30 before:absolute before:inset-x-0 before:bottom-full before:h-[env(safe-area-inset-top,0px)] before:bg-ink">
+          {/* mobile top bar */}
+          <div className="flex items-center justify-between border-b border-hair bg-ink/90 px-4 py-3 backdrop-blur lg:hidden">
+            <Wordmark />
+            <Link to="/notifications" aria-label={`Notifications${unread ? `, ${unread} unread` : ""}`} className="relative p-2 text-mute">
+              <Bell className="h-5 w-5" />
+              {unread > 0 && <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-gold" />}
+            </Link>
+          </div>
+          <SaveError />
         </div>
+
+        <HostNotice />
 
         {data.profile.demo_mode && (
           <div className="border-b border-gold/30 bg-gold-wash px-4 py-2 text-center text-[12px] text-gold">
@@ -91,7 +145,7 @@ export function Shell() {
           </div>
         )}
 
-        <main key={loc.pathname} className="mx-auto max-w-page px-4 pb-32 pt-6 sm:px-6 lg:px-10 lg:pb-16 lg:pt-10">
+        <main key={loc.pathname} className="mx-auto max-w-page px-4 pb-[calc(8rem+env(safe-area-inset-bottom,0px))] pt-6 sm:px-6 lg:px-10 lg:pb-16 lg:pt-10">
           <Outlet />
         </main>
       </div>

@@ -1,13 +1,16 @@
-import { Download, LogOut } from "lucide-react";
-import { useEffect, useState } from "react";
+import { AlertTriangle, Check, Download, Loader2, Upload } from "lucide-react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useFeedback } from "@/components/feedback";
 import { useSubmit } from "@/components/forms/body";
 import { Button, Card, Field, Input, Notice, NumberInput, PageHeader, Segmented, Select, Textarea, Toggle } from "@/components/ui";
-import { useStore, LIST_TABLES, SINGLE_TABLES, fetchAll } from "@/data/store";
-import { supabase } from "@/data/supabase";
-import { toCSV, download } from "@/lib/csv";
-import { round, num, errorMessage } from "@/lib/format";
+import type { ExportFile } from "@/data/engine";
+import { saveFile } from "@/data/host";
+import { LIST_KEYS, SINGLE_DEFAULTS, SINGLE_KEYS, TABLES, validateRow, validateSingle } from "@/data/schema";
+import { useStore } from "@/data/store";
+import { toCSV } from "@/lib/csv";
+import { fmtDate, todayIn } from "@/lib/dates";
+import { round, num, errorMessage, plural } from "@/lib/format";
 import { ACTIVITY_OPTIONS } from "@/lib/templates";
 import type { Pace, ReminderSettings, ShareSettings } from "@/lib/types";
 import { GoalSettings } from "./Business";
@@ -34,6 +37,7 @@ export default function Settings() {
   return (
     <div className="space-y-10">
       <PageHeader eyebrow="Settings" title="Your system" />
+      <Section id="storage" title="Storage"><StorageSettings /></Section>
       <Section id="profile" title="Profile"><ProfileSettings /></Section>
       <Section id="body" title="Body goals" sub="Changing the baseline recalculates every meter and milestone from your records."><BodySettings /></Section>
       <Section id="training" title="Training & readiness"><Card><TrainingSettings /></Card></Section>
@@ -43,21 +47,48 @@ export default function Settings() {
           {data.profile.business_enabled && <div className="mt-4 border-t border-hair pt-4"><GoalSettings /></div>}
         </Card>
       </Section>
-      <Section id="privacy" title="Privacy & sharing" sub="Enforced by database row-level security. Your partner can never edit your records."><PrivacySettings /></Section>
+      <Section id="privacy" title="Privacy & sharing" sub={s.host.mode === "shared-page"
+        ? "Your partner sees only a summary built from these choices, never your records, and can't edit anything of yours."
+        : "These choices apply on your shared BECOMING OS page. In this browser nothing is shared."}><PrivacySettings /></Section>
       <Section id="reminders" title="Reminders"><ReminderSettingsCard /></Section>
       <Section id="data" title="Your data"><DataSettings /></Section>
-      <Section id="demo" title={data.profile.demo_mode ? "Demo account" : "Danger zone"}><DangerZone /></Section>
+      <Section id="demo" title={data.profile.demo_mode ? "Sample data" : "Danger zone"}><DangerZone /></Section>
     </div>
+  );
+}
+
+/** Where records live, and whether the latest changes have reached storage. */
+function StorageSettings() {
+  const { host, saveStatus } = useStore();
+  const { pending, error, lastSavedAt } = saveStatus;
+  return (
+    <Card className="space-y-3">
+      <p className="text-[14px] text-bone">
+        {host.mode === "shared-page"
+          ? "Synced through your private BECOMING OS page. Your records are private to you; your partner only sees what you choose under Sharing."
+          : "Saved in this browser on this device only. Nothing syncs. Export a backup regularly."}
+      </p>
+      {host.notice && <Notice tone="gold">{host.notice}</Notice>}
+      <div className="flex items-start gap-2 border-t border-hair pt-3 text-[13px]" role="status" aria-live="polite">
+        {error ? (
+          <><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-alert" /><span className="text-alert">{error}{pending > 0 && " Retrying…"}</span></>
+        ) : pending > 0 ? (
+          <><Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-mute" /><span className="text-mute">Saving…</span></>
+        ) : (
+          <><Check className="mt-0.5 h-4 w-4 shrink-0 text-gold" /><span className="text-mute">
+            All changes saved{lastSavedAt && ` · last save ${new Date(lastSavedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`}
+          </span></>
+        )}
+      </div>
+    </Card>
   );
 }
 
 function ProfileSettings() {
   const { data, saveProfile } = useStore();
   const { busy, run } = useSubmit();
-  const nav = useNavigate();
   const [name, setName] = useState(data.profile.display_name);
   const [tz, setTz] = useState(data.profile.timezone);
-  const [pw, setPw] = useState("");
   const zones: string[] = (Intl as unknown as { supportedValuesOf?: (k: string) => string[] }).supportedValuesOf?.("timeZone") ?? [data.profile.timezone];
   return (
     <Card className="space-y-4">
@@ -69,24 +100,7 @@ function ProfileSettings() {
           </Select>
         </Field>
       </div>
-      <div className="flex flex-wrap gap-2">
-        <Button busy={busy} onClick={() => run(async () => { await saveProfile({ display_name: name.trim(), timezone: tz }); return "Profile saved."; })}>Save profile</Button>
-        <Button variant="secondary" icon={<LogOut className="h-4 w-4" />} onClick={async () => { await supabase.auth.signOut(); nav("/auth"); }}>Sign out</Button>
-      </div>
-      <div className="border-t border-hair pt-4">
-        <Field label="Change password" hint="At least 8 characters.">
-          <div className="flex gap-2">
-            <Input type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoComplete="new-password" />
-            <Button variant="secondary" className="shrink-0" busy={busy} onClick={() => run(async () => {
-              if (pw.length < 8) throw new Error("Use at least 8 characters.");
-              const { error } = await supabase.auth.updateUser({ password: pw });
-              if (error) throw error;
-              setPw("");
-              return "Password updated.";
-            })}>Update</Button>
-          </div>
-        </Field>
-      </div>
+      <Button busy={busy} onClick={() => run(async () => { await saveProfile({ display_name: name.trim(), timezone: tz }); return "Profile saved."; })}>Save profile</Button>
     </Card>
   );
 }
@@ -186,64 +200,154 @@ function ReminderSettingsCard() {
   );
 }
 
-function DataSettings() {
-  const { uid, today } = useStore();
-  const { busy, run } = useSubmit();
-  const everything = async () => {
-    const out: Record<string, unknown> = {};
-    const { data: profile } = await supabase.from("profiles").select("*").eq("id", uid).single();
-    out.profile = profile;
-    for (const [k, t] of Object.entries(SINGLE_TABLES)) {
-      const { data } = await supabase.from(t).select("*").eq("user_id", uid).maybeSingle();
-      out[k] = data;
+/**
+ * Row rules checked before a restore starts. Restoring clears what's stored
+ * first, so a file that would fail halfway must be caught here.
+ */
+function checkBackup(raw: unknown): ExportFile {
+  const f = raw as ExportFile;
+  if (!f || typeof f !== "object" || f.app !== "becoming-os" || !f.tables || typeof f.tables !== "object") {
+    throw new Error("That file isn't a BECOMING OS backup.");
+  }
+  if (f.version !== 1) throw new Error("That backup comes from a different version of BECOMING OS and can't be restored here.");
+  if (!f.profile || typeof f.profile !== "object") throw new Error("That backup is missing its profile, so it can't be restored.");
+  for (const t of LIST_KEYS) {
+    const rows = f.tables[t] ?? [];
+    if (!Array.isArray(rows)) throw new Error(`The backup's ${t} section is damaged.`);
+    rows.forEach((r, i) => {
+      try {
+        validateRow(t, { ...TABLES[t].defaults, ...r });
+      } catch (e) {
+        throw new Error(`Record ${i + 1} in ${t}: ${errorMessage(e)}`);
+      }
+    });
+  }
+  for (const k of SINGLE_KEYS) {
+    const row = f.singles?.[k];
+    if (!row) continue;
+    try {
+      validateSingle(k, { ...SINGLE_DEFAULTS[k], ...row });
+    } catch (e) {
+      throw new Error(`${k} settings: ${errorMessage(e)}`);
     }
-    for (const [k, t] of Object.entries(LIST_TABLES)) out[k] = await fetchAll(t.table, "user_id", uid, t.order);
-    return out;
+  }
+  return f;
+}
+
+const CSV_TABLES = ["weights", "workouts", "checkins", "nutrition", "completions", "journal", "transactions", "payments"] as const;
+
+function DataSettings() {
+  const { data, host, engine } = useStore();
+  const { confirm, toast } = useFeedback();
+  const { busy, run } = useSubmit();
+  const nav = useNavigate();
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [restoring, setRestoring] = useState(false);
+  const [restoreError, setRestoreError] = useState<string | null>(null);
+  // Inside the claude.ai frame, files can only be saved through the page's save dialog.
+  const canSave = !host.framed || !!host.downloads;
+  // Real date even when a demo clock is set, so backups sort by when they were made.
+  const stamp = () => todayIn(data.profile.timezone);
+  const where = host.mode === "shared-page" ? "for you on this page" : "in this browser";
+
+  const backup = () => run(async () => {
+    const file = await engine.exportAll(true);
+    if ((await saveFile(host, `becoming-os-backup-${stamp()}.json`, JSON.stringify(file))) === "declined") return toast("Backup not saved.", "info");
+    return "Backup saved.";
+  });
+
+  const csv = () => run(async () => {
+    const ready = CSV_TABLES.filter((k) => data[k].length);
+    if (!ready.length) return "Nothing to export yet.";
+    let saved = 0;
+    for (const k of ready) {
+      const rows = data[k] as unknown as Record<string, unknown>[];
+      if ((await saveFile(host, `becoming-os-${k}-${stamp()}.csv`, new Blob([toCSV(rows)], { type: "text/csv;charset=utf-8" }))) === "declined") break;
+      saved++;
+    }
+    if (!saved) return toast("CSV files not saved.", "info");
+    return `${plural(saved, "CSV file")} saved.`;
+  });
+
+  const restore = async (e: ChangeEvent<HTMLInputElement>) => {
+    const picked = e.target.files?.[0];
+    e.target.value = ""; // so choosing the same file again still fires
+    if (!picked) return;
+    setRestoreError(null);
+    setRestoring(true);
+    try {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(await picked.text());
+      } catch {
+        throw new Error("That file isn't a BECOMING OS backup (it isn't valid JSON).");
+      }
+      const file = checkBackup(parsed);
+      // Milestones and reminders are rebuilt from the records, so they aren't counted.
+      const count = LIST_KEYS.filter((t) => t !== "achievements" && t !== "notifications").reduce((n, t) => n + (file.tables[t]?.length ?? 0), 0);
+      const photos = Object.keys(file.images ?? {}).length;
+      const ok = await confirm({
+        title: "Restore this backup?",
+        body: <>
+          <p>This replaces everything currently stored {where} with the backup{file.exported_at ? ` from ${fmtDate(file.exported_at.slice(0, 10))}` : ""}: {plural(count, "record")}{photos ? ` and ${plural(photos, "photo")}` : ""}.</p>
+          <p className="mt-2">Anything you've logged that isn't in the backup is deleted. Save a backup of what's here first if you might want it.</p>
+        </>,
+        confirmLabel: "Replace everything", destructive: true,
+      });
+      if (!ok) return;
+      await engine.importAll(file);
+      toast("Backup restored.");
+      // Restoring clears everything first, which briefly sends the app to setup; come back here.
+      nav("/settings", { replace: true });
+    } catch (err) {
+      setRestoreError(errorMessage(err));
+    } finally {
+      setRestoring(false);
+    }
   };
+
   return (
-    <Card className="space-y-3">
-      <p className="text-[13px] text-mute">Download a complete copy of your records. Progress photo files stay in storage; their metadata is included.</p>
-      <div className="flex flex-wrap gap-2">
-        <Button variant="secondary" busy={busy} icon={<Download className="h-4 w-4" />} onClick={() => run(async () => {
-          download(`becoming-os-export-${today}.json`, JSON.stringify(await everything(), null, 2), "application/json");
-          return "Export downloaded.";
-        })}>Everything (JSON)</Button>
-        <Button variant="secondary" busy={busy} icon={<Download className="h-4 w-4" />} onClick={() => run(async () => {
-          const all = await everything();
-          for (const k of ["weights", "workouts", "checkins", "nutrition", "completions", "journal", "transactions", "payments"]) {
-            const rows = all[k] as Record<string, unknown>[];
-            if (rows.length) download(`becoming-os-${k}-${today}.csv`, toCSV(rows));
-          }
-          return "CSV files downloaded.";
-        })}>Main tables (CSV)</Button>
+    <Card className="space-y-4">
+      <div className="space-y-3">
+        <p className="text-[13px] text-mute">
+          A backup file holds every record, setting and progress photo. {host.mode === "device" ? "It's the only copy outside this browser, so keep it somewhere safe." : "Keep it somewhere safe."}
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" busy={busy} disabled={!canSave || restoring} icon={<Download className="h-4 w-4" />} onClick={backup}>Save backup (JSON)</Button>
+          <Button variant="secondary" busy={busy} disabled={!canSave || restoring} icon={<Download className="h-4 w-4" />} onClick={csv}>Main tables (CSV)</Button>
+        </div>
+        {!canSave && <p className="text-[12px] text-faint">Saving files isn't available in this view.</p>}
+      </div>
+      <div className="space-y-3 border-t border-hair pt-4">
+        <p className="text-[13px] text-mute">Restore replaces everything stored {where} with a backup file's contents.</p>
+        <input ref={fileInput} type="file" accept=".json,application/json" className="hidden" onChange={restore} aria-label="Backup file to restore" />
+        <Button variant="secondary" busy={restoring} disabled={busy} icon={<Upload className="h-4 w-4" />} onClick={() => fileInput.current?.click()}>Restore from backup</Button>
+        {restoreError && <Notice tone="alert" title="Backup not restored">{restoreError}</Notice>}
       </div>
     </Card>
   );
 }
 
 function DangerZone() {
-  const { data, uid, saveProfile, invalidateAll } = useStore();
+  const { data, host, engine, saveProfile } = useStore();
   const { confirm, toast } = useFeedback();
-  const nav = useNavigate();
   const [busy, setBusy] = useState(false);
+  const demo = data.profile.demo_mode;
   const reset = async () => {
-    const demo = data.profile.demo_mode;
     const ok = await confirm({
-      title: demo ? "Reset the demo account?" : "Delete all your data?",
-      body: demo ? "All sample data is removed and setup starts again." : "Every record in this account — weights, workouts, habits, business records, journal, photos and milestones — is permanently deleted. Export first if you want a copy.",
-      confirmLabel: demo ? "Reset demo" : "Delete everything", destructive: true, typeToConfirm: demo ? undefined : "DELETE",
+      title: demo ? "Clear the sample data?" : "Delete all your data?",
+      body: demo ? "All sample data is removed and setup starts again."
+        : `Every record you've stored ${host.mode === "shared-page" ? "on this page" : "in this browser"} — weights, workouts, habits, business records, journal, photos and milestones — is permanently deleted. Save a backup first if you want a copy.`,
+      confirmLabel: demo ? "Clear sample data" : "Delete everything", destructive: true, typeToConfirm: demo ? undefined : "DELETE",
     });
     if (!ok) return;
     setBusy(true);
     try {
-      const { data: files } = await supabase.storage.from("progress-photos").list(uid, { limit: 1000 });
-      if (files?.length) await supabase.storage.from("progress-photos").remove(files.map((f) => `${uid}/${f.name}`));
-      const { error } = await supabase.rpc("reset_my_data");
-      if (error) throw error;
-      await saveProfile({ onboarding_done: false });
-      await invalidateAll();
-      toast(demo ? "Demo cleared." : "All data deleted.");
-      nav("/onboarding");
+      // "Demo" is the placeholder name sample data sets; drop it first so setup asks for a real one.
+      if (demo && data.profile.display_name === "Demo") await saveProfile({ display_name: "" });
+      // Setup opens on its own once the reset clears onboarding.
+      await engine.reset();
+      toast(demo ? "Sample data cleared." : "All data deleted.");
     } catch (e) {
       toast(errorMessage(e), "error");
     } finally {
@@ -252,10 +356,14 @@ function DangerZone() {
   };
   return (
     <Card className="border-alert/30">
-      {data.profile.demo_mode && <Notice tone="gold">This is a demo account with sample data and a simulated date. Reset it to start fresh, or use a separate account for your real records.</Notice>}
+      {demo && <Notice tone="gold">You're exploring sample data with a simulated date. Clear it before you start logging your real records.</Notice>}
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-        <p className="text-[13px] text-mute">{data.profile.demo_mode ? "Removes all sample data and returns to setup." : "Permanently deletes every record you own. Your partner's data is untouched."}</p>
-        <Button variant="danger" busy={busy} onClick={reset}>{data.profile.demo_mode ? "Reset demo account" : "Delete all my data"}</Button>
+        <p className="text-[13px] text-mute">
+          {demo ? "Removes all sample data and returns to setup."
+            : host.mode === "shared-page" ? "Permanently deletes every record you own. Your partner's records are untouched."
+            : "Permanently deletes every record stored in this browser."}
+        </p>
+        <Button variant="danger" busy={busy} onClick={reset}>{demo ? "Clear sample data" : "Delete all my data"}</Button>
       </div>
     </Card>
   );

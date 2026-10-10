@@ -3,8 +3,8 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useFeedback } from "@/components/feedback";
 import { Button, Card, cx, DayPicker, Field, Input, Notice, NumberInput, Segmented, Select, Textarea, Toggle } from "@/components/ui";
+import { LIST_KEYS, type ListKey, type SingleKey } from "@/data/schema";
 import { useStore } from "@/data/store";
-import { supabase } from "@/data/supabase";
 import { READINESS_LABEL } from "@/lib/calc/athletic";
 import { paceRate } from "@/lib/calc/weight";
 import { fmtDate, MISSION_END } from "@/lib/dates";
@@ -15,6 +15,28 @@ import type { GoalMetric, Pace, Readiness, ShareSettings } from "@/lib/types";
 
 type Step = "plan" | "body" | "training" | "business" | "habits" | "privacy" | "reminders";
 
+// The sample-data builder still names its tables the way the old database did.
+const DEMO_SINGLES: Record<string, SingleKey> = { body_goals: "goals", athletic_profiles: "athletic", business_settings: "businessSettings" };
+const DEMO_LISTS: Record<string, ListKey> = {
+  weight_entries: "weights", daily_checkins: "checkins", symptom_logs: "symptoms", nutrition_logs: "nutrition",
+  strength_sets: "sets", habit_completions: "completions", rest_days: "restDays", journal_entries: "journal",
+  activity_metrics: "metrics", activity_logs: "activityLogs",
+};
+
+/** Group the sample rows into one engine.bulk plan. */
+function demoPlan(uid: string) {
+  const tables: Partial<Record<ListKey, Record<string, unknown>[]>> = {};
+  const singles: Partial<Record<SingleKey, Record<string, unknown>>> = {};
+  for (const { table, rows } of buildDemo(uid)) {
+    const single = DEMO_SINGLES[table];
+    const list = DEMO_LISTS[table] ?? ((LIST_KEYS as readonly string[]).includes(table) ? (table as ListKey) : undefined);
+    if (single) singles[single] = rows[0];
+    else if (list) tables[list] = [...(tables[list] ?? []), ...rows];
+    else throw new Error(`Sample data has no place for "${table}".`);
+  }
+  return { tables, singles };
+}
+
 export default function Onboarding() {
   const s = useStore();
   const { data, today } = s;
@@ -23,6 +45,9 @@ export default function Onboarding() {
   // No plan is pre-selected: each person chooses, so nobody inherits another's numbers.
   const [preset, setPreset] = useState<"primary" | "partner" | "custom" | null>(data.profile.plan_preset);
   const [bizOn, setBizOn] = useState(data.profile.business_enabled);
+  // Off the shared page there's no account to take a name from, so ask once.
+  const [askName] = useState(!data.profile.display_name);
+  const [name, setName] = useState("");
   const steps: Step[] = ["plan", "body", "training", ...(bizOn ? (["business"] as Step[]) : []), "habits", "privacy", "reminders"];
   const [i, setI] = useState(0);
   const step = steps[Math.min(i, steps.length - 1)];
@@ -72,7 +97,7 @@ export default function Onboarding() {
   const finish = async () => {
     setBusy(true);
     try {
-      await s.saveProfile({ onboarding_done: true });
+      await s.saveProfile({ onboarding_done: true, ...(askName && name.trim() ? { display_name: name.trim() } : {}) });
       nav("/", { replace: true });
     } catch (e) {
       toast(errorMessage(e), "error");
@@ -96,7 +121,7 @@ export default function Onboarding() {
 
   const savePlan = () => run(async () => {
     if (!preset) throw new Error("Choose the plan that fits you, or skip setup for now.");
-    await s.saveProfile({ plan_preset: preset, business_enabled: bizOn });
+    await s.saveProfile({ plan_preset: preset, business_enabled: bizOn, ...(askName && name.trim() ? { display_name: name.trim() } : {}) });
   });
 
   const choosePreset = (key: "primary" | "partner" | "custom") => {
@@ -175,23 +200,24 @@ export default function Onboarding() {
 
   const startDemo = async () => {
     const hasRecords = data.weights.length + data.workouts.length + data.habits.length + data.transactions.length > 0;
-    if (hasRecords) return toast("Demo data can only be loaded into an empty account.", "error");
+    if (hasRecords) return toast("Sample data can only be loaded before you've logged anything.", "error");
     const ok = await confirm({
-      title: "Make this a demo account?",
-      body: "This fills this account with clearly labelled sample data and sets its clock to Dec 15, 2026 so you can explore a populated dashboard. Use a separate account for your real records. You can reset the demo later in Settings.",
+      title: "Load sample data?",
+      body: <>
+        <p>This fills BECOMING OS with clearly labelled sample data and sets its clock to Dec 15, 2026 so you can explore a populated dashboard.</p>
+        <p className="mt-2">Don't log real records on top of it. When you're done exploring, clear it in Settings and setup starts again.</p>
+        {s.host.mode === "shared-page" && <p className="mt-2">Your partner can see the sample progress too, within your sharing settings.</p>}
+      </>,
       confirmLabel: "Load sample data",
     });
     if (!ok) return;
     setBusy(true);
     try {
-      for (const { table, rows } of buildDemo(s.uid)) {
-        for (let k = 0; k < rows.length; k += 500) {
-          const { error } = await supabase.from(table).insert(rows.slice(k, k + 500), { defaultToNull: false });
-          if (error) throw error;
-        }
-      }
-      await s.saveProfile({ demo_mode: true, demo_today: DEMO_TODAY, onboarding_done: true, plan_preset: "primary", business_enabled: true, display_name: data.profile.display_name || "Demo" });
-      await s.invalidateAll();
+      await s.engine.bulk(demoPlan(s.uid));
+      await s.saveProfile({
+        demo_mode: true, demo_today: DEMO_TODAY, onboarding_done: true, plan_preset: "primary", business_enabled: true,
+        display_name: (askName && name.trim()) || data.profile.display_name || "Demo",
+      });
       nav("/", { replace: true });
     } catch (e) {
       toast(`Demo load failed: ${errorMessage(e)}`, "error");
@@ -217,6 +243,11 @@ export default function Onboarding() {
         <section className="animate-rise">
           <h1 className="text-[42px] leading-none">Welcome{data.profile.display_name ? `, ${data.profile.display_name}` : ""}.</h1>
           <p className="mt-3 text-[15px] text-mute">A few questions so targets come from your real numbers. Every step can be skipped and finished later — nothing is invented in the meantime.</p>
+          {askName && (
+            <Field label="Your name" hint="Shown on your dashboard. Optional." className="mt-6 max-w-sm">
+              <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} autoComplete="given-name" />
+            </Field>
+          )}
           <div className="mt-8 grid gap-3">
             {([
               ["primary", "Body, business and a 10K", "Lose 50–60 lb, build to $10,000/month in business, and train toward a 10K."],
@@ -235,7 +266,7 @@ export default function Onboarding() {
           </Card>
           <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
             <button onClick={startDemo} className="inline-flex items-center gap-2 text-[13px] text-mute hover:text-gold" disabled={busy}>
-              <Sparkles className="h-4 w-4" /> Explore with sample data instead (demo account)
+              <Sparkles className="h-4 w-4" /> Explore with sample data instead
             </button>
             <Button size="lg" busy={busy} disabled={!preset} onClick={savePlan}>Continue</Button>
           </div>
@@ -389,7 +420,11 @@ export default function Onboarding() {
       {step === "privacy" && share && (
         <section className="animate-rise space-y-5">
           <h1 className="text-[38px] leading-none">What your partner can see</h1>
-          <p className="text-[14px] text-mute">Applies once you connect accounts. Enforced by the database, not just hidden on screen. You can change it any time.</p>
+          <p className="text-[14px] text-mute">
+            {s.host.mode === "shared-page"
+              ? "Your records stay private to you. Your partner only sees a summary built from these choices, and can't change anything of yours. You can change these any time."
+              : "These choices apply when you use your shared BECOMING OS page. In this browser nothing is shared; your records stay on this device."}
+          </p>
           <PrivacyEditor value={share} onChange={setShare} business={bizOn} />
           <Nav back={back} skip={next} save={savePrivacy} busy={busy} />
         </section>

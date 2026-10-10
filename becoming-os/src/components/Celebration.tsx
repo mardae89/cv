@@ -8,7 +8,7 @@ import { fmtDate } from "@/lib/dates";
 import { errorMessage, lb, money, pct } from "@/lib/format";
 import type { AchievementRow, UserData } from "@/lib/types";
 import type { Evaluation } from "@/lib/calc/milestones";
-import { supabase } from "@/data/supabase";
+import { saveFile } from "@/data/host";
 import { useFeedback } from "./feedback";
 import { Button, cx } from "./ui";
 
@@ -87,20 +87,19 @@ async function drawCard(a: AchievementRow, line: string): Promise<Blob> {
 }
 
 export function CardActions({ a, line }: { a: AchievementRow; line: string }) {
+  const { host } = useStore();
   const { toast } = useFeedback();
   const [busy, setBusy] = useState(false);
   const file = async () => new File([await drawCard(a, line)], `becoming-${a.key.replace(/\W+/g, "-")}.png`, { type: "image/png" });
-  const canShare = typeof navigator !== "undefined" && typeof navigator.canShare === "function";
+  // Inside a frame, files can only be saved through the page's own save dialog,
+  // and there's no Web Share. Elsewhere, Share only where the browser can share files.
+  const canSave = !host.framed || !!host.downloads;
+  const canShare = !host.framed && typeof navigator !== "undefined" && typeof navigator.share === "function" && typeof navigator.canShare === "function";
   const save = async () => {
     setBusy(true);
     try {
       const f = await file();
-      const url = URL.createObjectURL(f);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = f.name;
-      link.click();
-      setTimeout(() => URL.revokeObjectURL(url), 2000);
+      if ((await saveFile(host, f.name, f)) === "declined") toast("Card not saved.", "info");
     } catch (e) {
       toast(errorMessage(e), "error");
     } finally {
@@ -122,9 +121,10 @@ export function CardActions({ a, line }: { a: AchievementRow; line: string }) {
       setBusy(false);
     }
   };
+  if (!canSave && !canShare) return null;
   return (
     <div className="flex flex-wrap justify-center gap-2">
-      <Button variant="secondary" size="sm" busy={busy} icon={<Download className="h-4 w-4" />} onClick={save}>Save card</Button>
+      {canSave && <Button variant="secondary" size="sm" busy={busy} icon={<Download className="h-4 w-4" />} onClick={save}>Save card</Button>}
       {canShare && <Button variant="secondary" size="sm" disabled={busy} icon={<Share2 className="h-4 w-4" />} onClick={share}>Share</Button>}
     </div>
   );
@@ -155,7 +155,7 @@ function Confetti() {
 }
 
 export function CelebrationHost() {
-  const { data, ev, today, invalidate, milestoneByKey } = useStore();
+  const { data, ev, today, update, milestoneByKey } = useStore();
   const { toast } = useFeedback();
   const [closing, setClosing] = useState(false);
   const pending = data.achievements
@@ -174,9 +174,11 @@ export function CelebrationHost() {
   const done = async () => {
     setClosing(true);
     const ids = batch ? pending.map((p) => p.id) : [a.id];
-    const { error } = await supabase.from("achievements").update({ celebrated_at: new Date().toISOString() }).in("id", ids);
-    if (error) toast(errorMessage(error), "error");
-    await invalidate("achievements");
+    const at = new Date().toISOString();
+    // Each update shows at once; this waits only for storage to confirm.
+    const results = await Promise.allSettled(ids.map((id) => update("achievements", id, { celebrated_at: at })));
+    const failed = results.find((r) => r.status === "rejected") as PromiseRejectedResult | undefined;
+    if (failed) toast(errorMessage(failed.reason), "error");
     setClosing(false);
   };
 

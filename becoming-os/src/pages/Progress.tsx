@@ -4,11 +4,10 @@ import { Link } from "react-router-dom";
 import { Chart, ChartCard, GOLD, NEUTRAL, RangePicker, rangeFor, type RangeKey } from "@/components/charts";
 import { useFeedback } from "@/components/feedback";
 import { PhotoUpload, WeightForm } from "@/components/forms/body";
-import { Photo } from "@/components/Photo";
+import { forgetPhoto, Photo } from "@/components/Photo";
 import { RecordList } from "@/components/RecordList";
 import { Button, Card, cx, EmptyState, Eyebrow, IconButton, Meter, PageHeader, Select, Sheet, Stat, Table } from "@/components/ui";
 import { useStore } from "@/data/store";
-import { supabase } from "@/data/supabase";
 import { paceRate, weeklyWeights, weightPlan, weightProgress } from "@/lib/calc/weight";
 import { fmtDate, fmtShort, fmtWeekRange, MISSION_END } from "@/lib/dates";
 import { errorMessage, lb, pct, round, signed } from "@/lib/format";
@@ -144,20 +143,22 @@ export default function Progress() {
 }
 
 function MilestonePhoto({ achievementId, photoId }: { achievementId: string; photoId: string | null }) {
-  const { data, invalidate } = useStore();
+  const { data, update } = useStore();
   const { toast } = useFeedback();
   const [open, setOpen] = useState(false);
   const photo = data.photos.find((p) => p.id === photoId);
   const attach = async (id: string | null) => {
-    const { error } = await supabase.from("achievements").update({ photo_id: id }).eq("id", achievementId);
-    if (error) return toast(errorMessage(error), "error");
-    await invalidate("achievements");
-    setOpen(false);
+    try {
+      await update("achievements", achievementId, { photo_id: id });
+      setOpen(false);
+    } catch (e) {
+      toast(errorMessage(e), "error");
+    }
   };
   return (
     <>
       <button onClick={() => setOpen(true)} aria-label="Attach progress photo" className="shrink-0">
-        {photo ? <Photo path={photo.storage_path} alt="Milestone photo" className="h-10 w-10" /> : <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-dashed border-line text-faint"><ImagePlus className="h-4 w-4" /></span>}
+        {photo ? <Photo id={photo.id} alt="Milestone photo" className="h-10 w-10" /> : <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-dashed border-line text-faint"><ImagePlus className="h-4 w-4" /></span>}
       </button>
       <Sheet open={open} onClose={() => setOpen(false)} title="Milestone photo">
         {data.photos.length ? (
@@ -178,12 +179,12 @@ function Photos() {
   const { data, remove } = useStore();
   const { confirm, toast } = useFeedback();
   const [add, setAdd] = useState(false);
-  const del = async (id: string, path: string) => {
+  const del = async (id: string) => {
     if (!(await confirm({ title: "Delete this photo?", body: "It's removed from storage permanently.", confirmLabel: "Delete", destructive: true }))) return;
     try {
-      const { error } = await supabase.storage.from("progress-photos").remove([path]);
-      if (error) throw error;
+      // Also deletes the stored image and unlinks it from any milestone.
       await remove("photos", id);
+      forgetPhoto(id);
       toast("Photo deleted.");
     } catch (e) {
       toast(errorMessage(e), "error");
@@ -200,9 +201,9 @@ function Photos() {
         <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
           {photos.map((p) => (
             <figure key={p.id} className="group relative">
-              <Photo path={p.storage_path} alt={`Progress photo ${fmtDate(p.taken_on)}`} className="aspect-[3/4]" />
+              <Photo id={p.id} alt={`Progress photo ${fmtDate(p.taken_on)}`} className="aspect-[3/4]" />
               <figcaption className="mt-1 text-[11px] text-faint">{fmtShort(p.taken_on)}{p.pose ? ` · ${p.pose}` : ""}</figcaption>
-              <IconButton label="Delete photo" className="absolute right-1 top-1 h-8 w-8 bg-ink/70 opacity-100 sm:opacity-0 sm:group-hover:opacity-100" onClick={() => del(p.id, p.storage_path)}>
+              <IconButton label="Delete photo" className="absolute right-1 top-1 h-8 w-8 bg-ink/70 opacity-100 sm:opacity-0 sm:group-hover:opacity-100" onClick={() => del(p.id)}>
                 <Trash2 className="h-3.5 w-3.5" />
               </IconButton>
             </figure>

@@ -3,23 +3,28 @@ import { Link } from "react-router-dom";
 import { useFeedback } from "@/components/feedback";
 import { Button, Card, cx, EmptyState, Notice, PageHeader } from "@/components/ui";
 import { useStore } from "@/data/store";
-import { supabase } from "@/data/supabase";
 import { errorMessage } from "@/lib/format";
 
 export default function Notifications() {
-  const { notifications, invalidate, uid } = useStore();
+  const { notifications, update, remove } = useStore();
   const { toast } = useFeedback();
   const unread = notifications.filter((n) => !n.read_at);
   const markRead = async (ids: string[]) => {
     if (!ids.length) return;
-    const { error } = await supabase.from("notifications").update({ read_at: new Date().toISOString() }).in("id", ids).eq("user_id", uid);
-    if (error) return toast(errorMessage(error), "error");
-    await invalidate("notifications");
+    const read_at = new Date().toISOString();
+    try {
+      // Started together so the changes are stored in one write.
+      await Promise.all(ids.map((id) => update("notifications", id, { read_at })));
+    } catch (e) {
+      toast(errorMessage(e), "error");
+    }
   };
   const clear = async () => {
-    const { error } = await supabase.from("notifications").delete().eq("user_id", uid).not("read_at", "is", null);
-    if (error) return toast(errorMessage(error), "error");
-    await invalidate("notifications");
+    try {
+      await remove("notifications", notifications.filter((n) => n.read_at).map((n) => n.id));
+    } catch (e) {
+      toast(errorMessage(e), "error");
+    }
   };
   return (
     <div className="space-y-5">
@@ -29,8 +34,8 @@ export default function Notifications() {
           <Button variant="ghost" size="sm" disabled={notifications.length === unread.length} onClick={clear}>Clear read</Button>
         </div>} />
       <Notice>
-        Reminders are generated in the app when you open BECOMING OS and appear here. Push notifications to your phone and email reminders are not set up in this version —
-        they need a Web Push key and a scheduled server job (see DEPLOY.md). Choose categories in <Link to="/settings#reminders" className="link">Settings</Link>.
+        Reminders are worked out when you open BECOMING OS and are listed here. Nothing is sent to your phone or email, so check back here.
+        Choose which reminders you get in <Link to="/settings#reminders" className="link">Settings</Link>.
       </Notice>
       {notifications.length ? (
         <Card className="p-0">

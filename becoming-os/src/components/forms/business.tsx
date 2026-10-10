@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
+import { validateRow } from "@/data/schema";
 import { useStore } from "@/data/store";
-import { supabase } from "@/data/supabase";
 import { paidAmount } from "@/lib/calc/business";
 import { checkTransaction } from "@/lib/calc/validation";
 import { fmtShort } from "@/lib/dates";
@@ -23,7 +23,7 @@ export const KIND_LABEL: Record<TxnKind, string> = {
 const BUSINESS_KINDS: TxnKind[] = ["sale", "expense", "refund"];
 
 export function TransactionForm({ initial, businessId, onDone }: { initial?: Transaction; businessId?: string; onDone?: () => void }) {
-  const { data, today, uid, insert, update, invalidate } = useStore();
+  const { data, today, insert, update } = useStore();
   const { confirm } = useFeedback();
   const { busy, run } = useSubmit();
   const active = data.businesses.filter((b) => b.active);
@@ -74,28 +74,28 @@ export function TransactionForm({ initial, businessId, onDone }: { initial?: Tra
         num(t.amount) === amt && (t.business_id ?? "") === (isBiz ? biz : ""));
       if (dup && !initial && !(await confirm({ title: "Possible duplicate", body: `A ${kind} of ${money(amt)} on this date is already recorded.`, confirmLabel: "Record it again" }))) return;
 
-      let cust = customerId || null;
-      if (kind === "sale" && newCustomer.trim()) {
-        const [created] = await insert<Customer>("customers", { business_id: biz, name: newCustomer.trim(), started_on: date, source: lead.trim() || null });
-        cust = created.id;
-      }
       const row = {
         kind, business_id: isBiz ? biz : null, txn_date: date, amount: amt,
         description: description.trim() || null, notes: notes.trim() || null,
-        customer_id: kind === "sale" || kind === "refund" ? cust : null,
+        customer_id: kind === "sale" || kind === "refund" ? customerId || null : null,
         offer_id: kind === "sale" || kind === "refund" ? offerId || null : null,
         recurring: kind === "sale" && recurring,
         lead_source: kind === "sale" ? lead.trim() || null : null,
         expense_category: kind === "expense" ? category : null,
       };
+      const payment = kind === "sale" && collected > 0 ? { paid_on: cashDate, amount: collected } : null;
+      // Check the records before the first write, so a bad value can't leave half a sale saved.
+      validateRow("transactions", row);
+      if (payment) validateRow("payments", { ...payment, transaction_id: initial?.id ?? "new" });
+
+      if (kind === "sale" && !customerId && newCustomer.trim()) {
+        const [created] = await insert<Customer>("customers", { business_id: biz, name: newCustomer.trim(), started_on: date, source: lead.trim() || null });
+        row.customer_id = created.id;
+      }
       let id = initial?.id;
       if (initial) await update("transactions", initial.id, row);
       else id = (await insert<Transaction>("transactions", row))[0].id;
-      if (kind === "sale" && collected > 0) {
-        const { error } = await supabase.from("payments").insert({ user_id: uid, transaction_id: id, paid_on: cashDate, amount: collected });
-        if (error) throw new Error(errorMessage(error));
-        await invalidate("payments");
-      }
+      if (payment) await insert("payments", { ...payment, transaction_id: id });
       if (!initial) {
         setAmount("");
         setCash("");

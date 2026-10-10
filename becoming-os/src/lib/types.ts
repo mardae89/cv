@@ -1,6 +1,6 @@
-// Row types mirroring supabase/migrations. Numeric columns arrive from
-// PostgREST as numbers (or strings for very large values); `num()` in
-// format.ts normalises them where it matters.
+// Row types for every stored record. Numbers are stored as numbers, but
+// older backups may hold numeric strings; `num()` in format.ts normalises
+// them where it matters.
 
 export type ISODate = string; // 'YYYY-MM-DD', a local calendar date
 

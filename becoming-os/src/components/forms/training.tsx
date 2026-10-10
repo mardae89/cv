@@ -1,10 +1,10 @@
 import { Plus, Trash2 } from "lucide-react";
 import { useState, type FormEvent } from "react";
+import { validateRow } from "@/data/schema";
 import { useStore } from "@/data/store";
-import { supabase } from "@/data/supabase";
 import { ACTIVITY_LABEL, runningUnlocked } from "@/lib/calc/athletic";
 import { checkWorkout } from "@/lib/calc/validation";
-import { errorMessage, num, pace } from "@/lib/format";
+import { num, pace } from "@/lib/format";
 import type { Activity, StrengthSet, Workout } from "@/lib/types";
 import { useFeedback } from "../feedback";
 import { Button, Field, IconButton, Input, Notice, NumberInput, Scale, Segmented, Select, Textarea, Toggle } from "../ui";
@@ -31,7 +31,7 @@ function groupSets(sets: StrengthSet[]): ExerciseRow[] {
 const DISTANCE: Activity[] = ["run", "run_walk", "walk", "swim", "cycle"];
 
 export function WorkoutForm({ initial, onDone }: { initial?: Workout; onDone?: () => void }) {
-  const { data, today, uid, insert, update, invalidate } = useStore();
+  const { data, today, insert, update, remove } = useStore();
   const { confirm } = useFeedback();
   const { busy, run } = useSubmit();
   const [date, setDate] = useState(initial?.workout_date ?? today);
@@ -47,8 +47,10 @@ export function WorkoutForm({ initial, onDone }: { initial?: Workout; onDone?: (
   const [isRace, setIsRace] = useState(initial?.is_race ?? false);
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const [recovery, setRecovery] = useState(initial?.recovery_notes ?? "");
-  const [rows, setRows] = useState<ExerciseRow[]>(
-    initial ? groupSets(data.sets.filter((s) => s.workout_id === initial.id)) : [{ exercise: "", sets: "3", reps: "10", weight: "" }]);
+  const [rows, setRows] = useState<ExerciseRow[]>(() => {
+    const saved = initial ? groupSets(data.sets.filter((s) => s.workout_id === initial.id)) : [];
+    return saved.length ? saved : [{ exercise: "", sets: "3", reps: "10", weight: "" }];
+  });
 
   const running = activity === "run" || activity === "run_walk";
   const distMi = distance ? (activity === "swim" && yards ? num(distance) / 1760 : num(distance)) : null;
@@ -74,26 +76,25 @@ export function WorkoutForm({ initial, onDone }: { initial?: Workout; onDone?: (
         pain_level: running || activity === "walk" ? painLevel : null, is_race: running && isRace,
         notes: notes.trim() || null, recovery_notes: recovery.trim() || null,
       };
+      const sets = activity !== "strength" ? [] : rows.filter((r) => r.exercise.trim()).flatMap((r) =>
+        Array.from({ length: Math.max(1, Math.min(20, Math.round(num(r.sets) || 1))) }, (_, k) => ({
+          exercise: r.exercise.trim(), set_no: k + 1,
+          reps: r.reps ? Math.round(num(r.reps)) : null, weight_lb: r.weight ? num(r.weight) : null,
+        })));
+      // Check the sets before saving anything, so a typo can't leave a workout saved without them.
+      for (const s of sets) validateRow("sets", { ...s, workout_id: initial?.id ?? "new" });
+
       let id = initial?.id;
       if (initial) await update("workouts", initial.id, row);
       else id = (await insert<Workout>("workouts", row))[0].id;
 
-      if (activity === "strength") {
-        const sets = rows.filter((r) => r.exercise.trim()).flatMap((r) =>
-          Array.from({ length: Math.max(1, Math.min(20, Math.round(num(r.sets) || 1))) }, (_, k) => ({
-            user_id: uid, workout_id: id, exercise: r.exercise.trim(), set_no: k + 1,
-            reps: r.reps ? Math.round(num(r.reps)) : null, weight_lb: r.weight ? num(r.weight) : null,
-          })));
-        if (initial) {
-          const { error } = await supabase.from("strength_sets").delete().eq("workout_id", initial.id);
-          if (error) throw new Error(errorMessage(error));
-        }
-        if (sets.length) {
-          const { error } = await supabase.from("strength_sets").insert(sets);
-          if (error) throw new Error(errorMessage(error));
-        }
-        await invalidate("sets");
-      }
+      // Sets are replaced as a whole (a workout that's no longer strength keeps none).
+      // Both changes apply at once and are stored together.
+      const oldSets = initial ? data.sets.filter((s) => s.workout_id === initial.id).map((s) => s.id) : [];
+      await Promise.all([
+        oldSets.length ? remove("sets", oldSets) : null,
+        sets.length ? insert("sets", sets.map((s) => ({ ...s, workout_id: id }))) : null,
+      ]);
       if (!initial) {
         setTitle("");
         setDuration("");

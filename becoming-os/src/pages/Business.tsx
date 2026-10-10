@@ -7,20 +7,22 @@ import { useSubmit } from "@/components/forms/body";
 import { PaymentForm, TransactionForm } from "@/components/forms/business";
 import { RecordList } from "@/components/RecordList";
 import { Button, Card, cx, EmptyState, Eyebrow, Field, Input, Meter, Notice, NumberInput, PageHeader, Segmented, Select, Sheet, Stat, Table, Textarea } from "@/components/ui";
+import { saveFile } from "@/data/host";
 import { useStore } from "@/data/store";
 import {
   customerStats, dailyRevenue, expensesByCategory, forecast, forecastDefaults, goalStatus, METRIC_LABEL, metricValue,
   monthFinance, monthlyHistory, periodFinance, pipelineStats, receivables, revenueByBusiness, revenueByOffer, salesToClose,
   type Ledger,
 } from "@/lib/calc/business";
-import { toCSV, download } from "@/lib/csv";
+import { toCSV } from "@/lib/csv";
 import { addDays, addMonths, fmtDate, fmtMonth, fmtShort, MISSION_END, MISSION_START, monthEnd, monthStart, weekStart } from "@/lib/dates";
-import { money, num, pct, plural, round } from "@/lib/format";
+import { errorMessage, money, num, pct, plural, round } from "@/lib/format";
 import type { ForecastAssumptions, GoalMetric, Transaction } from "@/lib/types";
 import { TransactionList } from "./Log";
 
 export default function Business() {
-  const { data, today } = useStore();
+  const { data, today, host } = useStore();
+  const { toast } = useFeedback();
   const [month, setMonth] = useState(monthStart(today));
   const [view, setView] = useState<"earned" | "received">("earned");
   const [add, setAdd] = useState(false);
@@ -62,25 +64,38 @@ export default function Business() {
       })
     : dailyRevenue(l, month, asOf).map((d) => ({ date: d.date, revenue: d.revenue, cash: d.cash, profit: round(d.revenue - d.expenses, 2) }));
 
+  // Inside the claude.ai frame, files can only be saved through the page's save dialog.
+  const canSave = !host.framed || !!host.downloads;
+  /** Offers each non-empty file in turn; if one is declined the rest are skipped. */
+  const saveCSVs = async (files: [name: string, rows: Record<string, unknown>[]][]) => {
+    const ready = files.filter(([, rows]) => rows.length);
+    if (!ready.length) return toast("Nothing to export yet.", "info");
+    try {
+      for (const [name, rows] of ready) {
+        if ((await saveFile(host, name, new Blob([toCSV(rows)], { type: "text/csv;charset=utf-8" }))) === "declined") return;
+      }
+    } catch (e) {
+      toast(errorMessage(e), "error");
+    }
+  };
   const exportTx = () => {
     const biz = new Map(data.businesses.map((b) => [b.id, b.name]));
     const offers = new Map(data.offers.map((o) => [o.id, o.name]));
     const cust = new Map(data.customers.map((c) => [c.id, c.name]));
     const paid = (id: string) => data.payments.filter((p) => p.transaction_id === id).reduce((s, p) => s + num(p.amount), 0);
-    download(`becoming-os-transactions-${today}.csv`, toCSV(data.transactions.map((t) => ({
+    void saveCSVs([[`becoming-os-transactions-${today}.csv`, data.transactions.map((t) => ({
       date: t.txn_date, type: t.kind, business: t.business_id ? biz.get(t.business_id) : "", amount: t.amount,
       cash_collected: t.kind === "sale" ? round(paid(t.id), 2) : "", outstanding: t.kind === "sale" ? round(num(t.amount) - paid(t.id), 2) : "",
       recurring: t.kind === "sale" ? t.recurring : "", offer: t.offer_id ? offers.get(t.offer_id) : "", customer: t.customer_id ? cust.get(t.customer_id) : "",
       lead_source: t.lead_source, expense_category: t.expense_category, description: t.description, notes: t.notes,
-    }))));
-    download(`becoming-os-payments-${today}.csv`, toCSV(data.payments.map((p) => ({ paid_on: p.paid_on, amount: p.amount, transaction_id: p.transaction_id, method: p.method }))));
+    }))], [`becoming-os-payments-${today}.csv`, data.payments.map((p) => ({ paid_on: p.paid_on, amount: p.amount, transaction_id: p.transaction_id, method: p.method }))]]);
   };
   const exportSummary = () => {
-    download(`becoming-os-monthly-summary-${today}.csv`, toCSV(monthlyHistory(l, MISSION_START < (data.transactions[0]?.txn_date ?? MISSION_START) ? MISSION_START : data.transactions[0]?.txn_date ?? MISSION_START, today).map((h) => ({
+    void saveCSVs([[`becoming-os-monthly-summary-${today}.csv`, monthlyHistory(l, MISSION_START < (data.transactions[0]?.txn_date ?? MISSION_START) ? MISSION_START : data.transactions[0]?.txn_date ?? MISSION_START, today).map((h) => ({
       month: h.month.slice(0, 7), gross_sales: h.grossSales, refunds: h.refunds, revenue_earned: h.revenue, cash_collected: h.cashIn,
       cash_net_of_refunds: h.cash, expenses: h.expenses, net_profit: h.profit, recurring_revenue: h.recurring, one_time_revenue: h.oneTime,
       paying_customers: h.payingCustomers, sales: h.salesCount, gig_income: h.gigIncome, personal_income: h.personalIncome, transfers_excluded: h.transfers,
-    }))));
+    }))]]);
   };
 
   return (
@@ -88,8 +103,10 @@ export default function Business() {
       <PageHeader eyebrow="Business" title="Command centre"
         sub={`Goal: ${money(g.goal)}/month in ${METRIC_LABEL[g.metric].toLowerCase()} by ${fmtDate(settings.goal_deadline ?? MISSION_END)}.`}
         action={<div className="flex flex-wrap gap-2">
-          <Button variant="secondary" icon={<Download className="h-4 w-4" />} onClick={exportTx}>Transactions CSV</Button>
-          <Button variant="secondary" icon={<Download className="h-4 w-4" />} onClick={exportSummary}>Summary CSV</Button>
+          {canSave && <>
+            <Button variant="secondary" icon={<Download className="h-4 w-4" />} onClick={exportTx}>Transactions CSV</Button>
+            <Button variant="secondary" icon={<Download className="h-4 w-4" />} onClick={exportSummary}>Summary CSV</Button>
+          </>}
           <Button icon={<Plus className="h-4 w-4" />} onClick={() => setAdd(true)}>Record</Button>
         </div>} />
 

@@ -1,12 +1,14 @@
 import { Camera } from "lucide-react";
 import { useRef, useState, type FormEvent } from "react";
+import { StorageError } from "@/data/docstore";
+import { newId } from "@/data/engine";
 import { useStore } from "@/data/store";
-import { supabase } from "@/data/supabase";
 import { checkDate, checkWeight } from "@/lib/calc/validation";
 import { fmtDate } from "@/lib/dates";
 import { errorMessage, num } from "@/lib/format";
 import type { DailyCheckin, PainType, ProgressPhoto, SymptomLog, WeightEntry } from "@/lib/types";
 import { useFeedback } from "../feedback";
+import { forgetPhoto, rememberPhoto } from "../Photo";
 import { Button, Field, Input, Notice, NumberInput, Scale, Segmented, Select, Textarea } from "../ui";
 
 export function useSubmit() {
@@ -197,20 +199,58 @@ export function SymptomForm({ initial, onDone }: { initial?: SymptomLog; onDone?
   );
 }
 
-/** Resizes to at most 1600px and re-encodes as JPEG before upload. */
-async function compress(file: File): Promise<Blob> {
-  const bmp = await createImageBitmap(file).catch(() => null);
-  if (!bmp) return file;
-  const scale = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
-  const c = document.createElement("canvas");
-  c.width = Math.round(bmp.width * scale);
-  c.height = Math.round(bmp.height * scale);
-  c.getContext("2d")!.drawImage(bmp, 0, 0, c.width, c.height);
-  return new Promise((res) => c.toBlob((b) => res(b ?? file), "image/jpeg", 0.86));
+/** Each photo is stored as one record, which must stay under 240K characters. */
+const PHOTO_CHARS = 230_000;
+
+async function decode(file: File): Promise<{ img: CanvasImageSource; width: number; height: number; done: () => void }> {
+  try {
+    const bmp = await createImageBitmap(file, { imageOrientation: "from-image" });
+    return { img: bmp, width: bmp.width, height: bmp.height, done: () => bmp.close() };
+  } catch {
+    // Older browsers: fall back to an <img>, which also honours the photo's rotation.
+    const url = URL.createObjectURL(file);
+    try {
+      const el = new Image();
+      el.src = url;
+      await el.decode();
+      return { img: el, width: el.naturalWidth, height: el.naturalHeight, done: () => URL.revokeObjectURL(url) };
+    } catch {
+      URL.revokeObjectURL(url);
+      throw new Error("This photo's format can't be read here. Try a JPEG or PNG.");
+    }
+  }
+}
+
+/** Downscales (long edge 1280px to start) and re-encodes as JPEG, lowering quality, then size, until it fits. */
+async function toStoredJpeg(file: File): Promise<string> {
+  const src = await decode(file);
+  try {
+    if (!src.width || !src.height) throw new Error("That image is empty.");
+    let edge = Math.min(1280, Math.max(src.width, src.height));
+    for (;;) {
+      const scale = edge / Math.max(src.width, src.height);
+      const c = document.createElement("canvas");
+      c.width = Math.max(1, Math.round(src.width * scale));
+      c.height = Math.max(1, Math.round(src.height * scale));
+      const g = c.getContext("2d")!;
+      g.fillStyle = "#ffffff"; // JPEG has no transparency
+      g.fillRect(0, 0, c.width, c.height);
+      g.imageSmoothingQuality = "high";
+      g.drawImage(src.img, 0, 0, c.width, c.height);
+      for (const q of [0.85, 0.75, 0.65, 0.55]) {
+        const url = c.toDataURL("image/jpeg", q);
+        if (url.length < PHOTO_CHARS) return url;
+      }
+      if (edge <= 320) throw new Error("That photo couldn't be made small enough to store. Try a different one.");
+      edge = Math.max(320, Math.round(edge * 0.8));
+    }
+  } finally {
+    src.done();
+  }
 }
 
 export function PhotoUpload({ onDone }: { onDone?: () => void }) {
-  const { uid, today, insert } = useStore();
+  const { host, engine, today, insert } = useStore();
   const { busy, run } = useSubmit();
   const input = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -223,16 +263,22 @@ export function PhotoUpload({ onDone }: { onDone?: () => void }) {
     run(async () => {
       if (!file) throw new Error("Choose a photo first.");
       if (!file.type.startsWith("image/")) throw new Error("That file isn't an image.");
-      const blob = await compress(file);
-      const path = `${uid}/${crypto.randomUUID()}.jpg`;
-      const { error } = await supabase.storage.from("progress-photos").upload(path, blob, { contentType: "image/jpeg", upsert: false });
-      if (error) throw error;
+      const dataUrl = await toStoredJpeg(file);
+      // The image is stored first, under the photo's own id; the record follows.
+      const id = newId();
       try {
-        await insert("photos", { taken_on: date, storage_path: path, pose, caption: caption.trim() || null });
+        await engine.putImage(id, dataUrl);
+        await insert("photos", { id, taken_on: date, storage_path: id, pose, caption: caption.trim() || null });
       } catch (err) {
-        await supabase.storage.from("progress-photos").remove([path]);
-        throw err;
+        // Roll back so a failed upload leaves nothing half-saved (the record may
+        // already be on screen, waiting on storage).
+        if (engine.getState().tables.photos.some((p) => p.id === id)) await engine.remove("photos", id).catch(() => undefined);
+        await engine.deleteImage(id).catch(() => undefined);
+        forgetPhoto(id);
+        const retrying = err instanceof StorageError && (err.code === "unavailable" || err.code === "resource_exhausted");
+        throw retrying ? new Error("Couldn't save the photo, so nothing was kept. Try again in a moment.") : err;
       }
+      rememberPhoto(id, dataUrl);
       setFile(null);
       setCaption("");
       if (input.current) input.current.value = "";
@@ -257,7 +303,9 @@ export function PhotoUpload({ onDone }: { onDone?: () => void }) {
         </Field>
       </div>
       <Field label="Caption"><Input value={caption} onChange={(e) => setCaption(e.target.value)} maxLength={300} placeholder="optional" /></Field>
-      <p className="text-[11.5px] text-faint">Stored privately. Visible to your partner only if you share photos in Settings.</p>
+      <p className="text-[11.5px] text-faint">
+        {host.mode === "shared-page" ? "Stored privately in your own space on this page. Photos aren't shared with your partner." : "Stored privately in this browser only."}
+      </p>
       <Button type="submit" busy={busy} className="w-full" disabled={!file}>Upload photo</Button>
     </form>
   );
