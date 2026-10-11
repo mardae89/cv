@@ -1,6 +1,6 @@
 import {
   Award, BarChart3, Bell, Briefcase, CheckSquare, Home, LineChart, Map, Menu, NotebookPen,
-  Plus, Settings, Users, Activity, X,
+  Plus, Settings, Users, Activity, X, Zap, Clapperboard,
 } from "lucide-react";
 import { useLayoutEffect, useState, type ReactNode } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
@@ -19,6 +19,8 @@ interface NavItem {
 const ic = "h-[18px] w-[18px]";
 const NAV: NavItem[] = [
   { to: "/", label: "Today", icon: <Home className={ic} /> },
+  { to: "/power", label: "Power List", icon: <Zap className={ic} /> },
+  { to: "/content", label: "Content", icon: <Clapperboard className={ic} /> },
   { to: "/log", label: "Log", icon: <Plus className={ic} /> },
   { to: "/progress", label: "Body", icon: <LineChart className={ic} /> },
   { to: "/train", label: "Train", icon: <Activity className={ic} /> },
@@ -97,9 +99,8 @@ export function Shell() {
   const loc = useLocation();
   const unread = notifications.filter((n) => !n.read_at).length;
   const items = NAV.filter((n) => !n.business || data.profile.business_enabled);
-  const bottom = data.profile.business_enabled
-    ? ["/", "/progress", "/log", "/business"]
-    : ["/", "/progress", "/log", "/train"];
+  // The daily drivers sit in the tab bar; everything else is one tap away under More.
+  const bottom = ["/", "/power", "/log", "/content"];
   // Pages reached through More light it up, so you can see where you are.
   const onMorePage = !bottom.some((to) => to === "/" ? loc.pathname === "/" : loc.pathname.startsWith(to));
   // A new page starts at its top, not at the previous page's scroll position.
