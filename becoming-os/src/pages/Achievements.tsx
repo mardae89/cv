@@ -59,7 +59,7 @@ export default function Achievements() {
       </Card>
 
       <div className="-mx-4 overflow-x-auto px-4">
-        <Segmented size="sm" value={cat} onChange={setCat} options={[{ value: "all", label: "All" }, ...cats.map((c) => ({ value: c, label: CAT_LABEL[c] }))]} />
+        <Segmented label="Category" size="sm" value={cat} onChange={setCat} options={[{ value: "all", label: "All" }, ...cats.map((c) => ({ value: c, label: CAT_LABEL[c] }))]} />
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {shown.map((x) => <Tile key={x.key} m={x} onOpen={() => x.achievedOn && setView(x.key)} />)}

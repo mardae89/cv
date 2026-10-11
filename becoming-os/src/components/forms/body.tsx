@@ -203,7 +203,7 @@ export function SymptomForm({ initial, onDone }: { initial?: SymptomLog; onDone?
         <Field label="Date"><Input type="date" value={date} max={today} onChange={(e) => setDate(e.target.value)} /></Field>
         <Field label="Where"><Input value={area} onChange={(e) => setArea(e.target.value)} maxLength={60} /></Field>
       </div>
-      <Segmented value={side ?? "n/a"} onChange={(v) => setSide(v)} className="w-full" options={[
+      <Segmented label="Side" value={side ?? "n/a"} onChange={(v) => setSide(v)} className="w-full" options={[
         { value: "left", label: "Left" }, { value: "right", label: "Right" }, { value: "both", label: "Both" }, { value: "n/a", label: "N/A" }]} />
       <Scale label="Pain (0 = none, 10 = worst)" value={pain} onChange={setPain} min={0} max={10} />
       <div className="grid grid-cols-2 gap-3">

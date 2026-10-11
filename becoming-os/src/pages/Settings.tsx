@@ -12,10 +12,10 @@ import { toCSV } from "@/lib/csv";
 import { fmtDate, todayIn } from "@/lib/dates";
 import { round, num, errorMessage, plural } from "@/lib/format";
 import { ACTIVITY_OPTIONS } from "@/lib/templates";
-import type { Pace, ReminderSettings, ShareSettings } from "@/lib/types";
+import type { Pace, ReminderSettings } from "@/lib/types";
 import { GoalSettings } from "./Business";
-import { PrivacyEditor } from "./Onboarding";
 import { TrainingSettings } from "./Train";
+import { SharingForm } from "./Together";
 
 function Section({ id, title, sub, children }: { id: string; title: string; sub?: string; children: React.ReactNode }) {
   return (
@@ -49,7 +49,7 @@ export default function Settings() {
       </Section>
       <Section id="privacy" title="Privacy & sharing" sub={s.host.mode === "shared-page"
         ? "Your partner sees only a summary built from these choices, never your records, and can't edit anything of yours."
-        : "Nothing is shared from this browser. These choices only take effect on your shared BECOMING OS page, for example after restoring a backup there."}><PrivacySettings /></Section>
+        : "Nothing is shared from this browser. These choices only take effect on your shared BECOMING OS page, for example after restoring a backup there."}><SharingForm /></Section>
       <Section id="reminders" title="Reminders"><ReminderSettingsCard /></Section>
       <Section id="data" title="Your data"><DataSettings /></Section>
       <Section id="demo" title={data.profile.demo_mode ? "Sample data" : "Danger zone"}><DangerZone /></Section>
@@ -113,27 +113,58 @@ function BodySettings() {
   const [start, setStart] = useState(g?.start_weight != null ? String(g.start_weight) : "");
   const [startDate, setStartDate] = useState(g?.start_date ?? today);
   const [target, setTarget] = useState(g?.target_loss != null ? String(g.target_loss) : "");
+  // What's typed in "Target weight" while it's being edited (it's otherwise worked out from the target loss).
+  const [targetText, setTargetText] = useState<string | null>(null);
   const [stretch, setStretch] = useState(g?.stretch_loss != null ? String(g.stretch_loss) : "");
   const [waist, setWaist] = useState(g?.start_waist != null ? String(g.start_waist) : "");
   const [pace, setPace] = useState<Pace>(g?.pace ?? "steady");
   const [notes, setNotes] = useState(g?.health_notes ?? "");
   const [prefs, setPrefs] = useState<string[]>(g?.preferred_activities ?? []);
+  const [activity, setActivity] = useState(g?.activity_level ?? "");
+  const [minutes, setMinutes] = useState(g?.weekly_training_minutes != null ? String(g.weekly_training_minutes) : "");
   const sw = num(start), tl = num(target);
+  const changeStart = (v: string) => {
+    setStart(v);
+    // A target weight typed before the starting weight becomes the target loss once both are known.
+    if (targetText && num(targetText) && num(v)) setTarget(String(round(num(v) - num(targetText), 1)));
+  };
+  const changeTargetLoss = (v: string) => {
+    setTarget(v);
+    setTargetText(null);
+  };
+  const changeTargetWeight = (v: string) => {
+    setTargetText(v);
+    if (!v) setTarget("");
+    else if (sw && num(v)) setTarget(String(round(sw - num(v), 1)));
+  };
   return (
     <Card className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-3">
-        <Field label="Starting weight"><NumberInput value={start} onChange={setStart} suffix="lb" /></Field>
+        <Field label="Starting weight"><NumberInput value={start} onChange={changeStart} suffix="lb" /></Field>
         <Field label="Start date"><Input type="date" value={startDate} max={today} onChange={(e) => setStartDate(e.target.value)} /></Field>
         <Field label="Starting waist"><NumberInput value={waist} onChange={setWaist} suffix="in" /></Field>
-        <Field label="Target loss" hint={sw && tl ? `Target weight ${round(sw - tl, 1)} lb` : undefined}><NumberInput value={target} onChange={setTarget} suffix="lb" /></Field>
-        <Field label="Target weight"><NumberInput value={sw && tl ? String(round(sw - tl, 1)) : ""} onChange={(v) => sw && v && setTarget(String(round(sw - num(v), 1)))} suffix="lb" /></Field>
+        <Field label="Target loss" hint={sw && tl ? `Target weight ${round(sw - tl, 1)} lb` : undefined}><NumberInput value={target} onChange={changeTargetLoss} suffix="lb" /></Field>
+        <Field label="Target weight"><NumberInput value={targetText ?? (sw && tl ? String(round(sw - tl, 1)) : "")} onChange={changeTargetWeight}
+          onBlur={() => sw && setTargetText(null)} suffix="lb" /></Field>
         <Field label="Stretch goal" hint={sw && stretch ? `${round(sw - num(stretch), 1)} lb` : "optional"}><NumberInput value={stretch} onChange={setStretch} suffix="lb" /></Field>
       </div>
       <Field group label="Pace"><Segmented value={pace} onChange={setPace} className="w-full" options={[{ value: "gentle", label: "Gentle" }, { value: "steady", label: "Steady" }, { value: "ambitious", label: "Ambitious" }]} /></Field>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Activity level today">
+          <Select value={activity} onChange={(e) => setActivity(e.target.value as typeof activity)}>
+            <option value="">Prefer not to say</option>
+            <option value="sedentary">Mostly sitting</option>
+            <option value="light">Lightly active</option>
+            <option value="moderate">Moderately active</option>
+            <option value="active">Very active</option>
+          </Select>
+        </Field>
+        <Field label="Training time available"><NumberInput value={minutes} onChange={setMinutes} suffix="min/wk" /></Field>
+      </div>
       <Field group label="Preferred activities">
         <div className="flex flex-wrap gap-2">
           {ACTIVITY_OPTIONS.map((o) => (
-            <button key={o} type="button" onClick={() => setPrefs((p) => (p.includes(o) ? p.filter((x) => x !== o) : [...p, o]))}
+            <button key={o} type="button" aria-pressed={prefs.includes(o)} onClick={() => setPrefs((p) => (p.includes(o) ? p.filter((x) => x !== o) : [...p, o]))}
               className={`rounded-full border px-3 py-1.5 text-[12.5px] ${prefs.includes(o) ? "border-gold bg-gold-wash text-gold" : "border-line text-mute"}`}>{o}</button>
           ))}
         </div>
@@ -141,30 +172,21 @@ function BodySettings() {
       <Field label="Health considerations (private)"><Textarea value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={2000} className="min-h-[64px]" /></Field>
       <Button busy={busy} onClick={() => run(async () => {
         if (!sw || sw < 70 || sw > 700) throw new Error("Enter a starting weight between 70 and 700 lb.");
-        if (!(tl > 0)) throw new Error("Enter a target loss.");
+        if (!startDate) throw new Error("Enter the start date.");
+        if (startDate > today) throw new Error("The start date can't be in the future.");
+        if (!(tl > 0)) throw new Error("Enter a target loss, or a target weight below your starting weight.");
         if (stretch && num(stretch) < tl) throw new Error("The stretch goal should be at least the main goal.");
+        if (minutes && !(num(minutes) >= 0 && num(minutes) <= 3000)) throw new Error("Training time available should be between 0 and 3,000 minutes a week.");
         if (g?.start_weight && num(g.start_weight) !== sw &&
           !(await confirm({ title: "Change starting weight?", body: `From ${g.start_weight} to ${sw} lb. Progress and weight milestones will be recalculated from the corrected baseline.`, confirmLabel: "Change it" }))) return;
         await saveSingle("goals", {
           start_weight: sw, start_date: startDate, target_loss: tl, stretch_loss: stretch ? num(stretch) : null,
           start_waist: waist ? num(waist) : null, pace, health_notes: notes.trim() || null, preferred_activities: prefs,
+          activity_level: activity || null, weekly_training_minutes: minutes ? Math.round(num(minutes)) : null,
         });
         return "Body goals saved.";
       })}>Save body goals</Button>
     </Card>
-  );
-}
-
-function PrivacySettings() {
-  const { shareSettings, data, saveSingle } = useStore();
-  const { busy, run } = useSubmit();
-  const [v, setV] = useState<ShareSettings | null>(shareSettings);
-  if (!v) return <Notice tone="alert">Sharing settings are missing for this account.</Notice>;
-  return (
-    <div className="space-y-3">
-      <PrivacyEditor value={v} onChange={setV} business={data.profile.business_enabled} />
-      <Button busy={busy} onClick={() => run(async () => { await saveSingle("shareSettings", { ...v }); return "Privacy saved — applies immediately."; })}>Save privacy</Button>
-    </div>
   );
 }
 
@@ -234,7 +256,7 @@ function checkBackup(raw: unknown): ExportFile {
   return f;
 }
 
-const CSV_TABLES = ["weights", "workouts", "checkins", "nutrition", "completions", "journal", "transactions", "payments"] as const;
+const CSV_TABLES = ["weights", "workouts", "checkins", "nutrition", "completions", "journal", "transactions", "payments", "audience"] as const;
 
 function DataSettings() {
   const { data, host, engine } = useStore();
@@ -275,6 +297,7 @@ function DataSettings() {
     if (!picked) return;
     setRestoreError(null);
     setRestoring(true);
+    let started = false;
     try {
       let parsed: unknown;
       try {
@@ -295,12 +318,15 @@ function DataSettings() {
         confirmLabel: "Replace everything", destructive: true,
       });
       if (!ok) return;
+      started = true;
+      // One step from the old records to the backup's, read and cleared reminders included.
       await engine.importAll(file);
       toast("Backup restored.");
-      // Restoring clears everything first, which briefly sends the app to setup; come back here.
       nav("/settings", { replace: true });
     } catch (err) {
       setRestoreError(errorMessage(err));
+      // Once the restore has started the error may not show on this card (a toast always does).
+      if (started) toast(`Backup not restored: ${errorMessage(err)}`, "error");
     } finally {
       setRestoring(false);
     }

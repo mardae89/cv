@@ -50,24 +50,24 @@ export default function Habits() {
               const s28 = last28(h);
               return (
                 <li key={h.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 py-3.5">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 text-[15px] text-bone">{h.name}<Pill>{h.category}</Pill>{h.skip_on_rest_days && <Pill>pauses on rest days</Pill>}</div>
-                    <div className="mt-1 flex gap-1">
+                  <div className="min-w-[min(100%,16rem)] flex-1">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] text-bone"><span className="min-w-0 break-words">{h.name}</span><Pill>{h.category}</Pill>{h.skip_on_rest_days && <Pill>pauses on rest days</Pill>}</div>
+                    <div className="mt-1 flex flex-wrap items-center gap-1">
                       {DAY_LETTERS.map((l, d) => (
-                        <span key={d} className={cx("flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-semibold", h.schedule_days.includes(d) ? "bg-gold/90 text-ink" : "bg-raised text-faint")}>{l}</span>
+                        <span key={d} className={cx("flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold", h.schedule_days.includes(d) ? "bg-gold/90 text-ink" : "bg-raised text-faint")}>{l}</span>
                       ))}
                       {h.start_date > today && <span className="ml-2 text-[11px] text-faint">starts {fmtShort(h.start_date)}</span>}
                     </div>
                   </div>
-                  <div className="num flex gap-5 text-[12px] text-mute">
+                  <div className="num flex flex-wrap gap-x-5 gap-y-1 text-[12px] text-mute">
                     <span><span className="text-bone">{habitStreak(h, idx, today)}</span> streak</span>
                     <span><span className="text-bone">{bestStreak(h, idx, today)}</span> best</span>
                     <span><span className="text-bone">{s28.pct === null ? "—" : pct(s28.pct)}</span> 28d</span>
                     <span className="text-gold">+{h.xp} XP</span>
                   </div>
                   <div className="flex gap-1">
-                    <Button size="sm" variant="ghost" onClick={() => setEdit(h)}>Edit</Button>
-                    <Button size="sm" variant="ghost" onClick={() => archive(h)}>Archive</Button>
+                    <Button size="sm" variant="ghost" aria-label={`Edit ${h.name}`} onClick={() => setEdit(h)}>Edit</Button>
+                    <Button size="sm" variant="ghost" aria-label={`Archive ${h.name}`} onClick={() => archive(h)}>Archive</Button>
                   </div>
                 </li>
               );
@@ -90,7 +90,7 @@ export default function Habits() {
           <h2 className="mb-2 text-[22px] leading-none">Archived</h2>
           <RecordList items={archived.map((h) => ({
             id: h.id, primary: h.name, secondary: `archived ${fmtDate(h.archived_on)} · history kept`,
-            right: <button className="text-[12px] text-gold" onClick={() => update("habits", h.id, { archived_on: null }).catch((e) => toast(errorMessage(e), "error"))}>Restore</button>,
+            right: <button className="text-[12px] text-gold" onClick={() => update("habits", h.id, { archived_on: null }).then(() => toast("Restored.")).catch((e) => toast(errorMessage(e), "error"))}>Restore</button>,
             onDelete: () => remove("habits", h.id), deleteLabel: `“${h.name}” permanently`,
             deleteWarning: "This deletes the habit and every completion recorded for it, including the XP those completions earned. Archiving keeps them.",
           }))} />
@@ -140,6 +140,7 @@ function HabitForm({ initial, onDone, save }: { initial?: Habit; onDone: () => v
       <Button busy={busy} className="w-full" onClick={() => run(async () => {
         if (!name.trim()) throw new Error("Name the habit.");
         if (!days.length) throw new Error("Choose at least one day.");
+        if (!start) throw new Error("Choose a start date.");
         await save({ name: name.trim(), category, schedule_days: days, skip_on_rest_days: skip, xp: Number(xp), start_date: start }, initial?.id);
         onDone();
         return initial ? "Habit updated." : "Habit added.";
@@ -157,7 +158,8 @@ function Tasks() {
   const done = data.tasks.filter((t) => t.completed_on).slice(-5).reverse();
   const add = async (e: FormEvent) => {
     e.preventDefault();
-    if (!title.trim()) return;
+    if (!title.trim()) return toast("Write the task first.", "error");
+    if (!due) return toast("Choose a due date.", "error");
     try {
       await insert("tasks", { title: title.trim(), due_date: due });
       setTitle("");
@@ -169,7 +171,7 @@ function Tasks() {
     <Card id="tasks">
       <h2 className="mb-4 text-[24px] leading-none">Tasks</h2>
       <form onSubmit={add} className="mb-3 flex gap-2">
-        <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="New task" maxLength={160} aria-label="Task" />
+        <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="New task" maxLength={160} aria-label="Task" className="min-w-0" />
         <Input type="date" value={due} onChange={(e) => setDue(e.target.value)} className="w-[150px] shrink-0" aria-label="Due date" />
         <Button type="submit" className="shrink-0" aria-label="Add task"><Plus className="h-4 w-4" /></Button>
       </form>
@@ -180,7 +182,7 @@ function Tasks() {
               onClick={() => update("tasks", t.id, { completed_on: today }).catch((e) => toast(errorMessage(e), "error"))} />
             <span className="flex-1 text-[14px] text-bone">{t.title}</span>
             <span className={cx("num text-[11.5px]", t.due_date < today ? "text-alert" : "text-faint")}>{t.due_date === today ? "today" : fmtShort(t.due_date)}</span>
-            <button className="text-[11px] text-faint hover:text-alert" onClick={() => remove("tasks", t.id).catch((e) => toast(errorMessage(e), "error"))}>delete</button>
+            <button className="text-[11px] text-faint hover:text-alert" aria-label={`Delete ${t.title}`} onClick={() => remove("tasks", t.id).catch((e) => toast(errorMessage(e), "error"))}>delete</button>
           </li>
         ))}
         {done.map((t) => (
@@ -189,6 +191,7 @@ function Tasks() {
               onClick={() => update("tasks", t.id, { completed_on: null }).catch((e) => toast(errorMessage(e), "error"))}><Check className="h-3.5 w-3.5" /></button>
             <span className="flex-1 text-[14px] text-mute line-through">{t.title}</span>
             <span className="num text-[11.5px] text-faint">{fmtShort(t.completed_on)}</span>
+            <button className="text-[11px] text-faint hover:text-alert" aria-label={`Delete ${t.title}`} onClick={() => remove("tasks", t.id).catch((e) => toast(errorMessage(e), "error"))}>delete</button>
           </li>
         ))}
       </ul>
@@ -207,10 +210,10 @@ function RestDays() {
     <Card>
       <h2 className="mb-1 text-[24px] leading-none">Rest days</h2>
       <p className="mb-4 text-[12.5px] text-mute">Plan them ahead. Habits set to pause aren't scheduled on rest days, so streaks hold.</p>
-      <div className="mb-3 flex gap-2">
-        <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-[150px] shrink-0" aria-label="Rest date" />
-        <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (optional)" maxLength={300} />
-        <Button className="shrink-0" onClick={() => upsert("restDays", { rest_date: date, note: note.trim() || null }, "user_id,rest_date").then(() => { setNote(""); toast("Rest day scheduled."); }).catch((e) => toast(errorMessage(e), "error"))}>Add</Button>
+      <div className="mb-3 grid grid-cols-[minmax(0,1fr)_auto] gap-2 sm:grid-cols-[150px_minmax(0,1fr)_auto]">
+        <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} aria-label="Rest date" />
+        <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (optional)" maxLength={300} aria-label="Rest day note" className="order-last col-span-2 sm:order-none sm:col-span-1" />
+        <Button className="shrink-0" onClick={() => !date ? toast("Choose a date for the rest day.", "error") : upsert("restDays", { rest_date: date, note: note.trim() || null }, "user_id,rest_date").then(() => { setNote(""); toast("Rest day scheduled."); }).catch((e) => toast(errorMessage(e), "error"))}>Add</Button>
       </div>
       <RecordList items={upcoming.map((r) => ({
         id: r.id, primary: fmtDate(r.rest_date), secondary: r.note ?? (r.rest_date > today ? "scheduled" : r.rest_date === today ? "today" : "taken"),

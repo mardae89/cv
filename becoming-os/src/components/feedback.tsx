@@ -54,7 +54,7 @@ export function FeedbackProvider({ children }: { children: ReactNode }) {
         <div className="pointer-events-none fixed inset-x-0 bottom-24 z-[70] flex flex-col items-center gap-2 px-4 lg:bottom-6" aria-live="polite">
           {toasts.map((t) => (
             <div key={t.id} role={t.tone === "error" ? "alert" : "status"}
-              className={cx("pointer-events-auto flex max-w-md animate-rise items-start gap-2.5 rounded-2xl border bg-raised px-4 py-3 text-[13.5px] shadow-2xl shadow-black/60",
+              className={cx("flex max-w-md animate-rise items-start gap-2.5 rounded-2xl border bg-raised px-4 py-3 text-[13.5px] shadow-2xl shadow-black/60",
                 t.tone === "error" ? "border-alert/50 text-bone" : "border-line text-bone")}>
               {t.tone === "success" ? <Check className="mt-0.5 h-4 w-4 shrink-0 text-gold" />
                 : t.tone === "error" ? <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-alert" />

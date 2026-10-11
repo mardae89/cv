@@ -173,7 +173,7 @@ function TodayList() {
         <button type="submit" className="flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-xl border border-line text-gold" aria-label="Add task"><Plus className="h-4 w-4" /></button>
       </form>
 
-      <div className="mt-5 grid grid-cols-5 gap-2 border-t border-hair pt-4">
+      <div className={cx("mt-5 grid gap-2 border-t border-hair pt-4", data.profile.business_enabled ? "grid-cols-5" : "grid-cols-4")}>
         {[
           { to: "/log?tab=body", label: "Weight", icon: <Scale className="h-4 w-4" /> },
           { to: "/log?tab=training", label: "Workout", icon: <Dumbbell className="h-4 w-4" /> },

@@ -10,6 +10,7 @@
 import { expect, test, type Browser, type BrowserContext, type FrameLocator, type Page } from "@playwright/test";
 import { addDays } from "../../src/lib/dates";
 import { appFrame, FakePageServer, type FakeUser } from "./fake-claude";
+import { serveSource } from "./helpers";
 
 const HUSBAND: FakeUser = { id: "u_husband01", name: "Daniel", owner: true };
 const WIFE: FakeUser = { id: "u_wife02", name: "Maria" };
@@ -38,12 +39,7 @@ async function open(browser: Browser, server: FakePageServer, user: FakeUser): P
     outside.push(route.request().url());
     await route.abort();
   });
-  await ctx.route((u) => u.origin === ORIGIN && u.pathname.startsWith("/src/"), async (route) => {
-    const res = await route.fetch();
-    if (!/javascript/.test(res.headers()["content-type"] ?? "")) return route.fulfill({ response: res });
-    const body = (await res.text()).replace(/\?t=\d+&/g, "?").replace(/[?&]t=\d+/g, "");
-    await route.fulfill({ response: res, body });
-  });
+  await ctx.route((u) => u.origin === ORIGIN && u.pathname.startsWith("/src/"), serveSource);
   await ctx.route(HARNESS, (route) => route.fulfill({
     contentType: "text/html",
     body: `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">

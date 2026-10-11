@@ -46,20 +46,39 @@ async function appToday(page: Page): Promise<string> {
 
 const celebration = (page: Page) => page.getByRole("dialog", { name: "Milestone unlocked" });
 
-/** One look: on screen, not clipped, and nothing (bottom bar, + button, a sheet) sits on top of it. */
-async function checkUncovered(loc: Locator) {
+/**
+ * One look: on screen, not clipped, and at least part of it isn't under anything else (bottom bar,
+ * + button, a sheet, a toast). Returns a point (relative to the control) that a finger can reach.
+ */
+async function checkUncovered(loc: Locator): Promise<{ x: number; y: number }> {
   const r = await loc.evaluate((el) => {
     el.scrollIntoView({ block: "center", inline: "center" });
     const b = el.getBoundingClientRect();
-    const hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+    const mine = (hit: Element | null) => !!hit && (hit === el || el.contains(hit) || (el instanceof HTMLInputElement && !!el.labels?.[0]?.contains(hit)));
+    const cx = b.left + b.width / 2;
+    const cy = b.top + b.height / 2;
+    const centre = document.elementFromPoint(cx, cy);
+    let point: { x: number; y: number } | null = mine(centre) ? { x: b.width / 2, y: b.height / 2 } : null;
+    // The middle is covered (say, by a toast): look for another part of it that can still be tapped.
+    for (let i = 1; !point && i < 10; i++) {
+      for (const fy of [0.5, 0.25, 0.75]) {
+        const x = b.left + (b.width * i) / 10;
+        const y = b.top + b.height * fy;
+        if (mine(document.elementFromPoint(x, y))) {
+          point = { x: x - b.left, y: y - b.top };
+          break;
+        }
+      }
+    }
     return {
       inView: b.top >= 0 && b.bottom <= window.innerHeight + 0.5 && b.left >= -0.5 && b.right <= window.innerWidth + 0.5,
-      hit: !!hit && (hit === el || el.contains(hit) || (el instanceof HTMLInputElement && !!el.labels?.[0]?.contains(hit))),
-      what: hit ? hit.outerHTML.slice(0, 140) : "nothing",
+      point,
+      what: centre ? centre.outerHTML.slice(0, 140) : "nothing",
     };
   });
   expect(r.inView, `${loc} is clipped`).toBe(true);
-  expect(r.hit, `${loc} is covered by ${r.what}`).toBe(true);
+  expect(r.point, `${loc} is covered by ${r.what}`).not.toBeNull();
+  return r.point!;
 }
 
 async function expectUncovered(loc: Locator) {
@@ -70,22 +89,23 @@ async function expectUncovered(loc: Locator) {
   }).toPass({ timeout: 8000 });
 }
 
-/** Tap on the phone, click on the desktop — after checking the control can be reached. */
+/** Tap on the phone, click on the desktop — on a part of the control that can be reached. */
+/** A sheet that is still sliding in moves its buttons between where a tap aims and where it lands; wait for it to arrive. */
+async function sheetArrived(loc: Locator) {
+  await loc.evaluate((el) => Promise.all((el.closest("[role=dialog]")?.getAnimations({ subtree: true }) ?? [])
+    .filter((a) => a.effect?.getComputedTiming().iterations !== Infinity)
+    .map((a) => a.finished.catch(() => undefined))));
+}
+
 async function press(loc: Locator) {
   const page = loc.page();
   await expect(loc).toBeVisible();
-  const t0 = Date.now();
-  let last = "";
-  try { await press2(loc, (e) => (last = e)); } finally { if (Date.now() - t0 > 1000) console.log("SLOW press", Date.now() - t0, String(loc), last.slice(0, 300)); }
-}
-async function press2(loc: Locator, note: (e: string) => void) {
-  const page = loc.page();
+  await sheetArrived(loc);
   await expect(async () => {
-    try { await checkUncovered(loc); } catch (e) { note(String(e)); }
     if (await celebration(page).isVisible()) await settle(page);
-    await checkUncovered(loc);
-    if (TOUCH.get(page)) await loc.tap({ timeout: 2000 });
-    else await loc.click({ timeout: 2000 });
+    const position = await checkUncovered(loc);
+    if (TOUCH.get(page)) await loc.tap({ position, timeout: 2000 });
+    else await loc.click({ position, timeout: 2000 });
   }).toPass({ timeout: 15_000 });
 }
 
@@ -823,6 +843,28 @@ for (const vp of SIZES) {
       await go(page, "/progress");
       await expect(page.getByText("Set your starting point")).toBeVisible();
       expect(await page.locator("a button, button a").count(), "a button nested in a link").toBe(0);
+      // Photos and weigh-ins logged before a starting weight is set can still be seen, edited and deleted here.
+      await expect(card(page, "Progress photos").getByRole("button", { name: "Add photo" })).toBeVisible();
+      await expect(card(page, "All weigh-ins")).toHaveCount(0);
+      await go(page, "/log?tab=body");
+      const wf = page.getByRole("form", { name: "Weigh-in form" });
+      await type(wf.getByLabel("Weight in pounds"), "182.4");
+      await press(wf.getByRole("button", { name: "Save weigh-in" }));
+      await expect.poll(async () => (await rows(page, "weights")).map((w) => w.weight)).toEqual([182.4]);
+      await go(page, "/progress");
+      await expect(page.getByText("Set your starting point")).toBeVisible();
+      const all = card(page, "All weigh-ins");
+      await expect(all).toContainText("182.4 lb");
+      await press(all.getByRole("button", { name: "Edit" }));
+      const ed = dialog(page, "Edit weigh-in");
+      await type(ed.getByLabel("Weight in pounds"), "181.6");
+      await press(ed.getByRole("button", { name: /Save|Update/ }));
+      await expect(ed).toBeHidden();
+      await expect(all).toContainText("181.6 lb");
+      await expect.poll(async () => (await rows(page, "weights")).map((w) => w.weight)).toEqual([181.6]);
+      await deleteRow(page, all.getByRole("listitem").filter({ hasText: "181.6 lb" }), "Delete this weigh-in?");
+      await expect(all).toHaveCount(0);
+      await expect.poll(async () => (await rows(page, "weights")).length).toBe(0);
       await press(page.getByRole("button", { name: "Confirm starting weight" }));
       await expect(page).toHaveURL(/#\/settings/);
       await expect(page.locator("#body")).toBeVisible();
@@ -838,6 +880,11 @@ for (const vp of SIZES) {
       const list = card(page, "All weigh-ins").getByRole("listitem").filter({ has: page.getByRole("button", { name: "Edit" }) });
       const latestScale = page.getByText("Latest scale", { exact: true }).locator("..");
       await expect(list).toHaveCount(14);
+      // What the weigh-in should move: the pounds-lost number, the 7-day average, this week's average.
+      const lostNumber = page.locator(".card").filter({ hasText: "Pounds lost · 7-day average" }).locator(".display-num");
+      const avgStat = page.locator(".eyebrow").filter({ hasText: /^7-day average$/ }).locator("..");
+      const weekRow = card(page, "Weekly averages").getByRole("row").nth(1);
+      const before = { lost: await lostNumber.innerText(), avg: await avgStat.innerText(), week: await weekRow.innerText() };
 
       // Update today's weigh-in from the header button (one weigh-in per day).
       let sheet = await openSheet(page, mainButton(page, "Log weigh-in"), "Log weigh-in");
@@ -853,6 +900,9 @@ for (const vp of SIZES) {
       await expect(latestScale).toContainText(newest);
       await expect(list.first()).toContainText(newest);
       await expect(list.first()).toContainText("waist 43.5 in");
+      await expect(lostNumber).not.toHaveText(before.lost);
+      await expect(avgStat).not.toHaveText(before.avg);
+      await expect(weekRow).not.toHaveText(before.week);
       await expect.poll(async () => (await rows(page, "weights")).find((w) => w.entry_date === today)).toMatchObject({ weight: w1, waist_in: 43.5, note: "After travel" });
 
       // Backfill a missing day (close to its neighbour so it isn't flagged): it lands at its date, and the waist chart stays in order.
@@ -1003,10 +1053,9 @@ for (const vp of SIZES) {
     });
 
     test("a confirm over the workout sheet: Escape closes only the confirm and keeps what was typed", async ({ browser }) => {
-      // Known defect in the shared Sheet (src/components/ui.tsx): every open sheet listens for Escape,
-      // so Escape on the "Double-check this workout" confirm also closes the workout sheet and loses the entry.
-      test.fail(true, "ui.tsx Sheet: Escape closes every open sheet, not just the top one");
-      const { page } = await open(browser, vp, "skip");
+      // Regression: every open sheet used to listen for Escape, so Escape on the "Double-check this
+      // workout" confirm also closed the workout sheet and lost the entry.
+      const { page, errors } = await open(browser, vp, "skip");
       await go(page, "/train");
       const sheet = await openWorkoutSheet(page);
       await choose(field(sheet, "Activity"), "run");
@@ -1019,7 +1068,7 @@ for (const vp of SIZES) {
       await expect(odd).toBeHidden();
       await expect(sheet).toBeVisible({ timeout: 2000 });
       await expect(field(sheet, "Distance")).toHaveValue("3");
-      await page.context().close();
+      await finish(page, errors);
     });
   });
 }

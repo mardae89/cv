@@ -55,7 +55,7 @@ function Chapter({ c, index, open, onToggle }: { c: ChapterView; index: number; 
           <Eyebrow className="mb-1">Chapter {index + 1} · {fmtShort(c.def.start)} – {fmtDate(c.def.end)}</Eyebrow>
           <h2 className="text-[26px] leading-none">{c.def.title}</h2>
         </div>
-        <Pill tone={s.tone}>{s.label}</Pill>
+        <Pill tone={s.tone} className="shrink-0 whitespace-nowrap">{s.label}</Pill>
       </button>
       {open && (
         <div className="space-y-5 border-t border-hair p-5 animate-fade">
@@ -69,7 +69,7 @@ function Chapter({ c, index, open, onToggle }: { c: ChapterView; index: number; 
                 adjusted={c.revenueAdjusted !== null && c.revenueAdjusted !== c.revenuePlanned ? `${money(c.revenueAdjusted)} re-planned` : undefined}
                 actual={c.actual.revenue !== null ? money(c.actual.revenue) : undefined} />
             )}
-            <Target label="Athletic" planned={c.athletic} actual={started ? `${c.actual.sessions} sessions` : undefined} />
+            <Target label="Athletic" planned={c.athletic} actual={started ? `${c.actual.sessions} session${c.actual.sessions === 1 ? "" : "s"}` : undefined} />
             <Target label="Habit focus" planned={c.def.habitFocus} actual={c.actual.habitPct !== null ? `${pct(c.actual.habitPct)} completion` : undefined} />
           </div>
           {started && <p className="text-[12.5px] text-mute">{c.actual.milestones} milestone{c.actual.milestones === 1 ? "" : "s"} unlocked in this chapter{today <= c.def.end ? " so far" : ""}.</p>}

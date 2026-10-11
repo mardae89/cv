@@ -90,9 +90,17 @@ async function expectAllUncovered(loc: Locator, count: number) {
 }
 
 /** Tap on the phone, click on the desktop — after checking the control can be reached. */
+/** A sheet that is still sliding in moves its buttons between where a tap aims and where it lands; wait for it to arrive. */
+async function sheetArrived(loc: Locator) {
+  await loc.evaluate((el) => Promise.all((el.closest("[role=dialog]")?.getAnimations({ subtree: true }) ?? [])
+    .filter((a) => a.effect?.getComputedTiming().iterations !== Infinity)
+    .map((a) => a.finished.catch(() => undefined))));
+}
+
 async function press(loc: Locator) {
   const page = loc.page();
   await expect(loc).toBeVisible();
+  await sheetArrived(loc);
   const check = !seen(loc);
   await expect(async () => {
     if (await celebration(page).isVisible()) await settle(page);
@@ -187,7 +195,7 @@ for (const vp of SIZES) {
     test("tab bar: every tab opens its panel, deep links and reloads keep it, and the open tab is in view", async ({ browser }) => {
       const { page, errors } = await open(browser, vp, "demo");
       await nav(page, "/log");
-      const bar = page.getByRole("radiogroup").first();
+      const bar = page.getByRole("radiogroup", { name: "What to log" });
       const tabs: [string, string, string][] = [
         ["Body", "body", "Weigh-in"], ["Training", "training", "Log a workout"], ["Nutrition", "nutrition", "Log a meal"],
         ["Business", "business", "Record a transaction"], ["Audience", "audience", "Record audience"], ["Habits & mind", "mind", "Journal & learning"],
@@ -213,10 +221,13 @@ for (const vp of SIZES) {
       await nav(page, "/");
       await press(page.getByRole("link", { name: "Update counts →" }));
       await expect(page).toHaveURL(/#\/log\?tab=audience$/);
-      // (The page keeps the previous page's scroll offset on navigation — reported against Shell; scroll up to look at the bar.)
-      await page.evaluate(() => window.scrollTo(0, 0));
+      // The new page opens at its top, not at Today's scroll offset.
+      await expect.poll(() => page.evaluate(() => window.scrollY)).toBeLessThan(5);
       await expect(bar.getByRole("radio", { name: "Audience" })).toHaveAttribute("aria-checked", "true");
       await expect(bar.getByRole("radio", { name: "Audience" })).toBeInViewport({ ratio: 1 });
+      await expect(page.getByLabel("Instagram followers")).toBeInViewport();
+      // On the Audience tab itself the card has no links that lead back to this same page.
+      await expect(page.getByRole("link", { name: /Update counts|Record your counts|Open Audience/ })).toHaveCount(0);
       // A business tab link while business is off falls back to Body.
       await finish(page, errors);
     });
@@ -691,10 +702,15 @@ for (const vp of SIZES) {
       await type(note, "starting point");
       await press(save);
       await toast(page, "Saved 980 YouTube.");
+      // Toasts have nothing to tap, so taps pass through them to whatever is underneath.
+      await expect(page.getByRole("status").filter({ hasText: "Saved 980 YouTube." }).first()).toHaveCSS("pointer-events", "none");
       await poll(saved).toEqual([["youtube", d14, 980, "starting point"]]);
       await expect(yt).toHaveValue("");
       await expect(note).toHaveValue("");
       await expect(date).toHaveValue(d14);
+      // Each row's buttons say which reading they act on.
+      await expect(recent.getByRole("button", { name: "Edit YouTube · 980 subscribers", exact: true })).toBeVisible();
+      await expect(recent.getByRole("button", { name: "Delete YouTube · 980 subscribers", exact: true })).toBeVisible();
       await expectAudienceCard(card, ["—", "980", "—"]);
       await expect(chart.getByRole("heading", { name: "YouTube subscribers" })).toBeVisible();
       await expect(chart.locator(".recharts-surface")).toBeVisible();

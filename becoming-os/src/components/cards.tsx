@@ -128,14 +128,15 @@ export function BusinessCard() {
   );
 }
 
-/** Current follower / subscriber / member counts and how they've moved. */
-export function AudienceCard({ compact }: { compact?: boolean }) {
+/** Current follower / subscriber / member counts and how they've moved.
+ *  `onLogPage` drops the links that would only lead back to the page it's on. */
+export function AudienceCard({ compact, onLogPage }: { compact?: boolean; onLogPage?: boolean }) {
   const { data, today, ev } = useStore();
   const sums = summarize(data.audience, today);
   const next = nextMilestone(ev.milestones, "audience");
   return (
     <Card>
-      <CardHead eyebrow="Instagram · YouTube · Skool" title="Audience" to="/log?tab=audience" />
+      <CardHead eyebrow="Instagram · YouTube · Skool" title="Audience" to={onLogPage ? undefined : "/log?tab=audience"} />
       <div className="grid grid-cols-3 gap-3">
         {PLATFORMS.map((p) => {
           const s = sums.find((x) => x.platform.key === p.key);
@@ -154,7 +155,7 @@ export function AudienceCard({ compact }: { compact?: boolean }) {
           {next && <> · Next: <span className="text-bone">{next.title}</span></>}
         </p>
       )}
-      <Link to="/log?tab=audience" className="link mt-3 inline-block text-[13px]">{sums.length ? "Update counts" : "Record your counts"} →</Link>
+      {!onLogPage && <Link to="/log?tab=audience" className="link mt-3 inline-block text-[13px]">{sums.length ? "Update counts" : "Record your counts"} →</Link>}
     </Card>
   );
 }

@@ -4,7 +4,7 @@ import { useStore } from "@/data/store";
 import { paidAmount } from "@/lib/calc/business";
 import { checkTransaction } from "@/lib/calc/validation";
 import { fmtShort } from "@/lib/dates";
-import { errorMessage, money, num } from "@/lib/format";
+import { errorMessage, money, num, round } from "@/lib/format";
 import { EXPENSE_CATEGORIES } from "@/lib/templates";
 import type { ActivityMetric, Business, Customer, Deal, DealStage, Offer, Transaction, TxnKind } from "@/lib/types";
 import { useFeedback } from "../feedback";
@@ -70,14 +70,14 @@ export function TransactionForm({ initial, businessId, onDone }: { initial?: Tra
       if (date > today) throw new Error("Record transactions on or before today. Expected future sales belong in the pipeline.");
       const collected = kind === "sale" ? num(cashValue) : 0;
       if (kind === "sale" && collected < 0) throw new Error("Cash collected can't be negative.");
-      if (kind === "sale" && collected + alreadyPaid > amt + 0.004) throw new Error(`Cash collected can't exceed the sale amount (${money(amt)}).`);
+      if (kind === "sale" && collected + alreadyPaid > amt + 0.004) throw new Error(`Cash collected can't exceed the sale amount (${money(amt, true)}${alreadyPaid > 0 ? `, ${money(alreadyPaid, true)} already collected` : ""}).`);
       if (kind === "sale" && collected > 0 && cashDate < date) throw new Error("Cash can't be received before the sale date. Record a deposit as its own sale if needed.");
 
       const c = checkTransaction(amt, kind, isBiz ? biz : null, data.transactions, initial?.id);
       if (!c.ok && !(await confirm({ title: "Double-check this amount", body: c.reasons.join(" "), confirmLabel: "It's correct — save" }))) return;
       const dup = data.transactions.find((t) => t.id !== initial?.id && t.kind === kind && t.txn_date === date &&
         num(t.amount) === amt && (t.business_id ?? "") === (isBiz ? biz : ""));
-      if (dup && !initial && !(await confirm({ title: "Possible duplicate", body: `A ${kind} of ${money(amt)} on this date is already recorded.`, confirmLabel: "Record it again" }))) return;
+      if (dup && !initial && !(await confirm({ title: "Possible duplicate", body: `${KIND_LABEL[kind].replace(/ \(.*\)/, "")} of ${money(amt, true)} on this date is already recorded.`, confirmLabel: "Record it again" }))) return;
       // Only sales collect payments: changing a sale's type would otherwise leave its payments behind.
       const orphaned = initial?.kind === "sale" && kind !== "sale" ? data.payments.filter((p) => p.transaction_id === initial.id) : [];
       if (orphaned.length && !(await confirm({
@@ -117,9 +117,12 @@ export function TransactionForm({ initial, businessId, onDone }: { initial?: Tra
         setNotes("");
         setNewCustomer("");
         setCustomerId("");
+        // The offer filled in the amount and recurring flag; start the next entry clean.
+        setOfferId("");
+        setRecurring(false);
       }
       onDone?.();
-      return initial ? "Transaction updated." : kind === "sale" ? `Sale recorded${collected > 0 ? `, ${money(collected)} collected` : " (no cash collected yet)"}.` : "Recorded.";
+      return initial ? "Transaction updated." : kind === "sale" ? `Sale recorded${collected > 0 ? `, ${money(collected, true)} collected` : " (no cash collected yet)"}.` : "Recorded.";
     });
   };
 
@@ -160,7 +163,7 @@ export function TransactionForm({ initial, businessId, onDone }: { initial?: Tra
         <div className="rounded-2xl border border-hair p-4">
           <div className="mb-3 text-[12px] text-mute">
             Cash collected is tracked separately from revenue earned.
-            {initial && alreadyPaid > 0 && <> Already collected: <span className="text-bone">{money(alreadyPaid)}</span>.</>}
+            {initial && alreadyPaid > 0 && <> Already collected: <span className="text-bone">{money(alreadyPaid, true)}</span>.</>}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Field label={initial ? "Record a new payment" : "Cash collected now"} hint={initial ? "Leave blank if nothing new came in." : "0 if invoiced / unpaid."}>
@@ -207,7 +210,8 @@ export function PaymentForm({ txn, onDone }: { txn: Transaction; onDone?: () => 
   const { data, today, insert } = useStore();
   const { busy, run } = useSubmit();
   const paid = paidAmount(data.payments, txn.id);
-  const due = Math.max(0, num(txn.amount) - paid);
+  // Rounded to cents so the box shows 700.15, not 700.1500000000001.
+  const due = Math.max(0, round(num(txn.amount) - paid, 2));
   const [amount, setAmount] = useState(String(due));
   const [date, setDate] = useState(today);
   const submit = (e: FormEvent) => {
@@ -215,16 +219,16 @@ export function PaymentForm({ txn, onDone }: { txn: Transaction; onDone?: () => 
     run(async () => {
       const a = num(amount);
       if (!(a > 0)) throw new Error("Enter an amount greater than zero.");
-      if (a > due + 0.004) throw new Error(`Only ${money(due)} is outstanding on this sale.`);
+      if (a > due + 0.004) throw new Error(`Only ${money(due, true)} is outstanding on this sale.`);
       if (date < txn.txn_date) throw new Error("Payment can't be before the sale date.");
       await insert("payments", { transaction_id: txn.id, paid_on: date, amount: a });
       onDone?.();
-      return `${money(a)} collected.`;
+      return `${money(a, true)} collected.`;
     });
   };
   return (
     <form onSubmit={submit} className="space-y-4">
-      <p className="text-[13px] text-mute">Sale of {money(txn.amount)} on {fmtShort(txn.txn_date)} · collected {money(paid)} · outstanding {money(due)}</p>
+      <p className="text-[13px] text-mute">Sale of {money(txn.amount, true)} on {fmtShort(txn.txn_date)} · collected {money(paid, true)} · outstanding {money(due, true)}</p>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Amount received"><NumberInput value={amount} onChange={setAmount} suffix="$" /></Field>
         <Field label="Date received"><Input type="date" value={date} max={today} onChange={(e) => setDate(e.target.value)} /></Field>

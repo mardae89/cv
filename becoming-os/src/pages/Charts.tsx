@@ -24,6 +24,8 @@ interface MetricDef {
   business?: boolean;
 }
 
+const isRealDate = (d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d) && d >= "2000-01-01" && d <= "2100-12-31";
+
 function buckets(grain: Grain, from: ISODate, to: ISODate): ISODate[] {
   if (grain === "day") return dateRange(from, to);
   const out: ISODate[] = [];
@@ -85,10 +87,15 @@ export default function Charts() {
   const metrics = all.filter((m) => !m.business || data.profile.business_enabled);
 
   const metric = metrics.find((m) => m.key === metricKey) ?? metrics[0];
-  const to = preset === "custom" ? customTo : today;
-  const earliest = [series[0]?.date, data.workouts[0]?.workout_date, data.transactions[0]?.txn_date].filter(Boolean).sort()[0];
+  // Date boxes pass through partial years while typing ("0002-…") and can be cleared; only real dates move the chart.
+  const fromOk = isRealDate(customFrom), toOk = isRealDate(customTo);
+  const fromError = !fromOk ? "Enter a start date." : toOk && customFrom > customTo ? "Pick a start date on or before the end date." : null;
+  const to = preset === "custom" && toOk ? customTo : today;
+  // The mission view also shows records logged before the mission began (a baseline weigh-in or audience count).
+  const earliest = [series[0]?.date, ...data.workouts.map((w) => w.workout_date), ...data.transactions.map((t) => t.txn_date),
+    ...data.audience.map((a) => a.recorded_on), ...data.checkins.map((c) => c.checkin_date)].filter(Boolean).sort()[0];
   const missionFrom = earliest && earliest < MISSION_START ? earliest : MISSION_START < today ? MISSION_START : today;
-  const from = preset === "30" ? addDays(today, -29) : preset === "90" ? addDays(today, -89) : preset === "mission" ? missionFrom : customFrom;
+  const from = preset === "30" ? addDays(today, -29) : preset === "90" ? addDays(today, -89) : preset === "mission" || !fromOk ? missionFrom : customFrom;
   const span = Math.max(0, diffDays(from, to)) + 1;
   const prevTo = addDays(from, -1);
   const prevFrom = metric.grain === "month" ? addMonths(monthStart(from), -Math.max(1, buckets("month", from, to).length)) : addDays(from, -span);
@@ -133,13 +140,17 @@ export default function Charts() {
             </Select>
           </Field>
           <Field group label="Range">
-            <Segmented value={preset} onChange={setPreset} className="w-full" size="sm" options={[{ value: "30", label: "30D" }, { value: "90", label: "90D" }, { value: "mission", label: "Mission" }, { value: "custom", label: "Custom" }]} />
+            <Segmented label="Date range" value={preset} onChange={setPreset} className="w-full" size="sm" options={[{ value: "30", label: "30D" }, { value: "90", label: "90D" }, { value: "mission", label: "Mission" }, { value: "custom", label: "Custom" }]} />
           </Field>
         </div>
         {preset === "custom" && (
           <div className="mt-3 grid grid-cols-2 gap-3 sm:max-w-md">
-            <Field label="From"><Input type="date" value={customFrom} max={customTo} onChange={(e) => setCustomFrom(e.target.value)} /></Field>
-            <Field label="To"><Input type="date" value={customTo} min={customFrom} max={today} onChange={(e) => setCustomTo(e.target.value)} /></Field>
+            <Field label="From" error={fromError}>
+              <Input type="date" value={customFrom} max={customTo} onChange={(e) => setCustomFrom(e.target.value)} />
+            </Field>
+            <Field label="To" error={toOk ? null : "Enter an end date."}>
+              <Input type="date" value={customTo} min={customFrom} max={today} onChange={(e) => setCustomTo(e.target.value)} />
+            </Field>
           </div>
         )}
         <div className="mt-2"><Toggle checked={compare} onChange={setCompare} label="Compare with the previous period" sub={compare ? `${fmtDate(prevFrom)} – ${fmtDate(prevTo)}` : undefined} /></div>

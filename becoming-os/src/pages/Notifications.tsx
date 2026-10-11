@@ -50,8 +50,8 @@ export default function Notifications() {
                   {n.body && <p className="mt-0.5 text-[12.5px] text-mute">{n.body}</p>}
                   <div className="mt-1.5 flex gap-4 text-[11.5px] text-faint">
                     <span>{new Date(n.created_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>
-                    {n.link && <Link to={n.link} onClick={() => !n.read_at && markRead([n.id])} className="text-gold">Open</Link>}
-                    {!n.read_at && <button onClick={() => markRead([n.id])} className="hover:text-bone">Mark read</button>}
+                    {n.link && <Link to={n.link} onClick={() => !n.read_at && markRead([n.id])} aria-label={`Open: ${n.title}`} className="-my-1.5 py-1.5 text-gold">Open</Link>}
+                    {!n.read_at && <button type="button" onClick={() => markRead([n.id])} aria-label={`Mark read: ${n.title}`} className="-my-1.5 py-1.5 hover:text-bone">Mark read</button>}
                   </div>
                 </div>
               </li>

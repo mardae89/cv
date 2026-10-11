@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { Chart, ChartCard, GOLD, monthTick, SERIES } from "@/components/charts";
 import { useFeedback } from "@/components/feedback";
 import { useSubmit } from "@/components/forms/body";
-import { PaymentForm, TransactionForm } from "@/components/forms/business";
+import { PaymentForm, STAGES, TransactionForm } from "@/components/forms/business";
 import { RecordList } from "@/components/RecordList";
 import { AudienceCard } from "@/components/cards";
 import { Button, Card, cx, EmptyState, Eyebrow, Field, Input, Meter, Notice, NumberInput, PageHeader, Segmented, Select, Sheet, Stat, Table, Textarea } from "@/components/ui";
@@ -116,7 +116,7 @@ export default function Business() {
         <Select value={month} onChange={(e) => setMonth(e.target.value)} className="w-auto py-2" aria-label="Month">
           {months.map((mm) => <option key={mm} value={mm}>{fmtMonth(mm)}</option>)}
         </Select>
-        <Segmented size="sm" value={view} onChange={setView} options={[{ value: "earned", label: "Earned this month" }, { value: "received", label: "Received this month" }]} />
+        <Segmented label="Totals shown" size="sm" value={view} onChange={setView} options={[{ value: "earned", label: "Earned this month" }, { value: "received", label: "Received this month" }]} />
         <button className="py-2 text-[12.5px] text-mute hover:text-gold" onClick={() => setGoalEdit(true)}>Goal settings</button>
       </div>
 
@@ -176,7 +176,7 @@ export default function Business() {
       )}
 
       <ChartCard title="Revenue, cash collected and profit" sub="Three separate measures — never interchangeable"
-        action={<Segmented size="sm" value={gran} onChange={setGran} options={[{ value: "day", label: "Day" }, { value: "week", label: "Week" }, { value: "month", label: "Month" }]} />}>
+        action={<Segmented label="Chart grouping" size="sm" value={gran} onChange={setGran} options={[{ value: "day", label: "Day" }, { value: "week", label: "Week" }, { value: "month", label: "Month" }]} />}>
         <Chart data={series} x="date" height={260} fmt={(v) => money(v)} yWidth={60} xFmt={gran === "month" ? monthTick : fmtShort}
           series={[{ key: "revenue", label: "Revenue earned", color: SERIES[0], type: "bar" }, { key: "cash", label: "Cash collected", color: SERIES[1], type: "bar" }, { key: "profit", label: "Net profit", color: SERIES[2], type: "bar" }]}
           refs={gran === "month" ? [{ y: g.goal, label: "Goal" }] : undefined} />
@@ -198,7 +198,7 @@ export default function Business() {
           <h3 className="mb-3 text-[20px] leading-none">By business</h3>
           {revenueByBusiness(l, data.businesses, month, monthEnd(month)).map((b) => (
             <Link key={b.business.id} to={`/business/${b.business.id}`} className="block rounded-xl py-2 hover:bg-raised/40">
-              <Meter thin value={b.revenue} max={num(b.business.monthly_target) || Math.max(1, g.goal)} label={<span className="text-bone">{b.business.name}{!b.business.active && " (archived)"}</span>}
+              <Meter thin value={metricValue(b, g.metric)} max={num(b.business.monthly_target) || Math.max(1, g.goal)} label={<span className="text-bone">{b.business.name}{!b.business.active && " (archived)"}</span>}
                 right={money(metricValue(b, g.metric))} sub={`${b.business.monthly_target ? `target ${money(b.business.monthly_target)} · ` : ""}profit ${money(b.profit)} · cash ${money(b.cash)}`} />
             </Link>
           ))}
@@ -225,8 +225,8 @@ export default function Business() {
         <Card>
           <h3 className="mb-3 text-[20px] leading-none">Pipeline</h3>
           <div className="grid grid-cols-3 gap-3">
-            {(["lead", "contacted", "conversation", "proposal", "won", "lost"] as const).map((s) => (
-              <div key={s} className="rounded-xl bg-raised px-3 py-2.5"><div className="eyebrow mb-1 text-[9.5px]">{s}</div><div className="num text-[18px] font-semibold">{openPipe.byStage[s]}</div></div>
+            {STAGES.map((s) => (
+              <div key={s.value} className="min-w-0 rounded-xl bg-raised px-3 py-2.5"><div className="eyebrow mb-1 truncate text-[9.5px]">{s.label}</div><div className="num text-[18px] font-semibold">{openPipe.byStage[s.value]}</div></div>
             ))}
           </div>
           <p className="mt-3 text-[12px] text-mute">Open pipeline value {money(openPipe.openValue)} — potential only, never counted as revenue. Win rate (all time) {openPipe.winRate !== null ? pct(openPipe.winRate) : "—"}.</p>

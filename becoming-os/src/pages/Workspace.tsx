@@ -52,7 +52,7 @@ export default function Workspace() {
       <Link to="/business" className="inline-flex items-center gap-1 text-[13px] text-mute hover:text-bone"><ArrowLeft className="h-4 w-4" /> Business</Link>
       <PageHeader eyebrow={`Workspace${b.active ? "" : " · archived"}`} title={b.name} sub={b.description ?? undefined}
         action={<div className="flex flex-wrap gap-2">
-          <Button variant="secondary" onClick={() => setEdit(true)}>Edit</Button>
+          <Button variant="secondary" aria-label="Edit business" onClick={() => setEdit(true)}>Edit</Button>
           <Button variant="secondary" onClick={() => update("businesses", b.id, { active: !b.active })
             .then(() => toast(b.active ? "Archived. Its records still count in your totals." : "Restored."))
             .catch((e) => toast(errorMessage(e), "error"))}>{b.active ? "Archive" : "Restore"}</Button>

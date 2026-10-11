@@ -1,6 +1,6 @@
 import { Loader2, X } from "lucide-react";
 import {
-  cloneElement, forwardRef, isValidElement, useEffect, useId, type ButtonHTMLAttributes, type ReactElement, type InputHTMLAttributes, type ReactNode,
+  cloneElement, forwardRef, isValidElement, useEffect, useId, useRef, type ButtonHTMLAttributes, type ReactElement, type InputHTMLAttributes, type ReactNode,
   type SelectHTMLAttributes, type TextareaHTMLAttributes,
 } from "react";
 import { createPortal } from "react-dom";
@@ -219,11 +219,13 @@ export function Toggle({ checked, onChange, label, sub, disabled }: { checked: b
   );
 }
 
-export function Segmented<T extends string>({ value, onChange, options, className, size = "md" }: {
+export function Segmented<T extends string>({ value, onChange, options, className, size = "md", label }: {
   value: T; onChange: (v: T) => void; options: { value: T; label: ReactNode }[]; className?: string; size?: "sm" | "md";
+  /** Names the option group for screen readers when no visible label already does. */
+  label?: string;
 }) {
   return (
-    <div role="radiogroup" className={cx("inline-flex rounded-xl border border-line bg-raised p-1", className)}>
+    <div role="radiogroup" aria-label={label} className={cx("inline-flex rounded-xl border border-line bg-raised p-1", className)}>
       {options.map((o) => (
         <button key={o.value} type="button" role="radio" aria-checked={value === o.value} onClick={() => onChange(o.value)}
           className={cx("flex-1 whitespace-nowrap rounded-lg font-medium transition",
@@ -330,23 +332,33 @@ export function Ring({ value, max, size = 96, stroke = 7, children }: { value: n
 }
 
 // ──────────────────────────────────────────────────────────────── modals ──
+// Sheets that are open, oldest first. Escape closes only the newest (e.g. a
+// confirm dialog over an edit form), and the page scrolls again once all close.
+const openSheets: symbol[] = [];
+
 export function Sheet({ open, onClose, title, children, wide }: { open: boolean; onClose: () => void; title: ReactNode; children: ReactNode; wide?: boolean }) {
+  const close = useRef(onClose);
+  close.current = onClose;
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const me = Symbol("sheet");
+    openSheets.push(me);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && openSheets[openSheets.length - 1] === me) close.current();
+    };
     document.addEventListener("keydown", onKey);
-    const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prev;
+      openSheets.splice(openSheets.indexOf(me), 1);
+      if (!openSheets.length) document.body.style.overflow = "";
     };
-  }, [open, onClose]);
+  }, [open]);
   if (!open) return null;
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center" role="dialog" aria-modal="true" aria-label={typeof title === "string" ? title : undefined}>
       <div className="absolute inset-0 animate-fade bg-black/70 backdrop-blur-[2px]" onClick={onClose} />
-      <div className={cx("relative z-10 flex max-h-[92vh] w-full animate-sheet flex-col rounded-t-3xl border border-hair bg-panel sm:animate-rise sm:rounded-3xl",
+      <div className={cx("relative z-10 flex max-h-[92vh] w-full supports-[height:100dvh]:max-h-[92dvh] animate-sheet flex-col rounded-t-3xl border border-hair bg-panel sm:animate-rise sm:rounded-3xl",
         wide ? "sm:max-w-2xl" : "sm:max-w-lg")}>
         <div className="flex items-center justify-between border-b border-hair px-5 py-4">
           <h3 className="text-[24px] leading-none">{title}</h3>

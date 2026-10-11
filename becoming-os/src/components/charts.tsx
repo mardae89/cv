@@ -97,7 +97,7 @@ export function rangeFor(key: RangeKey, today: ISODate, earliest?: ISODate | nul
 
 export function RangePicker({ value, onChange, className }: { value: RangeKey; onChange: (v: RangeKey) => void; className?: string }) {
   return (
-    <Segmented size="sm" className={className} value={value} onChange={onChange}
+    <Segmented label="Date range" size="sm" className={className} value={value} onChange={onChange}
       options={[{ value: "30d", label: "30D" }, { value: "90d", label: "90D" }, { value: "mission", label: "Mission" }, { value: "all", label: "All" }]} />
   );
 }

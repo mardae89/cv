@@ -49,7 +49,7 @@ export default function Log() {
     <div>
       <PageHeader eyebrow="Logging centre" title="Record it" sub="Quick entries for everything. Every record is editable later, and every total recalculates." />
       <div ref={bar} className="-mx-4 mb-6 overflow-x-auto px-4">
-        <Segmented value={tab} onChange={(v) => setParams({ tab: v }, { replace: true })} options={tabs} />
+        <Segmented label="What to log" value={tab} onChange={(v) => setParams({ tab: v }, { replace: true })} options={tabs} />
       </div>
       {tab === "body" && <BodyTab />}
       {tab === "training" && <TrainingTab />}
@@ -254,9 +254,9 @@ function AudienceTab() {
     <div className="grid gap-5 lg:grid-cols-2">
       <Panel title="Record audience"><AudienceForm /></Panel>
       <div className="space-y-5">
-        <AudienceCard />
+        <AudienceCard onLogPage />
         <ChartCard title={`${info.name} ${info.unit}`}
-          action={<Segmented size="sm" value={platform} onChange={setPlatform} options={PLATFORMS.map((p) => ({ value: p.key, label: p.name }))} />}
+          action={<Segmented label="Platform" size="sm" value={platform} onChange={setPlatform} options={PLATFORMS.map((p) => ({ value: p.key, label: p.name }))} />}
           empty={series.length ? false : `No ${info.name} readings yet.`}>
           <Chart data={series.map((r) => ({ date: r.date, count: r.count }))} x="date" height={220} fmt={fmtCount} yWidth={56}
             series={[{ key: "count", label: info.unit, color: SERIES[PLATFORMS.indexOf(info)] }]} />

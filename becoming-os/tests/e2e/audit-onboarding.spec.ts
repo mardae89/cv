@@ -567,11 +567,14 @@ for (const vp of SIZES) {
       const groups: [string, string[], string][] = [
         ["Weight progress", ["Hidden", "% of goal", "Pounds lost", "Full detail"], "Pounds lost"],
         ["Training", ["Hidden", "Summary", "Full"], "Full"],
-        ["Habits", ["Hidden", "Summary", "Full"], "Hidden"],
+        ["Habits", ["Hidden", "Shared"], "Hidden"],
         ["Milestones", ["Hidden", "Shared"], "Hidden"],
-        ["Health details", ["Private", "Shared"], "Shared"],
-        ["Business", ["Private", "Goal only", "Full"], "Goal only"],
+        ["Business", ["Private", "Goal only"], "Goal only"],
       ];
+      // Only the levels the shared summary actually honours are offered (the same editor as Together and Settings):
+      // no "Full" for habits or business, and health details are never shared.
+      await expect(page.getByRole("group", { name: "Health details" })).toHaveCount(0);
+      for (const g of ["Habits", "Business"]) await expect(page.getByRole("group", { name: g, exact: true }).getByRole("radio")).toHaveCount(2);
       await expect(page.getByRole("group", { name: "Weight progress" }).getByRole("radio", { name: "% of goal" })).toHaveAttribute("aria-checked", "true");
       for (const [g, opts, pick] of groups) {
         const grp = page.getByRole("group", { name: g, exact: true });
@@ -588,7 +591,7 @@ for (const vp of SIZES) {
       await expect.poll(async () => {
         const s = (await stored(page)).singles.shareSettings ?? {};
         return [s.weight, s.training, s.habits, s.milestones, s.health, s.business, s.photos];
-      }).toEqual(["pounds", "full", "none", "none", "full", "summary", "none"]);
+      }).toEqual(["pounds", "full", "none", "none", "none", "summary", "none"]);
       await to(page, "Back", "What your partner can see");
       await expect(page.getByRole("group", { name: "Weight progress" }).getByRole("radio", { name: "Pounds lost" })).toHaveAttribute("aria-checked", "true");
       await to(page, "Skip", "Reminders");

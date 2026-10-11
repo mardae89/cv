@@ -187,9 +187,11 @@ export function CelebrationHost() {
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label="Milestone unlocked">
-      <div className={cx("absolute inset-0 animate-fade", major ? "bg-black/90" : "bg-black/70")} />
-      {major && <Confetti />}
+    <div className="fixed inset-0 z-[60] overflow-y-auto overscroll-contain" role="dialog" aria-modal="true" aria-label="Milestone unlocked">
+      <div className={cx("fixed inset-0 animate-fade", major ? "bg-black/90" : "bg-black/70")} />
+      {major && <div className="pointer-events-none fixed inset-0"><Confetti /></div>}
+      {/* Scrolls on short screens so Continue is always reachable. */}
+      <div className="relative flex min-h-full items-center justify-center p-4 py-[max(1rem,env(safe-area-inset-top,0px))]">
       <div className={cx("relative w-full animate-rise text-center", major ? "max-w-xl" : "max-w-md rounded-3xl border border-gold/30 bg-panel p-8")}>
         <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full border border-gold/50 text-gold">
           <Award className="h-7 w-7" />
@@ -231,6 +233,7 @@ export function CelebrationHost() {
           </Button>
           <p className="text-[11px] text-faint">Saved permanently to your milestone timeline.</p>
         </div>
+      </div>
       </div>
     </div>
   );

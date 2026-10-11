@@ -34,7 +34,7 @@ export default function Reviews() {
         sub="Built from your saved records. Observations are patterns worth noticing, not proof of cause." />
 
       <div className="flex flex-wrap items-center gap-3">
-        <Segmented value={period} onChange={(v) => set("period", v)} options={[{ value: "week", label: "Week" }, { value: "month", label: "Month" }]} />
+        <Segmented label="Review period" value={period} onChange={(v) => set("period", v)} options={[{ value: "week", label: "Week" }, { value: "month", label: "Month" }]} />
         <div className="flex items-center gap-1">
           <button className="rounded-lg p-2 text-mute hover:bg-raised hover:text-bone" aria-label="Previous period" onClick={() => shift(-1)}><ChevronLeft className="h-4 w-4" /></button>
           <span className="num min-w-[170px] text-center text-[14px] text-bone">{period === "week" ? fmtWeekRange(from) : fmtMonth(from)}</span>
@@ -161,7 +161,7 @@ function Reflection({ period, from, existing }: { period: "week" | "month"; from
       ...Object.fromEntries(QUESTIONS.map(([k]) => [k, vals[k]?.trim() || null])),
       completed_at: complete ? existing?.completed_at ?? new Date().toISOString() : existing?.completed_at ?? null,
     }, "user_id,period,period_start");
-    return complete ? "Review completed. Well done." : "Draft saved.";
+    return complete ? (existing?.completed_at ? "Review saved." : "Review completed. Well done.") : "Draft saved.";
   });
   return (
     <Card>

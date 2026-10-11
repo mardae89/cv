@@ -34,6 +34,8 @@ export function RecordList({ items, empty, limit }: { items: RecordItem[]; empty
       toast(errorMessage(e), "error");
     }
   };
+  // Names each row's buttons after the record, so screen readers can tell "Edit" on one row from the next.
+  const named = (verb: string, it: RecordItem) => typeof it.primary === "string" ? `${verb} ${it.primary}` : verb;
   return (
     <ul className="divide-y divide-hair">
       {items.slice(0, all ? items.length : limit ?? items.length).map((it) => (
@@ -43,8 +45,8 @@ export function RecordList({ items, empty, limit }: { items: RecordItem[]; empty
             {it.secondary && <div className="truncate text-[12px] text-mute">{it.secondary}</div>}
           </div>
           {it.right && <div className="num shrink-0 text-[13.5px] font-semibold text-bone">{it.right}</div>}
-          {it.onEdit && <IconButton label="Edit" className="h-9 w-9" onClick={it.onEdit}><Pencil className="h-4 w-4" /></IconButton>}
-          {it.onDelete && <IconButton label="Delete" className="h-9 w-9 hover:text-alert" onClick={() => del(it)}><Trash2 className="h-4 w-4" /></IconButton>}
+          {it.onEdit && <IconButton label={named("Edit", it)} className="h-9 w-9" onClick={it.onEdit}><Pencil className="h-4 w-4" /></IconButton>}
+          {it.onDelete && <IconButton label={named("Delete", it)} className="h-9 w-9 hover:text-alert" onClick={() => del(it)}><Trash2 className="h-4 w-4" /></IconButton>}
         </li>
       ))}
       {!all && limit !== undefined && items.length > limit && (

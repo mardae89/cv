@@ -84,6 +84,8 @@ const pageId = (key: BucketKey, i: number, ver: string) => (i === 0 ? `${key}~0`
 
 /** Sortable, so a later reset always wins over an earlier one. */
 const newEpoch = () => `${Date.now().toString(36).padStart(9, "0")}-${newId().slice(0, 6)}`;
+/** What a reset puts back to the start (a restore then applies the backup's own profile over it). */
+const CLEARED_PROFILE: Partial<Profile> = { onboarding_done: false, demo_mode: false, demo_today: null, plan_preset: null, business_enabled: false };
 
 function validTimeZone(tz: unknown): tz is string {
   if (typeof tz !== "string" || !tz) return false;
@@ -354,6 +356,22 @@ export class Engine {
 
   /** Delete every record (and photo) this person has stored. */
   async reset(): Promise<void> {
+    await this.wipe();
+    this.commit({
+      tables: emptyTables(),
+      singles: this.keptSingles(),
+      profile: { ...this.state.profile, ...CLEARED_PROFILE },
+    });
+    await this.persist("profile");
+  }
+
+  /** Sharing and reminder choices survive a reset or a restore. */
+  private keptSingles(): Record<SingleKey, Row | null> {
+    return { ...emptySingles(), shareSettings: this.state.singles.shareSettings, reminderSettings: this.state.singles.reminderSettings };
+  }
+
+  /** Removes everything from storage; the in-memory state is left for the caller to replace in one step. */
+  private async wipe(): Promise<void> {
     await this.settled();
     const all = await this.store.list(this.base);
     const photos = await this.store.list(this.mediaCollection).catch(() => [] as StoredDoc[]);
@@ -365,12 +383,6 @@ export class Engine {
     this.acks.clear();
     // Other open devices see the new epoch on the profile and reload from storage.
     this.epoch = newEpoch();
-    this.commit({
-      tables: emptyTables(),
-      singles: { ...emptySingles(), shareSettings: this.state.singles.shareSettings, reminderSettings: this.state.singles.reminderSettings },
-      profile: { ...this.state.profile, onboarding_done: false, demo_mode: false, demo_today: null, plan_preset: null, business_enabled: false },
-    });
-    await this.persist("profile");
   }
 
   async exportAll(includeImages = true): Promise<ExportFile> {
@@ -398,20 +410,29 @@ export class Engine {
     void _ignore;
     // Check everything (row rules, links, uniqueness, payments) before reset()
     // wipes the current records, so a bad file leaves what's already here untouched.
+    const nextProfile = {
+      ...this.state.profile, ...CLEARED_PROFILE, ...profile, id: this.uid,
+      timezone: validTimeZone(profile.timezone) ? profile.timezone : this.state.profile.timezone,
+    } as Profile;
+    if (typeof nextProfile.display_name === "string") nextProfile.display_name = nextProfile.display_name.slice(0, 60);
     try {
-      const kept = { ...emptySingles(), shareSettings: this.state.singles.shareSettings, reminderSettings: this.state.singles.reminderSettings };
-      this.stage(emptyTables(), kept, { tables, singles }, false);
-      validateProfile({ ...this.state.profile, ...profile });
+      this.stage(emptyTables(), this.keptSingles(), { tables, singles }, false);
+      validateProfile(nextProfile as unknown as Record<string, unknown>);
       for (const data of Object.values(file.images ?? {})) {
         if (typeof data !== "string" || data.length > 240_000) throw new ValidationError("It contains a photo that's too large.");
       }
     } catch (e) {
       throw new ValidationError(`That backup can't be loaded, so nothing was changed. ${e instanceof Error ? e.message : ""}`.trim());
     }
-    await this.reset();
-    await this.bulk({ tables, singles });
+    // The app sees one change, from the old records straight to the backup's: never an empty,
+    // not-set-up state in between where reminders or milestones could be added and then collide.
+    await this.wipe();
     for (const [id, data] of Object.entries(file.images ?? {})) await this.putImage(id, data);
-    await this.saveProfile({ ...profile, timezone: validTimeZone(profile.timezone) ? profile.timezone : this.state.profile.timezone });
+    const next = this.stage(emptyTables(), this.keptSingles(), { tables, singles }, true);
+    this.commit({ tables: next.tables, singles: next.singles, profile: nextProfile });
+    await this.persistAll(next.keys);
+    // Last, so other open devices reload only once the records are in place.
+    await this.persist("profile");
   }
 
   // ──────────────────────────────────────────────────────────── photos ──

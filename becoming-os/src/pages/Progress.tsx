@@ -19,7 +19,7 @@ const newestFirst = <T,>(rows: T[], date: (r: T) => string) =>
 const photosNewestFirst = (photos: ProgressPhoto[]) => newestFirst(photos, (p) => p.taken_on);
 
 export default function Progress() {
-  const { data, today, ev, remove } = useStore();
+  const { data, today, ev } = useStore();
   const [range, setRange] = useState<RangeKey>("mission");
   const [log, setLog] = useState(false);
   const [edit, setEdit] = useState<WeightEntry | null>(null);
@@ -27,12 +27,16 @@ export default function Progress() {
   const wp = weightProgress(data.goals, data.weights);
 
   if (!wp) {
+    // Weigh-ins and photos logged before a starting weight is set still need a place to be seen, edited and deleted.
     return (
-      <div>
+      <div className="space-y-6">
         <PageHeader eyebrow="Body" title="Physical transformation" />
         <EmptyState title="Set your starting point" action={<Button onClick={() => nav("/settings#body")}>Confirm starting weight</Button>}>
           Progress meters need a confirmed starting weight and goal. Nothing is assumed until you enter them.
         </EmptyState>
+        <Photos />
+        {data.weights.length > 0 && <WeighIns onEdit={setEdit} />}
+        <Sheet open={!!edit} onClose={() => setEdit(null)} title="Edit weigh-in">{edit && <WeightForm initial={edit} onDone={() => setEdit(null)} />}</Sheet>
       </div>
     );
   }
@@ -134,18 +138,25 @@ export default function Progress() {
 
       <Photos />
 
-      <Card>
-        <h2 className="mb-2 text-[24px] leading-none">All weigh-ins</h2>
-        <RecordList limit={14} items={newestFirst(data.weights, (w) => w.entry_date).map((w) => ({
-          id: w.id, primary: w.weight !== null ? `${w.weight} lb` : `Waist ${w.waist_in} in`,
-          secondary: [fmtDate(w.entry_date), w.waist_in && w.weight !== null && `waist ${w.waist_in} in`, w.flagged && "confirmed unusual change", w.note].filter(Boolean).join(" · "),
-          onEdit: () => setEdit(w), onDelete: () => remove("weights", w.id), deleteLabel: "this weigh-in",
-        }))} />
-      </Card>
+      <WeighIns onEdit={setEdit} />
 
       <Sheet open={log} onClose={() => setLog(false)} title="Log weigh-in"><WeightForm onDone={() => setLog(false)} /></Sheet>
       <Sheet open={!!edit} onClose={() => setEdit(null)} title="Edit weigh-in">{edit && <WeightForm initial={edit} onDone={() => setEdit(null)} />}</Sheet>
     </div>
+  );
+}
+
+function WeighIns({ onEdit }: { onEdit: (w: WeightEntry) => void }) {
+  const { data, remove } = useStore();
+  return (
+    <Card>
+      <h2 className="mb-2 text-[24px] leading-none">All weigh-ins</h2>
+      <RecordList limit={14} items={newestFirst(data.weights, (w) => w.entry_date).map((w) => ({
+        id: w.id, primary: w.weight !== null ? `${w.weight} lb` : `Waist ${w.waist_in} in`,
+        secondary: [fmtDate(w.entry_date), w.waist_in && w.weight !== null && `waist ${w.waist_in} in`, w.flagged && "confirmed unusual change", w.note].filter(Boolean).join(" · "),
+        onEdit: () => onEdit(w), onDelete: () => remove("weights", w.id), deleteLabel: "this weigh-in",
+      }))} />
+    </Card>
   );
 }
 

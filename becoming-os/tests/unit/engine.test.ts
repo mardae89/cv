@@ -823,6 +823,33 @@ describe("export and import", () => {
   });
 });
 
+describe("import is seen as one change", () => {
+  it("never shows the app an empty, not-set-up state, so reminders added meanwhile can't collide with the backup's", async () => {
+    const e = await open(new MemoryStore());
+    await e.insert("weights", { entry_date: "2026-10-01", weight: 262 });
+    await e.insert("notifications", { kind: "reminder", title: "Log today", dedupe_key: "daily:2026-10-01" });
+    await e.saveProfile({ onboarding_done: true });
+    const file = JSON.parse(JSON.stringify(await e.exportAll())) as ExportFile;
+    // Like the app's reminder sync: whenever the stored reminder is missing, add it again.
+    const seen: { weights: number; done: boolean }[] = [];
+    let adding: Promise<unknown> | null = null;
+    const stop = e.subscribe(() => {
+      const st = e.getState();
+      seen.push({ weights: st.tables.weights.length, done: st.profile.onboarding_done });
+      if (!adding && !st.tables.notifications.some((n) => n.dedupe_key === "daily:2026-10-01"))
+        adding = e.insert("notifications", { kind: "reminder", title: "Log today", dedupe_key: "daily:2026-10-01" }).catch(() => undefined);
+    });
+    await e.importAll(file);
+    await adding;
+    stop();
+    expect(seen.every((x) => x.weights === 1 && x.done)).toBe(true);
+    expect(adding).toBe(null);
+    expect(e.getState().tables.notifications.map((n) => n.dedupe_key)).toEqual(["daily:2026-10-01"]);
+    expect(e.getState().tables.weights).toHaveLength(1);
+    e.close();
+  });
+});
+
 // ───────────────────────────────────────────────────────────── reset ──
 describe("reset", () => {
   it("clears records and photos but keeps sharing and reminder choices", async () => {

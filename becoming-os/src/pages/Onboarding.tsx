@@ -5,6 +5,7 @@ import { useFeedback } from "@/components/feedback";
 import { Button, Card, cx, DayPicker, Field, Input, Notice, NumberInput, Segmented, Select, Textarea, Toggle } from "@/components/ui";
 import { LIST_KEYS, SINGLE_DEFAULTS, type ListKey, type SingleKey } from "@/data/schema";
 import { useStore } from "@/data/store";
+import { ShareEditor } from "@/pages/Together";
 import { READINESS_LABEL } from "@/lib/calc/athletic";
 import { paceRate } from "@/lib/calc/weight";
 import { diffDays, fmtDate, isISODate, MISSION_END } from "@/lib/dates";
@@ -477,7 +478,7 @@ export default function Onboarding() {
               ? "Your records stay private to you. Your partner only sees a summary built from these choices, and can't change anything of yours. You can change these any time."
               : "Nothing is shared from this browser; your records stay on this device. These choices only take effect on your shared BECOMING OS page, for example after restoring a backup there."}
           </p>
-          <PrivacyEditor value={share} onChange={setShare} business={bizOn} />
+          <ShareEditor value={share} onChange={setShare} business={bizOn} />
           <Nav back={back} skip={next} save={savePrivacy} busy={busy} />
         </section>
       )}
@@ -510,35 +511,3 @@ function Nav({ back, skip, save, busy, last }: { back: () => void; skip: () => v
   );
 }
 
-export function PrivacyEditor({ value, onChange, business }: { value: ShareSettings; onChange: (v: ShareSettings) => void; business: boolean }) {
-  const set = <K extends keyof ShareSettings>(k: K, v: ShareSettings[K]) => onChange({ ...value, [k]: v });
-  const row = (label: string, sub: string, control: React.ReactNode) => (
-    <div className="flex flex-col gap-2 border-b border-hair py-4 last:border-0 sm:flex-row sm:items-center sm:justify-between">
-      <div><div className="text-[14px] text-bone">{label}</div><div className="text-[12px] text-mute">{sub}</div></div>
-      <div role="group" aria-label={label} className="flex flex-col">{control}</div>
-    </div>
-  );
-  return (
-    <Card className="py-1">
-      {row("Weight progress", "Percent only hides pounds and weights. Weight milestones need pounds or more.",
-        <Segmented size="sm" value={value.weight} onChange={(v) => set("weight", v)} options={[
-          { value: "none", label: "Hidden" }, { value: "percent", label: "% of goal" }, { value: "pounds", label: "Pounds lost" }, { value: "full", label: "Full detail" }]} />)}
-      {row("Training", "Summary: sessions, distance, longest run. Full: every workout.",
-        <Segmented size="sm" value={value.training} onChange={(v) => set("training", v)} options={[
-          { value: "none", label: "Hidden" }, { value: "summary", label: "Summary" }, { value: "full", label: "Full" }]} />)}
-      {row("Habits", "Summary: completion percentages. Full: each habit and task.",
-        <Segmented size="sm" value={value.habits} onChange={(v) => set("habits", v)} options={[
-          { value: "none", label: "Hidden" }, { value: "summary", label: "Summary" }, { value: "full", label: "Full" }]} />)}
-      {row("Milestones", "Your achievement timeline (category limits above still apply).",
-        <Segmented size="sm" value={value.milestones} onChange={(v) => set("milestones", v)} options={[
-          { value: "none", label: "Hidden" }, { value: "full", label: "Shared" }]} />)}
-      {row("Health details", "Sleep, symptoms, nutrition, injury notes.",
-        <Segmented size="sm" value={value.health} onChange={(v) => set("health", v)} options={[
-          { value: "none", label: "Private" }, { value: "full", label: "Shared" }]} />)}
-      {business && row("Business", "Summary: progress toward the monthly goal only. Full: every transaction and customer.",
-        <Segmented size="sm" value={value.business} onChange={(v) => set("business", v)} options={[
-          { value: "none", label: "Private" }, { value: "summary", label: "Goal only" }, { value: "full", label: "Full" }]} />)}
-      <p className="pb-4 pt-1 text-[12px] text-faint">Progress photos always stay private. Journal entries and reflections are private unless you mark an individual entry as shared.</p>
-    </Card>
-  );
-}

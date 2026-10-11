@@ -1,6 +1,6 @@
 // Shared helpers for the control-by-control audit specs (device mode: a fresh
 // browser context is a fresh, empty IndexedDB).
-import { expect, type Browser, type BrowserContext, type Page } from "@playwright/test";
+import { expect, type Browser, type BrowserContext, type Page, type Route } from "@playwright/test";
 
 export const VIEWPORTS = {
   mobile: { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true },
@@ -11,12 +11,26 @@ export type ViewportName = keyof typeof VIEWPORTS;
 /** Shields a run from the dev server's hot reload while other files are being edited. */
 async function isolate(ctx: BrowserContext) {
   await ctx.routeWebSocket(() => true, () => undefined);
-  await ctx.route((u) => u.pathname.startsWith("/src/"), async (route) => {
-    const res = await route.fetch();
-    if (!/javascript/.test(res.headers()["content-type"] ?? "")) return route.fulfill({ response: res });
-    const body = (await res.text()).replace(/\?t=\d+&/g, "?").replace(/[?&]t=\d+/g, "");
-    await route.fulfill({ response: res, body });
-  });
+  await ctx.route((u) => u.pathname.startsWith("/src/"), serveSource);
+}
+
+/**
+ * Serves a dev-server module without its hot-reload timestamps. A kept-alive connection the dev
+ * server has already closed fails with ECONNRESET; ask again on a fresh one. If it still fails
+ * (e.g. the page navigated away meanwhile), let the request fail.
+ */
+export async function serveSource(route: Route) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const res = await route.fetch();
+      if (!/javascript/.test(res.headers()["content-type"] ?? "")) return await route.fulfill({ response: res });
+      const body = (await res.text()).replace(/\?t=\d+&/g, "?").replace(/[?&]t=\d+/g, "");
+      return await route.fulfill({ response: res, body });
+    } catch (e) {
+      if (attempt < 3 && /ECONNRESET|socket hang up/.test(String(e))) continue;
+      return route.abort().catch(() => undefined);
+    }
+  }
 }
 
 export interface Opened {
@@ -48,17 +62,27 @@ export async function openFresh(browser: Browser, vp: ViewportName, setup: "onbo
     if (await confirm.isVisible({ timeout: 1500 }).catch(() => false)) await confirm.click();
     await page.waitForURL((u) => u.hash === "#/" || u.hash === "", { timeout: 20_000 });
   }
-  await settle(page);
+  await settle(page, setup === "demo" ? 1000 : 0);
   return { page, errors };
 }
 
-/** Dismiss any milestone celebrations that are showing. */
-export async function settle(page: Page) {
-  for (let i = 0; i < 40; i++) {
-    const d = page.getByRole("dialog", { name: "Milestone unlocked" });
-    if (!(await d.isVisible({ timeout: 300 }).catch(() => false))) return;
-    await d.getByRole("button", { name: /^(Continue|Next|Close|Done)$/ }).first().click({ timeout: 3000 }).catch(() => undefined);
-    await page.waitForTimeout(250);
+/**
+ * Dismiss any milestone celebrations that are showing. With `quietMs`, keep watching until none has
+ * been showing for that long: milestones are recorded a moment after records load, so right after
+ * sample data appears a celebration can still be on its way.
+ */
+export async function settle(page: Page, quietMs = 0) {
+  const d = page.getByRole("dialog", { name: "Milestone unlocked" });
+  let quietSince = Date.now();
+  for (let i = 0; i < 200; i++) {
+    if (await d.isVisible().catch(() => false)) {
+      await d.getByRole("button", { name: /^(Continue|Next|Close|Done)$/ }).first().click({ timeout: 3000 }).catch(() => undefined);
+      await page.waitForTimeout(250);
+      quietSince = Date.now();
+      continue;
+    }
+    if (Date.now() - quietSince >= quietMs) return;
+    await page.waitForTimeout(100);
   }
 }
 

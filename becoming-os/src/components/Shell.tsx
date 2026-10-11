@@ -2,7 +2,7 @@ import {
   Award, BarChart3, Bell, Briefcase, CheckSquare, Home, LineChart, Map, Menu, NotebookPen,
   Plus, Settings, Users, Activity, X,
 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useLayoutEffect, useState, type ReactNode } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { useStore } from "@/data/store";
 import { fmtDate } from "@/lib/dates";
@@ -100,6 +100,11 @@ export function Shell() {
   const bottom = data.profile.business_enabled
     ? ["/", "/progress", "/log", "/business"]
     : ["/", "/progress", "/log", "/train"];
+  // Pages reached through More light it up, so you can see where you are.
+  const onMorePage = !bottom.some((to) => to === "/" ? loc.pathname === "/" : loc.pathname.startsWith(to));
+  // A new page starts at its top, not at the previous page's scroll position.
+  // (Runs before page effects, so a page can still scroll to a #section.)
+  useLayoutEffect(() => window.scrollTo(0, 0), [loc.pathname]);
 
   return (
     <div className="min-h-screen lg:flex">
@@ -115,7 +120,8 @@ export function Shell() {
             </NavLink>
           ))}
         </nav>
-        <NavLink to="/notifications" className="mt-4 flex items-center gap-3 rounded-xl px-3 py-2.5 text-[14px] text-mute hover:text-bone">
+        <NavLink to="/notifications" className={({ isActive }) => cx("mt-4 flex items-center gap-3 rounded-xl px-3 py-2.5 text-[14px] transition",
+          isActive ? "bg-raised text-bone" : "text-mute hover:text-bone")}>
           <Bell className={ic} /> Notifications
           {unread > 0 && <span className="ml-auto rounded-full bg-gold px-1.5 text-[11px] font-bold text-ink">{unread}</span>}
         </NavLink>
@@ -176,7 +182,8 @@ export function Shell() {
               </NavLink>
             );
           })}
-          <button onClick={() => setMore(true)} className="flex w-16 flex-col items-center gap-1 py-2.5 text-[10.5px] font-medium text-mute">
+          <button type="button" onClick={() => setMore(true)} aria-haspopup="dialog" aria-current={onMorePage ? "page" : undefined}
+            className={cx("flex w-16 flex-col items-center gap-1 py-2.5 text-[10.5px] font-medium", onMorePage ? "text-gold" : "text-mute")}>
             <Menu className={ic} />More
           </button>
         </div>

@@ -4,6 +4,7 @@
 // read straight from that IndexedDB or confirmed by reloading the page.
 import { expect, test, type Browser, type Page } from "@playwright/test";
 import { addDays, countdown, monthStart, weekStart } from "../../src/lib/dates";
+import { serveSource } from "./helpers";
 
 const ME = { name: "Test Husband" };
 const WIFE = { name: "Test Wife" };
@@ -69,12 +70,7 @@ async function openFresh(browser: Browser): Promise<Page> {
   // a page loaded lazily after an edit would otherwise pull in a second copy
   // of shared modules (and a second, empty data context).
   await ctx.routeWebSocket(() => true, () => undefined);
-  await ctx.route((u) => u.pathname.startsWith("/src/"), async (route) => {
-    const res = await route.fetch();
-    if (!/javascript/.test(res.headers()["content-type"] ?? "")) return route.fulfill({ response: res });
-    const body = (await res.text()).replace(/\?t=\d+&/g, "?").replace(/[?&]t=\d+/g, "");
-    await route.fulfill({ response: res, body });
-  });
+  await ctx.route((u) => u.pathname.startsWith("/src/"), serveSource);
   const page = await ctx.newPage();
   page.on("pageerror", (e) => { throw e; });
   await page.goto("/");
@@ -201,7 +197,7 @@ test("BECOMING OS — the fifteen core workflows", async ({ browser }) => {
     await form.getByLabel("Revenue earned").fill("1500");
     await form.getByLabel("Cash collected now").fill("500");
     await form.getByRole("button", { name: "Record" }).click();
-    await expect(me.getByText("Sale recorded, $500 collected.")).toBeVisible();
+    await expect(me.getByText("Sale recorded, $500.00 collected.")).toBeVisible();
     await celebrate(me, /First paying client|First \$1,000 month/);
     await settle(me);
 

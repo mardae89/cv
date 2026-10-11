@@ -53,7 +53,7 @@ export function MealForm({ initial, date: shownDate, onDateChange, onDone }: {
 
   return (
     <form onSubmit={submit} className="space-y-4">
-      <Segmented value={meal} onChange={setMeal} className="w-full" size="sm" options={[
+      <Segmented label="Meal" value={meal} onChange={setMeal} className="w-full" size="sm" options={[
         { value: "breakfast", label: "Breakfast" }, { value: "lunch", label: "Lunch" }, { value: "dinner", label: "Dinner" }, { value: "snack", label: "Snack" }]} />
       <div className="grid grid-cols-2 gap-3">
         <Field label="Date"><Input type="date" value={date} max={today} onChange={(e) => setDate(e.target.value)} /></Field>
@@ -101,7 +101,7 @@ export function JournalForm({ initial, onDone }: { initial?: JournalEntry; onDon
 
   return (
     <form onSubmit={submit} className="space-y-4">
-      <Segmented value={kind} onChange={setKind} className="w-full" options={[
+      <Segmented label="Entry type" value={kind} onChange={setKind} className="w-full" options={[
         { value: "journal", label: "Journal" }, { value: "reflection", label: "Reflection" }, { value: "learning", label: "Learning" }]} />
       <div className="grid grid-cols-2 gap-3">
         <Field label="Date"><Input type="date" value={date} max={today} onChange={(e) => setDate(e.target.value)} /></Field>

@@ -240,14 +240,14 @@ const SHARE_KEYS = ["weight", "training", "habits", "milestones", "business"] as
 
 /** Only the levels the shared summary actually honours. Health details and
  *  photos never leave your private space, so they get no control here. */
-function ShareEditor({ value, onChange, business }: { value: ShareSettings; onChange: (v: ShareSettings) => void; business: boolean }) {
+export function ShareEditor({ value, onChange, business }: { value: ShareSettings; onChange: (v: ShareSettings) => void; business: boolean }) {
   const set = <K extends keyof ShareSettings>(k: K, v: ShareSettings[K]) => onChange({ ...value, [k]: v });
   // Older settings may say "full" where the summary only has one level.
   const on = (v: string) => (v === "none" ? "none" : "summary");
   const row = (label: string, sub: string, control: ReactNode) => (
     <div className="flex flex-col gap-2 border-b border-hair py-4 last:border-0 sm:flex-row sm:items-center sm:justify-between">
       <div><div className="text-[14px] text-bone">{label}</div><div className="text-[12px] text-mute">{sub}</div></div>
-      {control}
+      <div role="group" aria-label={label} className="flex flex-col">{control}</div>
     </div>
   );
   return (
@@ -274,7 +274,8 @@ function ShareEditor({ value, onChange, business }: { value: ShareSettings; onCh
   );
 }
 
-function SharingSettings() {
+/** The sharing levels and their Save button. Until you change something the form follows what's stored. */
+export function SharingForm() {
   const { host, shareSettings, data, saveSingle } = useStore();
   const { busy, run } = useSubmit();
   const saved = shareSettings ?? DEFAULT_SHARE;
@@ -283,7 +284,20 @@ function SharingSettings() {
   const value = draft ?? saved;
   const dirty = !!draft && SHARE_KEYS.some((k) => draft[k] !== saved[k]);
   const shared = host.mode === "shared-page";
+  return (
+    <div className="space-y-3">
+      <ShareEditor value={value} onChange={setDraft} business={data.profile.business_enabled} />
+      <Button busy={busy} disabled={!dirty} onClick={() => run(async () => {
+        await saveSingle("shareSettings", { ...value });
+        setDraft(null);
+        return shared ? "Sharing saved. Your summary updates in a moment." : "Sharing saved.";
+      })}>Save sharing</Button>
+    </div>
+  );
+}
 
+function SharingSettings() {
+  const shared = useStore().host.mode === "shared-page";
   return (
     <section id="sharing" className="scroll-mt-24 space-y-3">
       <div>
@@ -294,12 +308,7 @@ function SharingSettings() {
             : "Saved with your records. They take effect once your records are on the published page; nothing is shared from this browser."}
         </p>
       </div>
-      <ShareEditor value={value} onChange={setDraft} business={data.profile.business_enabled} />
-      <Button busy={busy} disabled={!dirty} onClick={() => run(async () => {
-        await saveSingle("shareSettings", { ...value });
-        setDraft(null);
-        return shared ? "Sharing saved. Your summary updates in a moment." : "Sharing saved.";
-      })}>Save sharing</Button>
+      <SharingForm />
     </section>
   );
 }
