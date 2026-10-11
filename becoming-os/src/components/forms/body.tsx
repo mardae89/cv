@@ -97,32 +97,36 @@ export function WeightForm({ initial, onDone }: { initial?: WeightEntry; onDone?
   );
 }
 
+const checkinFields = (c?: DailyCheckin) => ({
+  sleep: c?.sleep_hours != null ? String(c.sleep_hours) : "",
+  quality: c?.sleep_quality ?? null,
+  energy: c?.energy ?? null,
+  soreness: c?.soreness ?? null,
+  fatigue: c?.fatigue ?? null,
+  water: c?.water_oz != null ? String(c.water_oz) : "",
+  note: c?.note ?? "",
+});
+type CheckinFields = ReturnType<typeof checkinFields>;
+
 export function CheckinForm({ initial, onDone }: { initial?: DailyCheckin; onDone?: () => void }) {
   const { data, today, upsert, update } = useStore();
   const { busy, run } = useSubmit();
   const [date, setDate] = useState(initial?.checkin_date ?? today);
   const base = initial ?? data.checkins.find((c) => c.checkin_date === date);
-  const [sleep, setSleep] = useState(base?.sleep_hours != null ? String(base.sleep_hours) : "");
-  const [quality, setQuality] = useState<number | null>(base?.sleep_quality ?? null);
-  const [energy, setEnergy] = useState<number | null>(base?.energy ?? null);
-  const [soreness, setSoreness] = useState<number | null>(base?.soreness ?? null);
-  const [fatigue, setFatigue] = useState<number | null>(base?.fatigue ?? null);
-  const [water, setWater] = useState(base?.water_oz != null ? String(base.water_oz) : "");
-  const [note, setNote] = useState(base?.note ?? "");
-  // Show what's saved for the chosen date (blank if nothing), and follow it when it's
-  // edited or deleted elsewhere, so "Update" never overwrites it with stale values.
+  const [f, setF] = useState<CheckinFields>(() => checkinFields(base));
+  const set = <K extends keyof CheckinFields>(k: K) => (v: CheckinFields[K]) => setF((x) => ({ ...x, [k]: v }));
+  // Show what's saved for the chosen date, and follow it when it's edited or deleted
+  // elsewhere, so "Update" never overwrites it with stale values. Moving to a date
+  // with nothing saved keeps anything typed but not yet saved.
   const baseKey = initial ? "" : `${date}|${base ? JSON.stringify(base) : ""}`;
-  const [loaded, setLoaded] = useState(baseKey);
-  if (loaded !== baseKey) {
-    setLoaded(baseKey);
-    setSleep(base?.sleep_hours != null ? String(base.sleep_hours) : "");
-    setQuality(base?.sleep_quality ?? null);
-    setEnergy(base?.energy ?? null);
-    setSoreness(base?.soreness ?? null);
-    setFatigue(base?.fatigue ?? null);
-    setWater(base?.water_oz != null ? String(base.water_oz) : "");
-    setNote(base?.note ?? "");
+  const [loaded, setLoaded] = useState({ key: baseKey, fields: f });
+  if (loaded.key !== baseKey) {
+    const typed = JSON.stringify(f) !== JSON.stringify(loaded.fields);
+    const next = checkinFields(base);
+    setLoaded({ key: baseKey, fields: next });
+    setF(base || !typed ? next : f);
   }
+  const { sleep, quality, energy, soreness, fatigue, water, note } = f;
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -147,15 +151,15 @@ export function CheckinForm({ initial, onDone }: { initial?: DailyCheckin; onDon
     <form onSubmit={submit} className="space-y-4" aria-label="Check-in form">
       <div className="grid grid-cols-2 gap-3">
         <Field label="Date"><Input type="date" value={date} max={today} onChange={(e) => setDate(e.target.value)} disabled={!!initial} /></Field>
-        <Field label="Sleep"><NumberInput value={sleep} onChange={setSleep} suffix="hours" /></Field>
+        <Field label="Sleep"><NumberInput value={sleep} onChange={set("sleep")} suffix="hours" /></Field>
       </div>
-      <Scale label="Sleep quality" value={quality} onChange={setQuality} low="Poor" high="Great" />
-      <Scale label="Energy" value={energy} onChange={setEnergy} low="Drained" high="Charged" />
-      <Scale label="Soreness" value={soreness} onChange={setSoreness} low="None" high="Severe" />
-      <Scale label="Fatigue" value={fatigue} onChange={setFatigue} low="Fresh" high="Exhausted" />
+      <Scale label="Sleep quality" value={quality} onChange={set("quality")} low="Poor" high="Great" />
+      <Scale label="Energy" value={energy} onChange={set("energy")} low="Drained" high="Charged" />
+      <Scale label="Soreness" value={soreness} onChange={set("soreness")} low="None" high="Severe" />
+      <Scale label="Fatigue" value={fatigue} onChange={set("fatigue")} low="Fresh" high="Exhausted" />
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Water"><NumberInput value={water} onChange={setWater} suffix="oz" /></Field>
-        <Field label="Notes"><Input value={note} onChange={(e) => setNote(e.target.value)} maxLength={1000} placeholder="optional" /></Field>
+        <Field label="Water"><NumberInput value={water} onChange={set("water")} suffix="oz" /></Field>
+        <Field label="Notes"><Input value={note} onChange={(e) => set("note")(e.target.value)} maxLength={1000} placeholder="optional" /></Field>
       </div>
       <Button type="submit" busy={busy} className="w-full">{initial || base ? "Update check-in" : "Save check-in"}</Button>
     </form>

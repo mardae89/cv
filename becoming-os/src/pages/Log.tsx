@@ -94,13 +94,13 @@ function BodyTab() {
         <RecordList limit={6} items={[...data.checkins].reverse().map((c) => ({
           id: c.id, primary: fmtDate(c.checkin_date),
           secondary: [c.sleep_hours != null && `${c.sleep_hours} h sleep`, c.energy && `energy ${c.energy}/5`, c.soreness && `soreness ${c.soreness}/5`, c.water_oz && `${c.water_oz} oz water`].filter(Boolean).join(" · "),
-          onEdit: () => setEditC(c), onDelete: () => remove("checkins", c.id),
+          onEdit: () => setEditC(c), onDelete: () => remove("checkins", c.id), deleteLabel: "this check-in",
         }))} empty="No check-ins yet." />
         <div className="mt-4 border-t border-hair pt-3">
           <RecordList limit={6} items={[...data.symptoms].reverse().map((s) => ({
             id: s.id, primary: `${s.body_area}${s.side && s.side !== "n/a" ? ` (${s.side})` : ""} · ${s.pain_level}/10`,
             secondary: [fmtDate(s.log_date), s.pain_type, s.during].filter(Boolean).join(" · "),
-            onEdit: () => setEditS(s), onDelete: () => remove("symptoms", s.id),
+            onEdit: () => setEditS(s), onDelete: () => remove("symptoms", s.id), deleteLabel: "this symptom log",
           }))} empty="No symptoms logged." />
         </div>
       </Panel>

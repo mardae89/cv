@@ -53,7 +53,9 @@ export default function Workspace() {
       <PageHeader eyebrow={`Workspace${b.active ? "" : " · archived"}`} title={b.name} sub={b.description ?? undefined}
         action={<div className="flex flex-wrap gap-2">
           <Button variant="secondary" onClick={() => setEdit(true)}>Edit</Button>
-          <Button variant="secondary" onClick={() => update("businesses", b.id, { active: !b.active }).catch((e) => toast(errorMessage(e), "error"))}>{b.active ? "Archive" : "Restore"}</Button>
+          <Button variant="secondary" onClick={() => update("businesses", b.id, { active: !b.active })
+            .then(() => toast(b.active ? "Archived. Its records still count in your totals." : "Restored."))
+            .catch((e) => toast(errorMessage(e), "error"))}>{b.active ? "Archive" : "Restore"}</Button>
           <Button onClick={() => setRecord(true)} icon={<Plus className="h-4 w-4" />}>Record</Button>
         </div>} />
 
@@ -104,8 +106,10 @@ export default function Workspace() {
 function MetricsCard({ businessId }: { businessId: string }) {
   const { data, today, remove } = useStore();
   const [edit, setEdit] = useState<ActivityMetric | "new" | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
   const ws = weekStart(today);
   const metrics = data.metrics.filter((m) => m.business_id === businessId);
+  const archived = metrics.filter((m) => !m.active);
   const weekCount = (id: string) => data.activityLogs.filter((a) => a.metric_id === id && a.log_date >= ws && a.log_date <= today).reduce((s, a) => s + a.count, 0);
   return (
     <Card>
@@ -125,7 +129,21 @@ function MetricsCard({ businessId }: { businessId: string }) {
           );
         })}
       </div>
-      {metrics.some((m) => !m.active) && <p className="mt-3 text-[11.5px] text-faint">{metrics.filter((m) => !m.active).length} archived metric(s).</p>}
+      {!metrics.length && <p className="text-[13px] text-faint">Add a metric to count outreach, content or sales against a daily or weekly target.</p>}
+      {archived.length > 0 && (
+        <div className="mt-3">
+          <button className="py-1 text-[12px] text-mute hover:text-bone" onClick={() => setShowArchived(!showArchived)}>
+            {showArchived ? "Hide" : "Show"} {archived.length} archived metric{archived.length === 1 ? "" : "s"}
+          </button>
+          {showArchived && (
+            <ul className="mt-1 divide-y divide-hair">
+              {archived.map((m) => (
+                <li key={m.id}><button className="w-full py-2 text-left text-[13px] text-mute hover:text-bone" onClick={() => setEdit(m)}>{m.label} (archived)</button></li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
       <Sheet open={!!edit} onClose={() => setEdit(null)} title={edit === "new" ? "New activity metric" : "Edit metric"}>
         {edit && <MetricForm businessId={businessId} initial={edit === "new" ? undefined : edit} onDone={() => setEdit(null)}
           onDelete={edit !== "new" ? async () => { await remove("metrics", edit.id); setEdit(null); } : undefined} />}
@@ -177,7 +195,7 @@ function MetricForm({ businessId, initial, onDone, onDelete }: { businessId: str
 
 function Pipeline({ businessId }: { businessId: string }) {
   const { data, today, update, remove } = useStore();
-  const { toast } = useFeedback();
+  const { confirm, toast } = useFeedback();
   const [edit, setEdit] = useState<Deal | "new" | null>(null);
   const [showClosed, setShowClosed] = useState(false);
   const deals = data.deals.filter((d) => d.business_id === businessId);
@@ -223,7 +241,16 @@ function Pipeline({ businessId }: { businessId: string }) {
       <Sheet open={!!edit} onClose={() => setEdit(null)} title={edit === "new" ? "New deal" : "Edit deal"}>
         {edit && <>
           <DealForm businessId={businessId} initial={edit === "new" ? undefined : edit} onDone={() => setEdit(null)} />
-          {edit !== "new" && <Button variant="danger" size="sm" className="mt-3" onClick={() => remove("deals", edit.id).then(() => setEdit(null)).catch((e) => toast(errorMessage(e), "error"))}>Delete deal</Button>}
+          {edit !== "new" && <Button variant="danger" size="sm" className="mt-3" onClick={async () => {
+            if (!(await confirm({ title: "Delete this deal?", body: "It's removed from the pipeline and the win rate recalculates.", confirmLabel: "Delete", destructive: true }))) return;
+            try {
+              await remove("deals", edit.id);
+              setEdit(null);
+              toast("Deal deleted.");
+            } catch (e) {
+              toast(errorMessage(e), "error");
+            }
+          }}>Delete deal</Button>}
         </>}
       </Sheet>
     </Card>

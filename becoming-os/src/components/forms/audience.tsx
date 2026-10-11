@@ -44,7 +44,7 @@ export function AudienceForm({ initial, onDone }: { initial?: AudienceEntry; onD
       const rows = filled.map((p) => ({ platform: p.key, count: parseCount(counts[p.key], `${p.name} ${p.unit}`) }));
       const clash = initial && data.audience.find((e) => e.id !== initial.id && e.platform === initial.platform && e.recorded_on === date);
       if (clash) {
-        throw new Error(`There's already a ${platformInfo(clash.platform).name} reading for ${fmtDate(date)} (${fmtCount(clash.count)}). Choose another date, or edit that reading instead.`);
+        throw new Error(`${platformInfo(clash.platform).name} already has a reading for ${fmtDate(date)} (${fmtCount(clash.count)}). Choose another date, or edit that reading instead.`);
       }
       const reasons = rows.flatMap((r) => checkAudience(r.count, date, r.platform, data.audience, initial?.id).reasons.map((x) => `${platformInfo(r.platform).name}: ${x}`));
       if (reasons.length) {
@@ -91,7 +91,7 @@ export function AudienceForm({ initial, onDone }: { initial?: AudienceEntry; onD
         <Field label="Date"><Input type="date" value={date} max={today} onChange={(e) => setDate(e.target.value)} aria-label="Reading date" /></Field>
         <Field label="Note" className="sm:col-span-2"><Input value={note} onChange={(e) => setNote(e.target.value)} maxLength={300} placeholder="optional — e.g. viral reel, launch week" /></Field>
       </div>
-      <p className="text-[12px] text-faint">Enter the total shown on each platform. Leave a box empty to skip it.</p>
+      {!initial && <p className="text-[12px] text-faint">Enter the total shown on each platform. Leave a box empty to skip it.</p>}
       <Button type="submit" busy={busy} className="w-full">{initial ? "Save changes" : "Save audience"}</Button>
     </form>
   );

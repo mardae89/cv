@@ -1,6 +1,6 @@
 import { Camera, ImagePlus, Lock, Trash2 } from "lucide-react";
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { Chart, ChartCard, GOLD, NEUTRAL, RangePicker, rangeFor, type RangeKey } from "@/components/charts";
 import { useFeedback } from "@/components/feedback";
 import { PhotoUpload, WeightForm } from "@/components/forms/body";
@@ -11,20 +11,26 @@ import { useStore } from "@/data/store";
 import { paceRate, weeklyWeights, weightPlan, weightProgress } from "@/lib/calc/weight";
 import { fmtDate, fmtShort, fmtWeekRange, MISSION_END } from "@/lib/dates";
 import { errorMessage, lb, pct, round, signed } from "@/lib/format";
-import type { WeightEntry } from "@/lib/types";
+import type { ProgressPhoto, WeightEntry } from "@/lib/types";
+
+/** Newest first by date; records are kept in the order they were entered, so a backfilled one would otherwise sit on top. */
+const newestFirst = <T,>(rows: T[], date: (r: T) => string) =>
+  [...rows].reverse().sort((a, b) => (date(a) < date(b) ? 1 : date(a) > date(b) ? -1 : 0));
+const photosNewestFirst = (photos: ProgressPhoto[]) => newestFirst(photos, (p) => p.taken_on);
 
 export default function Progress() {
   const { data, today, ev, remove } = useStore();
   const [range, setRange] = useState<RangeKey>("mission");
   const [log, setLog] = useState(false);
   const [edit, setEdit] = useState<WeightEntry | null>(null);
+  const nav = useNavigate();
   const wp = weightProgress(data.goals, data.weights);
 
   if (!wp) {
     return (
       <div>
         <PageHeader eyebrow="Body" title="Physical transformation" />
-        <EmptyState title="Set your starting point" action={<Link to="/settings#body"><Button>Confirm starting weight</Button></Link>}>
+        <EmptyState title="Set your starting point" action={<Button onClick={() => nav("/settings#body")}>Confirm starting weight</Button>}>
           Progress meters need a confirmed starting weight and goal. Nothing is assumed until you enter them.
         </EmptyState>
       </div>
@@ -37,7 +43,8 @@ export default function Progress() {
   const chartData = pts.map((p) => ({ date: p.date, weight: p.weight, trend: p.trend, lost: round(g.start - p.trend, 1) }));
   const weeks = weeklyWeights(data.weights).reverse();
   const plan = weightPlan(g, wp.trend, today, MISSION_END, data.goals!.pace);
-  const waist = data.weights.filter((w) => w.waist_in !== null && w.entry_date >= from && w.entry_date <= to).map((w) => ({ date: w.entry_date, waist: w.waist_in }));
+  const waist = newestFirst(data.weights.filter((w) => w.waist_in !== null && w.entry_date >= from && w.entry_date <= to), (w) => w.entry_date)
+    .reverse().map((w) => ({ date: w.entry_date, waist: w.waist_in }));
   const steps = ev.milestones.filter((m) => m.category === "weight");
   const days = Math.max(1, (Date.parse(today) - Date.parse(g.startDate ?? today)) / 864e5);
   const avgWeekly = wp.latest ? round((wp.lost / days) * 7, 2) : null;
@@ -111,7 +118,7 @@ export default function Progress() {
                     <div className={cx("text-[13.5px]", m.achievedOn ? "text-bone" : "text-mute")}>{m.title}</div>
                     <div className="text-[11.5px] text-faint">{m.achievedOn ? `Reached ${fmtDate(m.achievedOn)}` : `7-day avg ≤ ${round(g.start - (m.value ?? 0), 1)} lb`}</div>
                   </div>
-                  {m.achievedOn && row ? <MilestonePhoto achievementId={row.id} photoId={row.photo_id} /> : !m.achievedOn && <Lock className="h-3.5 w-3.5 text-faint" />}
+                  {m.achievedOn && row ? <MilestonePhoto achievementId={row.id} photoId={row.photo_id} title={m.title} /> : !m.achievedOn && <Lock className="h-3.5 w-3.5 text-faint" />}
                 </li>
               );
             })}
@@ -129,7 +136,7 @@ export default function Progress() {
 
       <Card>
         <h2 className="mb-2 text-[24px] leading-none">All weigh-ins</h2>
-        <RecordList limit={14} items={[...data.weights].reverse().map((w) => ({
+        <RecordList limit={14} items={newestFirst(data.weights, (w) => w.entry_date).map((w) => ({
           id: w.id, primary: w.weight !== null ? `${w.weight} lb` : `Waist ${w.waist_in} in`,
           secondary: [fmtDate(w.entry_date), w.waist_in && w.weight !== null && `waist ${w.waist_in} in`, w.flagged && "confirmed unusual change", w.note].filter(Boolean).join(" · "),
           onEdit: () => setEdit(w), onDelete: () => remove("weights", w.id), deleteLabel: "this weigh-in",
@@ -142,7 +149,7 @@ export default function Progress() {
   );
 }
 
-function MilestonePhoto({ achievementId, photoId }: { achievementId: string; photoId: string | null }) {
+function MilestonePhoto({ achievementId, photoId, title }: { achievementId: string; photoId: string | null; title: string }) {
   const { data, update } = useStore();
   const { toast } = useFeedback();
   const [open, setOpen] = useState(false);
@@ -157,7 +164,7 @@ function MilestonePhoto({ achievementId, photoId }: { achievementId: string; pho
   };
   return (
     <>
-      <button onClick={() => setOpen(true)} aria-label="Attach progress photo" className="shrink-0">
+      <button type="button" onClick={() => setOpen(true)} aria-label={`${photo ? "Change" : "Attach"} photo for ${title}`} className="shrink-0">
         {photo ? <Photo id={photo.id} alt="Milestone photo" className="h-10 w-10" /> : <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-dashed border-line text-faint"><ImagePlus className="h-4 w-4" /></span>}
       </button>
       <Sheet open={open} onClose={() => setOpen(false)} title="Milestone photo">
@@ -165,7 +172,7 @@ function MilestonePhoto({ achievementId, photoId }: { achievementId: string; pho
           <div className="space-y-3">
             <Select value={photoId ?? ""} onChange={(e) => attach(e.target.value || null)} aria-label="Choose photo">
               <option value="">No photo</option>
-              {data.photos.map((p) => <option key={p.id} value={p.id}>{fmtDate(p.taken_on)}{p.pose ? ` · ${p.pose}` : ""}{p.caption ? ` · ${p.caption}` : ""}</option>)}
+              {photosNewestFirst(data.photos).map((p) => <option key={p.id} value={p.id}>{fmtDate(p.taken_on)}{p.pose ? ` · ${p.pose}` : ""}{p.caption ? ` · ${p.caption}` : ""}</option>)}
             </Select>
             <p className="text-[12px] text-faint">Upload new photos in the Photos section below.</p>
           </div>
@@ -190,7 +197,7 @@ function Photos() {
       toast(errorMessage(e), "error");
     }
   };
-  const photos = [...data.photos].reverse();
+  const photos = photosNewestFirst(data.photos);
   return (
     <Card>
       <div className="mb-4 flex items-center justify-between">
@@ -203,7 +210,8 @@ function Photos() {
             <figure key={p.id} className="group relative">
               <Photo id={p.id} alt={`Progress photo ${fmtDate(p.taken_on)}`} className="aspect-[3/4]" />
               <figcaption className="mt-1 text-[11px] text-faint">{fmtShort(p.taken_on)}{p.pose ? ` · ${p.pose}` : ""}</figcaption>
-              <IconButton label="Delete photo" className="absolute right-1 top-1 h-8 w-8 bg-ink/70 opacity-100 sm:opacity-0 sm:group-hover:opacity-100" onClick={() => del(p.id)}>
+              {/* Always shown: touch screens and keyboards can't reveal a hover-only button. */}
+              <IconButton label={`Delete photo from ${fmtDate(p.taken_on)}`} className="absolute right-1 top-1 h-8 w-8 bg-ink/70" onClick={() => del(p.id)}>
                 <Trash2 className="h-3.5 w-3.5" />
               </IconButton>
             </figure>

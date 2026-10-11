@@ -2,7 +2,7 @@
 // desktop: every step's fields, plan cards, switches, Back / Skip / Save, "Skip
 // setup for now", the sample-data dialog, what gets stored, where it shows up
 // afterwards, and running setup again after the records are cleared.
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Browser, type Locator, type Page } from "@playwright/test";
 import { expectNoHorizontalScroll, go, openFresh, rows, settle, stored, type ViewportName } from "./helpers";
 
 const SIZES: ViewportName[] = ["mobile", "desktop"];
@@ -24,9 +24,21 @@ async function reachable(loc: Locator) {
   const r = await loc.evaluate((el) => {
     const b = el.getBoundingClientRect();
     const hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
-    return { inside: b.left >= -0.5 && b.right <= window.innerWidth + 0.5 && b.height > 0, top: !!hit && (hit === el || el.contains(hit)) };
+    const top = !!hit && (hit === el || el.contains(hit));
+    return { inside: b.left >= -0.5 && b.right <= window.innerWidth + 0.5 && b.height > 0, top, ...(top ? {} : { el: el.outerHTML.slice(0, 120), hit: hit?.outerHTML.slice(0, 120) }) };
   });
   expect(r, "control is on screen and not covered").toEqual({ inside: true, top: true });
+}
+
+/**
+ * A fresh person on the first setup screen. Step changes slide in; most tests
+ * ask for reduced motion so they don't wait out each slide (the full-setup test
+ * keeps the motion on).
+ */
+async function open(browser: Browser, vp: ViewportName, motion = false) {
+  const o = await openFresh(browser, vp, "onboarding");
+  if (!motion) await o.page.emulateMedia({ reducedMotion: "reduce" });
+  return o;
 }
 
 const heading = (page: Page, name: string) => page.getByRole("heading", { name, exact: true });
@@ -83,14 +95,14 @@ async function clearRecords(page: Page) {
 for (const vp of SIZES) {
   test.describe(`onboarding @ ${vp}`, () => {
     test("plan step: name, plan cards, business switch, Continue and Back", async ({ browser }) => {
-      const { page, errors } = await openFresh(browser, vp, "onboarding");
+      const { page, errors } = await open(browser, vp);
       const p = plan(page);
       const name = page.getByLabel("Your name");
       const cont = btn(page, "Continue");
       await expect(heading(page, "Welcome.")).toBeVisible();
       await expect(stepText(page)).toHaveText("Setup · step 1 of 6");
       for (const c of [btn(page, "Skip setup for now"), name, p.primary, p.partner, p.custom, bizSwitch(page),
-        page.getByRole("button", { name: /Explore with sample data instead/ }), cont]) await reachable(c);
+        page.getByRole("button", { name: /Explore with sample data instead/ })]) await reachable(c);
       // Nobody gets a plan chosen for them.
       for (const c of Object.values(p)) await expect(c).toHaveAttribute("aria-pressed", "false");
       await expect(cont).toBeDisabled();
@@ -102,6 +114,7 @@ for (const vp of SIZES) {
       await expect(p.custom).toHaveAttribute("aria-pressed", "true");
       await expect(bizSwitch(page)).toHaveAttribute("aria-checked", "false");
       await expect(cont).toBeEnabled();
+      await reachable(cont);
       await bizSwitch(page).click();
       await expect(bizSwitch(page)).toHaveAttribute("aria-checked", "true");
       await expect(stepText(page)).toHaveText("Setup · step 1 of 7"); // adds the business step
@@ -140,7 +153,7 @@ for (const vp of SIZES) {
     });
 
     test("Skip setup for now keeps the name, plan and business choice and opens Today", async ({ browser }) => {
-      const { page, errors } = await openFresh(browser, vp, "onboarding");
+      const { page, errors } = await open(browser, vp);
       await page.getByLabel("Your name").fill("Sam");
       await plan(page).primary.click();
       await btn(page, "Skip setup for now").click();
@@ -152,7 +165,7 @@ for (const vp of SIZES) {
       }).toEqual([true, "Sam", "primary", true]);
       const notice = page.getByText("Finish setting up when you're ready");
       await expect(notice).toBeVisible();
-      for (const l of ["starting weight", "training readiness", "current business revenue"]) await expect(page.getByRole("link", { name: l })).toBeVisible();
+      for (const l of ["starting weight", "training readiness", "current business revenue"]) await expect(page.getByRole("link", { name: l, exact: true })).toBeVisible();
       await expect(heading(page, "Business")).toBeVisible();
       if (vp === "desktop") await expect(page.locator("aside")).toContainText("Sam");
       await page.reload();
@@ -162,7 +175,7 @@ for (const vp of SIZES) {
     });
 
     test("sample data: Cancel, Escape, Close and the backdrop change nothing; confirming loads it", async ({ browser }) => {
-      const { page, errors } = await openFresh(browser, vp, "onboarding");
+      const { page, errors } = await open(browser, vp);
       await page.getByLabel("Your name").fill("Riley");
       const sample = page.getByRole("button", { name: /Explore with sample data instead/ });
       const dialog = page.getByRole("dialog", { name: "Load sample data?" });
@@ -201,7 +214,7 @@ for (const vp of SIZES) {
     });
 
     test("body step: every field takes input, mistakes keep what was typed, saving stores goals and the first weigh-in", async ({ browser }) => {
-      const { page, errors } = await openFresh(browser, vp, "onboarding");
+      const { page, errors } = await open(browser, vp);
       const today = await localToday(page);
       await plan(page).primary.click();
       await to(page, "Continue", "Body baseline");
@@ -306,9 +319,12 @@ for (const vp of SIZES) {
 
       // Going back and correcting the start corrects the first weigh-in too (no stale second row).
       await to(page, "Back", "Body baseline");
-      await expect(start).toHaveValue("251.6");
+      // Once saved, it's no longer a pre-fill to confirm.
+      await expect(page.getByLabel("Confirm your starting weight")).toHaveCount(0);
+      const savedStart = page.getByLabel("Starting weight", { exact: true });
+      await expect(savedStart).toHaveValue("251.6");
       await expect(chip("Cycling")).toHaveAttribute("aria-pressed", "true");
-      await start.fill("250.2");
+      await savedStart.fill("250.2");
       await date.fill(addDays(today, -1));
       await to(page, "Save & continue", "Training readiness");
       await expect.poll(async () => (await rows(page, "weights")).map((w) => [w.entry_date, w.weight])).toEqual([[addDays(today, -1), 250.2]]);
@@ -324,7 +340,7 @@ for (const vp of SIZES) {
     });
 
     test("body step without a starting weight still saves the other answers", async ({ browser }) => {
-      const { page, errors } = await openFresh(browser, vp, "onboarding");
+      const { page, errors } = await open(browser, vp);
       await plan(page).partner.click();
       await to(page, "Continue", "Body baseline");
       const start = page.getByLabel("Starting weight", { exact: true });
@@ -364,7 +380,7 @@ for (const vp of SIZES) {
       await btn(page, "Skip").click(); // the last Skip finishes setup
       await page.waitForURL(atHome);
       await settle(page);
-      await expect(page.getByRole("link", { name: "starting weight" })).toBeVisible();
+      await expect(page.getByRole("link", { name: "starting weight", exact: true })).toBeVisible();
       await expect(page.getByText("Confirm your starting weight and goal to start the meters.")).toBeVisible();
       await go(page, "/settings");
       const body = page.locator("#body");
@@ -375,7 +391,7 @@ for (const vp of SIZES) {
     });
 
     test("training step: readiness, assessed date, notes, days, sessions and goal", async ({ browser }) => {
-      const { page, errors } = await openFresh(browser, vp, "onboarding");
+      const { page, errors } = await open(browser, vp);
       const today = await localToday(page);
       await plan(page).custom.click();
       await to(page, "Continue", "Body baseline");
@@ -418,7 +434,7 @@ for (const vp of SIZES) {
       await expect(day("Monday")).toHaveAttribute("aria-pressed", "false");
       await expect(sessions).toHaveValue("3");
       await sessions.fill("4");
-      await expect(goal).toHaveValue("Complete a 10K"); // nothing chosen yet keeps the default empty-or-10K text
+      await expect(goal).toHaveValue(""); // a custom plan starts blank; blank saves as "Complete a 10K"
       await goal.fill("Run a 10K under 60 minutes");
       await to(page, "Save & continue", "Daily system");
       await expect.poll(async () => {
@@ -439,7 +455,7 @@ for (const vp of SIZES) {
     });
 
     test("business step: goal measure, baselines and workspace templates", async ({ browser }) => {
-      const { page, errors } = await openFresh(browser, vp, "onboarding");
+      const { page, errors } = await open(browser, vp);
       const today = await localToday(page);
       await plan(page).primary.click();
       await to(page, "Continue", "Body baseline");
@@ -499,7 +515,7 @@ for (const vp of SIZES) {
     });
 
     test("habits step: picks follow the business switch; hidden picks are never saved", async ({ browser }) => {
-      const { page, errors } = await openFresh(browser, vp, "onboarding");
+      const { page, errors } = await open(browser, vp);
       await plan(page).primary.click();
       await to(page, "Continue", "Body baseline");
       await to(page, "Skip", "Training readiness");
@@ -544,7 +560,7 @@ for (const vp of SIZES) {
     });
 
     test("privacy and reminders: every level and hour saves; Finish opens Today and Settings agrees", async ({ browser }) => {
-      const { page, errors } = await openFresh(browser, vp, "onboarding");
+      const { page, errors } = await open(browser, vp);
       await plan(page).primary.click();
       await to(page, "Continue", "Body baseline");
       for (const h of ["Training readiness", "Business baseline", "Daily system", "What your partner can see"]) await to(page, "Skip", h);
@@ -599,7 +615,7 @@ for (const vp of SIZES) {
     });
 
     test("a full setup shows up on Today, Progress, Settings, Business and Habits, and survives a reload", async ({ browser }) => {
-      const { page, errors } = await openFresh(browser, vp, "onboarding");
+      const { page, errors } = await open(browser, vp, true);
       await page.getByLabel("Your name").fill("Alex");
       await plan(page).primary.click();
       await to(page, "Continue", "Body baseline");
@@ -643,8 +659,8 @@ for (const vp of SIZES) {
       await expect(page.getByText("Lost Revenue Group").first()).toBeVisible();
       await expect(page.getByText("Exchange Mastery").first()).toBeVisible();
       await go(page, "/habits");
-      for (const h of ["Wake up on time", "Business outreach", "Quality time together"]) await expect(page.getByText(h, { exact: true }).first()).toBeVisible();
-      await expect(page.getByText("Cardio / conditioning", { exact: true })).toHaveCount(0);
+      for (const h of ["Wake up on time", "Business outreach", "Quality time together"]) await expect(page.getByText(new RegExp(`^${h}`)).first()).toBeVisible();
+      await expect(page.getByText(/^Cardio \/ conditioning/)).toHaveCount(0);
       // Reload: all of it was stored, not just shown.
       await go(page, "/");
       await page.reload();
@@ -655,7 +671,7 @@ for (const vp of SIZES) {
     });
 
     test("Skip and Back on every step move without saving; Skip setup for now works mid-way", async ({ browser }) => {
-      const { page, errors } = await openFresh(browser, vp, "onboarding");
+      const { page, errors } = await open(browser, vp);
       await plan(page).primary.click();
       await to(page, "Continue", "Body baseline");
       const order = ["Body baseline", "Training readiness", "Business baseline", "Daily system", "What your partner can see", "Reminders"];
@@ -686,7 +702,7 @@ for (const vp of SIZES) {
     });
 
     test("setup runs again cleanly after the records are cleared", async ({ browser }) => {
-      const { page, errors } = await openFresh(browser, vp, "onboarding");
+      const { page, errors } = await open(browser, vp);
       await page.getByLabel("Your name").fill("Casey");
       await plan(page).primary.click();
       await to(page, "Continue", "Body baseline");

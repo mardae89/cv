@@ -117,7 +117,7 @@ export default function Business() {
           {months.map((mm) => <option key={mm} value={mm}>{fmtMonth(mm)}</option>)}
         </Select>
         <Segmented size="sm" value={view} onChange={setView} options={[{ value: "earned", label: "Earned this month" }, { value: "received", label: "Received this month" }]} />
-        <button className="text-[12.5px] text-mute hover:text-gold" onClick={() => setGoalEdit(true)}>Goal settings</button>
+        <button className="py-2 text-[12.5px] text-mute hover:text-gold" onClick={() => setGoalEdit(true)}>Goal settings</button>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
@@ -323,15 +323,27 @@ export function BusinessForm({ initial, onDone }: { initial?: import("@/lib/type
   );
 }
 
+type AssumptionKey = keyof ForecastAssumptions;
+
 function Forecast() {
   const { data, today, saveSingle } = useStore();
-  const { toast } = useFeedback();
+  const { busy, run } = useSubmit();
   const l: Ledger = { transactions: data.transactions, payments: data.payments };
   const metric = data.businessSettings?.goal_metric ?? "revenue";
   const goal = num(data.businessSettings?.goal_amount) || 10000;
   const defaults = forecastDefaults(l, data.customers, data.offers, today, data.businessSettings?.baseline_expenses ?? null);
   const saved = data.businessSettings?.forecast ?? {};
-  const [a, setA] = useState<Required<ForecastAssumptions>>({ ...defaults, ...saved } as Required<ForecastAssumptions>);
+  // Boxes hold exactly what was typed (so "2.05" or a blank box can be typed). A blank
+  // box, or one never changed, follows your data; saved values override it.
+  const [draft, setDraft] = useState<Partial<Record<AssumptionKey, string>>>({});
+  const [reset, setReset] = useState(false);
+  const overrides: ForecastAssumptions = { ...(reset ? {} : saved) };
+  for (const [k, v] of Object.entries(draft) as [AssumptionKey, string][]) {
+    if (v.trim() === "") delete overrides[k];
+    else overrides[k] = num(v);
+  }
+  const a = { ...defaults, ...overrides } as Required<ForecastAssumptions>;
+  const dirty = reset || Object.keys(draft).length > 0;
   const [open, setOpen] = useState(false);
   const lastMonth = monthFinance(l, addMonths(monthStart(today), -1));
   const startRecurring = lastMonth.recurring || monthFinance(l, today).recurring;
@@ -339,11 +351,19 @@ function Forecast() {
   const rows = forecast(startRecurring, a, monthStart(today), months, metric === "cash" ? "revenue" : metric);
   const hit = rows.find((r) => r.metric >= goal);
   const last = rows[rows.length - 1];
-  const field = (k: keyof ForecastAssumptions, label: string, suffix: string) => (
+  const field = (k: AssumptionKey, label: string, suffix: string) => (
     <Field label={label} hint={`From your data: ${defaults[k]}`}>
-      <NumberInput value={String(a[k])} onChange={(v) => setA({ ...a, [k]: num(v) })} suffix={suffix} />
+      <NumberInput value={draft[k] ?? String(a[k])} onChange={(v) => setDraft((d) => ({ ...d, [k]: v }))} suffix={suffix} min="0" placeholder={String(defaults[k])} />
     </Field>
   );
+  const save = () => run(async () => {
+    if (Object.values(overrides).some((v) => !(num(v) >= 0))) throw new Error("Forecast numbers can't be negative.");
+    if (num(overrides.churnPct) > 100) throw new Error("Monthly churn can't be more than 100%.");
+    await saveSingle("businessSettings", { forecast: overrides });
+    setDraft({});
+    setReset(false);
+    return "Assumptions saved.";
+  });
   return (
     <ChartCard title="Forecast (estimate)" sub={`Starts from ${money(startRecurring)} of recurring revenue. Editable assumptions — arithmetic, not a promise.`}
       action={<Button size="sm" variant="secondary" onClick={() => setOpen(!open)}>{open ? "Hide assumptions" : "Edit assumptions"}</Button>}>
@@ -357,9 +377,10 @@ function Forecast() {
             {field("oneTimeAvg", "Avg one-time sale", "$")}
             {field("monthlyExpenses", "Monthly expenses", "$")}
           </div>
-          <div className="mt-3 flex gap-2">
-            <Button size="sm" onClick={() => saveSingle("businessSettings", { forecast: a }).then(() => toast("Assumptions saved.")).catch((e) => toast(String(e.message ?? e), "error"))}>Save assumptions</Button>
-            <Button size="sm" variant="ghost" onClick={() => setA(defaults)}>Reset to data</Button>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Button size="sm" busy={busy} onClick={save}>Save assumptions</Button>
+            <Button size="sm" variant="ghost" onClick={() => { setDraft({}); setReset(true); }}>Reset to data</Button>
+            {dirty && <span className="text-[11.5px] text-faint">Not saved yet</span>}
           </div>
         </div>
       )}

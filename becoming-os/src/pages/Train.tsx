@@ -30,7 +30,9 @@ export default function Train() {
   const sym = symptomSummary(data.symptoms, today);
   const alert = injuryAlert(ap, sym);
   const unlocked = runningUnlocked(ap?.readiness ?? null);
-  const { from, to } = rangeFor(range, today, data.workouts[0]?.workout_date);
+  // Newest first by date (records are kept in the order they were entered, so a backfilled one would otherwise sit on top).
+  const byDate = [...data.workouts].reverse().sort((a, b) => (a.workout_date < b.workout_date ? 1 : a.workout_date > b.workout_date ? -1 : 0));
+  const { from, to } = rangeFor(range, today, byDate[byDate.length - 1]?.workout_date);
   const weeks = trainingWeeks(data.workouts, from, to, target).map((w) => ({ ...w, date: w.weekStart }));
   const progression = longestRunProgression(data.workouts).filter((p) => p.date >= from);
   const prs = strengthPRs(data.sets, data.workouts);
@@ -40,7 +42,8 @@ export default function Train() {
     return xs.length ? round(xs.reduce((a, b) => a + b, 0) / xs.length, 1) : null;
   };
   const athletic = ev.milestones.filter((m) => m.category === "athletic");
-  const painSeries = data.symptoms.filter((s) => s.log_date >= from).map((s) => ({ date: s.log_date, pain: s.pain_level }));
+  const painSeries = data.symptoms.filter((s) => s.log_date >= from && s.log_date <= to)
+    .sort((a, b) => (a.log_date < b.log_date ? -1 : a.log_date > b.log_date ? 1 : 0)).map((s) => ({ date: s.log_date, pain: s.pain_level }));
   const raceIn = ap?.race_date ? diffDays(today, ap.race_date) : null;
 
   return (
@@ -144,7 +147,8 @@ export default function Train() {
         <Card>
           <h2 className="mb-4 text-[24px] leading-none">Strength records</h2>
           <Table head={["Exercise", "Heaviest", "Est. 1RM", "Date"]} rows={prs.slice(0, 10).map((p) => [
-            p.exercise, `${p.bestWeight} lb × ${p.bestWeightReps}`, `${p.est1RM} lb`, fmtShort(p.date),
+            p.exercise, `${p.bestWeight > 0 ? `${p.bestWeight} lb` : "Bodyweight"}${p.bestWeightReps > 0 ? ` × ${p.bestWeightReps}` : ""}`,
+            p.bestWeight > 0 ? `${p.est1RM} lb` : "—", fmtShort(p.date),
           ])} empty="Log a strength workout with exercises to see records." />
           <p className="mt-2 text-[11px] text-faint">Estimated 1RM uses the Epley formula — an estimate, not a target to test.</p>
         </Card>
@@ -158,7 +162,7 @@ export default function Train() {
             {(Object.keys(ACTIVITY_LABEL) as Activity[]).map((a) => <option key={a} value={a}>{ACTIVITY_LABEL[a]}</option>)}
           </Select>
         </div>
-        <RecordList limit={40} items={[...data.workouts].reverse().filter((w) => filter === "all" || w.activity === filter).map((w) => ({
+        <RecordList limit={40} items={byDate.filter((w) => filter === "all" || w.activity === filter).map((w) => ({
           id: w.id,
           primary: `${ACTIVITY_LABEL[w.activity]}${w.title ? ` · ${w.title}` : ""}${w.is_race ? " · Race" : ""}`,
           secondary: [fmtDate(w.workout_date), w.duration_min && `${w.duration_min} min`, w.distance_mi && `${w.distance_mi} mi`,
@@ -166,7 +170,7 @@ export default function Train() {
             w.rpe && `RPE ${w.rpe}`, w.pain_level !== null && `pain ${w.pain_level}/10`,
             w.activity === "strength" && `${data.sets.filter((s) => s.workout_id === w.id).length} sets`].filter(Boolean).join(" · "),
           onEdit: () => setEdit(w), onDelete: () => remove("workouts", w.id), deleteLabel: "this workout",
-        }))} empty="No workouts yet." />
+        }))} empty={filter === "all" ? "No workouts yet." : `No ${ACTIVITY_LABEL[filter].toLowerCase()} workouts logged.`} />
       </Card>
 
       <Sheet open={log} onClose={() => setLog(false)} title="Log workout" wide><WorkoutForm onDone={() => setLog(false)} /></Sheet>
@@ -194,12 +198,29 @@ export function TrainingSettings({ onDone }: { onDone?: () => void }) {
   const unlocked = runningUnlocked(readiness || null);
   const phaseInfo = PHASES.find((p) => p.key === phase)!;
 
+  const dated = readiness === "under_care" || readiness === "cleared_by_clinician";
+  const chooseReadiness = (r: Readiness | "") => {
+    setReadiness(r);
+    // Running phases need clearance: don't leave one chosen that can no longer be picked.
+    if (!runningUnlocked(r || null) && PHASES.find((p) => p.key === phase)?.requiresClearance) setPhase("foundation");
+  };
+
   const save = async () => {
+    const sessions = Number(target);
+    if (!target.trim() || !Number.isInteger(sessions) || sessions < 1 || sessions > 14) {
+      toast("Sessions per week must be a whole number from 1 to 14.", "error");
+      return;
+    }
+    if (dated && assessed && assessed > today) {
+      toast("The assessment date can't be in the future.", "error");
+      return;
+    }
     setBusy(true);
     try {
       await saveSingle("athletic", {
-        readiness: readiness || null, assessed_on: assessed || null, injury_notes: notes.trim() || null, phase,
-        weekly_session_target: Math.max(1, Math.min(14, Math.round(num(target) || 3))), training_days: days,
+        // The assessment date only applies while you're under care or cleared.
+        readiness: readiness || null, assessed_on: dated && assessed ? assessed : null, injury_notes: notes.trim() || null, phase,
+        weekly_session_target: sessions, training_days: days,
         goal_text: goal.trim() || "Complete a 10K", race_name: race.trim() || null, race_date: raceDate || null,
       });
       toast("Training plan saved.");
@@ -214,12 +235,12 @@ export function TrainingSettings({ onDone }: { onDone?: () => void }) {
   return (
     <div className="space-y-4">
       <Field label="Readiness">
-        <Select value={readiness} onChange={(e) => setReadiness(e.target.value as Readiness)}>
+        <Select value={readiness} onChange={(e) => chooseReadiness(e.target.value as Readiness | "")}>
           <option value="">Not set</option>
           {(Object.keys(READINESS_LABEL) as Readiness[]).map((r) => <option key={r} value={r}>{READINESS_LABEL[r]}</option>)}
         </Select>
       </Field>
-      {(readiness === "under_care" || readiness === "cleared_by_clinician") && (
+      {dated && (
         <Field label="Date assessed"><Input type="date" value={assessed} max={today} onChange={(e) => setAssessed(e.target.value)} /></Field>
       )}
       <Field label="Injury notes (private)"><Textarea value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={2000} className="min-h-[64px]" /></Field>
@@ -231,7 +252,7 @@ export function TrainingSettings({ onDone }: { onDone?: () => void }) {
       {!unlocked && <Notice>Running phases unlock when readiness is “No current injury” or “Assessed — clinician OK'd running”. That's your report of your clinician's advice; the app doesn't judge readiness.</Notice>}
       <p className="text-[12px] text-faint">{phaseInfo.focus}</p>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Sessions per week"><NumberInput value={target} onChange={setTarget} step="1" /></Field>
+        <Field label="Sessions per week"><NumberInput value={target} onChange={setTarget} step="1" min={1} max={14} /></Field>
         <Field label="Goal"><Input value={goal} onChange={(e) => setGoal(e.target.value)} maxLength={120} /></Field>
         <Field label="Race name"><Input value={race} onChange={(e) => setRace(e.target.value)} maxLength={120} placeholder="optional" /></Field>
         <Field label="Race date"><Input type="date" value={raceDate} onChange={(e) => setRaceDate(e.target.value)} /></Field>

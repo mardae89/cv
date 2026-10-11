@@ -6,7 +6,7 @@ import { checkTransaction } from "@/lib/calc/validation";
 import { fmtShort } from "@/lib/dates";
 import { errorMessage, money, num } from "@/lib/format";
 import { EXPENSE_CATEGORIES } from "@/lib/templates";
-import type { ActivityMetric, Customer, Deal, DealStage, Offer, Transaction, TxnKind } from "@/lib/types";
+import type { ActivityMetric, Business, Customer, Deal, DealStage, Offer, Transaction, TxnKind } from "@/lib/types";
 import { useFeedback } from "../feedback";
 import { Button, Field, Input, Notice, NumberInput, Select, Stepper, Textarea, Toggle } from "../ui";
 import { useSubmit } from "./body";
@@ -22,11 +22,16 @@ export const KIND_LABEL: Record<TxnKind, string> = {
 
 const BUSINESS_KINDS: TxnKind[] = ["sale", "expense", "refund"];
 
+/** Active businesses, plus the one this record already belongs to even if it has been archived. */
+function businessChoices(businesses: Business[], own?: string | null) {
+  return businesses.filter((b) => b.active || b.id === own);
+}
+
 export function TransactionForm({ initial, businessId, onDone }: { initial?: Transaction; businessId?: string; onDone?: () => void }) {
-  const { data, today, insert, update } = useStore();
+  const { data, today, insert, update, remove } = useStore();
   const { confirm } = useFeedback();
   const { busy, run } = useSubmit();
-  const active = data.businesses.filter((b) => b.active);
+  const active = businessChoices(data.businesses, initial?.business_id ?? businessId);
   const [kind, setKind] = useState<TxnKind>(initial?.kind ?? "sale");
   const [biz, setBiz] = useState(initial?.business_id ?? businessId ?? active[0]?.id ?? "");
   const [date, setDate] = useState(initial?.txn_date ?? today);
@@ -73,6 +78,13 @@ export function TransactionForm({ initial, businessId, onDone }: { initial?: Tra
       const dup = data.transactions.find((t) => t.id !== initial?.id && t.kind === kind && t.txn_date === date &&
         num(t.amount) === amt && (t.business_id ?? "") === (isBiz ? biz : ""));
       if (dup && !initial && !(await confirm({ title: "Possible duplicate", body: `A ${kind} of ${money(amt)} on this date is already recorded.`, confirmLabel: "Record it again" }))) return;
+      // Only sales collect payments: changing a sale's type would otherwise leave its payments behind.
+      const orphaned = initial?.kind === "sale" && kind !== "sale" ? data.payments.filter((p) => p.transaction_id === initial.id) : [];
+      if (orphaned.length && !(await confirm({
+        title: "Change this sale's type?",
+        body: `${money(alreadyPaid, true)} of payments are recorded against this sale. Changing its type deletes them.`,
+        confirmLabel: "Change type", destructive: true,
+      }))) return;
 
       const row = {
         kind, business_id: isBiz ? biz : null, txn_date: date, amount: amt,
@@ -95,6 +107,7 @@ export function TransactionForm({ initial, businessId, onDone }: { initial?: Tra
       let id = initial?.id;
       if (initial) await update("transactions", initial.id, row);
       else id = (await insert<Transaction>("transactions", row))[0].id;
+      if (orphaned.length) await remove("payments", orphaned.map((p) => p.id));
       if (payment) await insert("payments", { ...payment, transaction_id: id });
       if (!initial) {
         setAmount("");
@@ -126,7 +139,7 @@ export function TransactionForm({ initial, businessId, onDone }: { initial?: Tra
         active.length ? (
           <Field label="Business">
             <Select value={biz} onChange={(e) => { setBiz(e.target.value); setOfferId(""); setCustomerId(""); }}>
-              {active.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+              {active.map((b) => <option key={b.id} value={b.id}>{b.name}{b.active ? "" : " (archived)"}</option>)}
             </Select>
           </Field>
         ) : <Notice tone="alert">Add a business workspace first (Business → Add business).</Notice>
@@ -233,7 +246,8 @@ export const STAGES: { value: DealStage; label: string }[] = [
 export function DealForm({ initial, businessId, onDone }: { initial?: Deal; businessId?: string; onDone?: () => void }) {
   const { data, today, insert, update } = useStore();
   const { busy, run } = useSubmit();
-  const [biz, setBiz] = useState(initial?.business_id ?? businessId ?? data.businesses.find((b) => b.active)?.id ?? "");
+  const choices = businessChoices(data.businesses, initial?.business_id ?? businessId);
+  const [biz, setBiz] = useState(initial?.business_id ?? businessId ?? choices[0]?.id ?? "");
   const [name, setName] = useState(initial?.name ?? "");
   const [contact, setContact] = useState(initial?.contact ?? "");
   const [stage, setStage] = useState<DealStage>(initial?.stage ?? "lead");
@@ -261,10 +275,11 @@ export function DealForm({ initial, businessId, onDone }: { initial?: Deal; busi
   };
   return (
     <form onSubmit={submit} className="space-y-4">
+      {!choices.length && <Notice tone="alert">Add a business workspace first (Business → Add business).</Notice>}
       <div className="grid grid-cols-2 gap-3">
         <Field label="Business">
-          <Select value={biz} onChange={(e) => setBiz(e.target.value)}>
-            {data.businesses.filter((b) => b.active).map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+          <Select value={biz} onChange={(e) => { setBiz(e.target.value); setOfferId(""); }}>
+            {choices.map((b) => <option key={b.id} value={b.id}>{b.name}{b.active ? "" : " (archived)"}</option>)}
           </Select>
         </Field>
         <Field label="Stage">
@@ -285,7 +300,7 @@ export function DealForm({ initial, businessId, onDone }: { initial?: Deal; busi
       </Field>
       <Field label="Notes"><Textarea value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={2000} className="min-h-[64px]" /></Field>
       <p className="text-[11.5px] text-faint">Pipeline value is a possibility, not revenue. It never counts toward revenue, cash or the goal.</p>
-      <Button type="submit" busy={busy} className="w-full">{initial ? "Save deal" : "Add to pipeline"}</Button>
+      <Button type="submit" busy={busy} className="w-full" disabled={!choices.length}>{initial ? "Save deal" : "Add to pipeline"}</Button>
     </form>
   );
 }
@@ -296,7 +311,9 @@ export function ActivityLogger({ businessId, date }: { businessId?: string; date
   const { toast } = useFeedback();
   const metrics = data.metrics.filter((m) => m.active && (!businessId || m.business_id === businessId));
   const [pending, setPending] = useState<Record<string, number>>({});
-  if (!metrics.length) return <p className="text-[13px] text-faint">No activity metrics yet. Add them in a business workspace.</p>;
+  if (!metrics.length) {
+    return <p className="text-[13px] text-faint">{businessId ? "No activity metrics yet. Add one with + Metric." : "No activity metrics yet. Add them in a business workspace."}</p>;
+  }
   const current = (m: ActivityMetric) => pending[m.id] ?? data.activityLogs.find((a) => a.metric_id === m.id && a.log_date === date)?.count ?? 0;
   const save = async (m: ActivityMetric, v: number) => {
     setPending((p) => ({ ...p, [m.id]: v }));
