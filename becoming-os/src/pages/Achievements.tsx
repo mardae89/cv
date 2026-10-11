@@ -9,7 +9,7 @@ import { fmtDate } from "@/lib/dates";
 import { money, round } from "@/lib/format";
 import type { AchievementCategory } from "@/lib/types";
 
-const CAT_LABEL: Record<AchievementCategory, string> = { weight: "Weight", business: "Business", audience: "Audience", athletic: "Athletic", habit: "Consistency", level: "Levels" };
+const CAT_LABEL: Record<AchievementCategory, string> = { weight: "Weight", business: "Business", audience: "Audience", power: "Power List", athletic: "Athletic", habit: "Consistency", level: "Levels" };
 
 export default function Achievements() {
   const { data, ev, today } = useStore();
@@ -17,7 +17,7 @@ export default function Achievements() {
   const [view, setView] = useState<string | null>(null);
   const lv = ev.level;
   const timeline = [...data.achievements].sort((a, b) => (a.achieved_on < b.achieved_on ? 1 : -1));
-  const cats = (["weight", "business", "audience", "athletic", "habit", "level"] as AchievementCategory[])
+  const cats = (["power", "weight", "business", "audience", "athletic", "habit", "level"] as AchievementCategory[])
     .filter((c) => ev.milestones.some((m) => m.category === c));
   const shown = ev.milestones.filter((m) => cat === "all" || m.category === cat);
   const row = view ? data.achievements.find((a) => a.key === view) : null;

@@ -7,6 +7,7 @@ import { money, num, round } from "../format";
 import type { AchievementCategory, AchievementRow, ISODate, UserData } from "../types";
 import { isRun, isSession } from "./athletic";
 import { AUDIENCE_STEPS, fmtCount, PLATFORMS, platformSeries } from "./audience";
+import { dayResult, firstStart, GREEN_AT, indexPower, periods } from "./power";
 import {
   dailyMetricDeltas, firstMtdCrossing, firstSaleByCustomer, goalStatus, METRIC_LABEL, monthFinance,
   mtdSeries, monthTotals, type Ledger,
@@ -383,6 +384,51 @@ function consecutiveRun(dates: ISODate[]): (n: number) => ISODate | null {
   };
 }
 
+// ────────────────────────────────────────────────────────── power list ──
+function powerMilestones(data: UserData, today: ISODate): Milestone[] {
+  const items = data.powerItems ?? [];
+  const start = firstStart(items);
+  if (!start) return [];
+  const idx = indexPower(data);
+  const days: { date: ISODate; pct: number }[] = [];
+  for (let d = start; d <= today; d = addDays(d, 1)) {
+    const r = dayResult(items, d, idx);
+    if (r.due) days.push({ date: d, pct: r.pct! });
+  }
+  const firstWhere = (ok: (pct: number) => boolean) => days.find((d) => ok(d.pct))?.date ?? null;
+  const streakDate = (n: number) => {
+    let run = 0;
+    for (const d of days) {
+      run = d.pct >= GREEN_AT ? run + 1 : 0;
+      if (run >= n) return d.date;
+    }
+    return null;
+  };
+  let best = 0, run = 0;
+  for (const d of days) { run = d.pct >= GREEN_AT ? run + 1 : 0; best = Math.max(best, run); }
+  const out: Milestone[] = [];
+  const m = (key: string, tier: Milestone["tier"], title: string, requirement: string, achievedOn: ISODate | null,
+    progress: Milestone["progress"], order: number): Milestone =>
+    ({ key: `power.${key}`, category: "power", group: "Power List", tier, title, requirement, achievedOn, progress, order });
+  out.push(m("first_green", "minor", "First green day", `Complete ${GREEN_AT}% or more of a day's Power List`, firstWhere((p) => p >= GREEN_AT), null, 0));
+  out.push(m("first_perfect", "minor", "First perfect day", "Complete every item on a day's Power List", firstWhere((p) => p === 100), null, 1));
+  out.push(...link([3, 7, 14, 30, 60, 100].map((n, i) => m(`streak_${n}`, n >= 14 ? "major" : "minor", `${n}-day green streak`,
+    `${n} days in a row at ${GREEN_AT}% or more`, streakDate(n), { current: best, target: n, unit: "days" }, 2 + i))));
+  // Weeks and months only count once they're over: the score is given at the end.
+  const weeks = periods(items, "week", idx, today).filter((p) => p.complete);
+  const months = periods(items, "month", idx, today).filter((p) => p.complete);
+  const firstPeriod = (ps: typeof weeks, at: number) => ps.find((p) => (p.pct ?? 0) >= at)?.to ?? null;
+  out.push(...link([[75, "good", "minor"], [80, "great", "minor"], [90, "exceptional", "major"]].map(([at, k, tier], i) =>
+    m(`week_${k}`, tier as Milestone["tier"], `First ${k} week`, `Finish a week at ${at}% PCR or more`, firstPeriod(weeks, at as number), null, 10 + i))));
+  out.push(...link([[75, "good", "minor"], [80, "great", "major"], [90, "exceptional", "major"]].map(([at, k, tier], i) =>
+    m(`month_${k}`, tier as Milestone["tier"], `First ${k} month`, `Finish a month at ${at}% PCR or more`, firstPeriod(months, at as number), null, 13 + i))));
+  // Content shipped.
+  const done = (data.contentIdeas ?? []).filter((c) => c.status === "done" && c.completed_on).map((c) => c.completed_on!).sort();
+  out.push(...link([10, 25, 50, 100, 200].map((n, i) => m(`videos_${n}`, n >= 50 ? "major" : "minor", `${n} videos completed`,
+    `Check off ${n} videos from your content list`, done[n - 1] ?? null, { current: done.length, target: n, unit: "videos" }, 20 + i))));
+  return out;
+}
+
 function habitMilestones(data: UserData, today: ISODate): Milestone[] {
   const out: Milestone[] = [];
   const logged = [...loggingDates(data)].filter((d) => d <= today).sort();
@@ -514,13 +560,14 @@ export function evaluate(data: UserData, today: ISODate): Evaluation {
     ...weightMilestones(data),
     ...businessMilestones(data, today),
     ...audienceMilestones(data),
+    ...powerMilestones(data, today),
     ...athleticMilestones(data, today),
     ...habitMilestones(data, today),
   ];
   // Records dated in the future (e.g. a typo) never unlock anything early.
   for (const m of base) if (m.achievedOn && m.achievedOn > today) m.achievedOn = null;
   const earned = base.filter((m) => m.achievedOn);
-  const xp = computeXP(data, earned.map((m) => ({ achievedOn: m.achievedOn, tier: m.tier, category: m.category })));
+  const xp = computeXP(data, earned.map((m) => ({ achievedOn: m.achievedOn, tier: m.tier, category: m.category })), today, data);
   const dates = levelDates(xp.byDay, earned.map((m) => m.achievedOn!));
   const levels: Milestone[] = link(LEVELS.slice(1).map((l, i) => ({
     key: `level.${l.level}`,

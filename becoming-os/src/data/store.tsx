@@ -82,7 +82,8 @@ export function serialPublisher(write: (data: Record<string, unknown>) => Promis
 }
 
 function toUserData(s: ReturnType<Engine["getState"]>): UserData {
-  const d: Record<string, unknown> = { profile: s.profile, goals: s.singles.goals, athletic: s.singles.athletic, businessSettings: s.singles.businessSettings };
+  const d: Record<string, unknown> = { profile: s.profile, goals: s.singles.goals, athletic: s.singles.athletic, businessSettings: s.singles.businessSettings,
+    powerSettings: s.singles.powerSettings ?? null };
   for (const k of LIST_KEYS) if (k !== "notifications") d[k] = s.tables[k];
   return d as unknown as UserData;
 }

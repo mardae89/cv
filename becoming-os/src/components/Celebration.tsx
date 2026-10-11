@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { useStore } from "@/data/store";
 import { longestRun } from "@/lib/calc/athletic";
 import { fmtCount, summarize } from "@/lib/calc/audience";
+import { greenStreak, indexPower, periodResult, weekOf } from "@/lib/calc/power";
 import { goalStatus, METRIC_LABEL } from "@/lib/calc/business";
 import { weightProgress } from "@/lib/calc/weight";
 import { fmtDate } from "@/lib/dates";
@@ -28,6 +29,13 @@ export function progressLine(a: Pick<AchievementRow, "category">, data: UserData
     }
     case "audience": {
       return summarize(data.audience ?? [], today).map((s) => `${s.platform.name} ${fmtCount(s.current.count)}`).join(" · ");
+    }
+    case "power": {
+      const idx = indexPower(data);
+      const w = weekOf(today);
+      const p = periodResult(data.powerItems ?? [], w.from, w.to, idx, today);
+      const streak = greenStreak(data.powerItems ?? [], idx, today);
+      return `This week ${p.pct === null ? "—" : `${Math.round(p.pct)}%`} PCR · green streak ${streak.current} day${streak.current === 1 ? "" : "s"}`;
     }
     case "athletic": {
       const lr = longestRun(data.workouts);

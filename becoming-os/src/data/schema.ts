@@ -8,10 +8,11 @@ export const LIST_KEYS = [
   "weights", "checkins", "symptoms", "nutrition", "photos", "workouts", "sets", "habits", "completions",
   "restDays", "tasks", "journal", "reviews", "roadmapNotes", "businesses", "offers", "customers",
   "transactions", "payments", "deals", "metrics", "activityLogs", "achievements", "notifications", "audience",
+  "powerItems", "powerLogs", "contentIdeas",
 ] as const;
 export type ListKey = (typeof LIST_KEYS)[number];
 
-export const SINGLE_KEYS = ["goals", "athletic", "businessSettings", "shareSettings", "reminderSettings"] as const;
+export const SINGLE_KEYS = ["goals", "athletic", "businessSettings", "shareSettings", "reminderSettings", "powerSettings"] as const;
 export type SingleKey = (typeof SINGLE_KEYS)[number];
 
 export type Row = Record<string, unknown> & { id: string };
@@ -124,6 +125,18 @@ export const TABLES: Record<ListKey, TableDef> = {
     parents: [{ field: "photo_id", table: "photos", onDelete: "set-null" }],
     defaults: { tier: "minor", detail: null, value: null, celebrated_at: null, photo_id: null },
   },
+  // The Power List: items, and one log per item per day.
+  powerItems: {
+    defaults: { kind: "check", target: null, unit: null, auto: null, days: [0, 1, 2, 3, 4, 5, 6], sort_order: 0, archived_on: null },
+  },
+  powerLogs: {
+    bucketBy: "log_date", unique: [["item_id", "log_date"]],
+    parents: [{ field: "item_id", table: "powerItems", onDelete: "cascade", required: true }],
+    defaults: { value: null, done: false },
+  },
+  contentIdeas: {
+    defaults: { section: "My ideas", funnel: "top", cta: false, priority: false, status: "open", planned_for: null, completed_on: null, notes: null },
+  },
   // Follower / subscriber / member counts, one per platform per day.
   audience: { bucketBy: "recorded_on", unique: [["platform", "recorded_on"]], defaults: { note: null } },
   notifications: {
@@ -151,6 +164,10 @@ export const SINGLE_DEFAULTS: Record<SingleKey, Record<string, unknown>> = {
   reminderSettings: {
     daily_logging: true, daily_logging_hour: 20, workouts: true, weekly_review: true, monthly_review: true,
     milestones: true, business_targets: true, recovery: true, race_checkpoints: true,
+  },
+  powerSettings: {
+    reasons: ["Travel the world", "Financial freedom", "Freedom with my time", "Help my family", "Live life fully", "Health"],
+    identity: null, shorts_per_day: 2, longs_per_week: 4,
   },
 };
 
@@ -206,6 +223,10 @@ const INT_FIELDS: Partial<Record<ListKey | SingleKey, string[]>> = {
   metrics: ["daily_target", "weekly_target", "sort_order"],
   activityLogs: ["count"],
   audience: ["count"],
+  powerItems: ["target", "sort_order"],
+  powerLogs: ["value"],
+  contentIdeas: ["num"],
+  powerSettings: ["shorts_per_day", "longs_per_week"],
   goals: ["weekly_training_minutes"],
   athletic: ["weekly_session_target"],
   reminderSettings: ["daily_logging_hour"],
@@ -402,6 +423,36 @@ export function validateRow(table: ListKey, r: Record<string, unknown>): void {
       range(r, "count", 0, 100000, "Count");
       text(r, "note", 300);
       break;
+    case "powerItems": {
+      required(r, ["name", "kind", "start_date"]);
+      text(r, "name", 80);
+      text(r, "unit", 20);
+      oneOf(r, "kind", ["check", "count"], "Item type");
+      oneOf(r, "auto", ["food", "workouts", "shorts", "longs"], "Automatic source");
+      dates(r, ["start_date", "archived_on"]);
+      if (r.kind === "count") {
+        if (r.target == null) fail("Set a target for a counted item (e.g. 6 stories).");
+        range(r, "target", 1, 10000, "Target");
+      }
+      const days = r.days;
+      if (!Array.isArray(days) || !days.length || days.some((d) => !Number.isInteger(d) || d < 0 || d > 6)) fail("Pick at least one day.");
+      break;
+    }
+    case "powerLogs":
+      required(r, ["item_id", "log_date"]);
+      dates(r, ["log_date"]);
+      range(r, "value", 0, 100000, "Amount");
+      break;
+    case "contentIdeas":
+      required(r, ["title", "format"]);
+      text(r, "title", 400);
+      text(r, "section", 80);
+      text(r, "notes", 1000);
+      oneOf(r, "format", ["short", "long"], "Format");
+      oneOf(r, "funnel", ["top", "middle", "bottom"], "Funnel stage");
+      oneOf(r, "status", ["open", "done"], "Status");
+      dates(r, ["planned_for", "completed_on"]);
+      break;
     case "audience":
       required(r, ["platform", "recorded_on", "count"]);
       oneOf(r, "platform", ["instagram", "youtube", "skool"], "Platform");
@@ -412,7 +463,7 @@ export function validateRow(table: ListKey, r: Record<string, unknown>): void {
     case "achievements":
       required(r, ["key", "category", "title", "achieved_on"]);
       dates(r, ["achieved_on"]);
-      oneOf(r, "category", ["weight", "business", "audience", "athletic", "habit", "level"], "Milestone category");
+      oneOf(r, "category", ["weight", "business", "audience", "power", "athletic", "habit", "level"], "Milestone category");
       oneOf(r, "tier", ["minor", "major"], "Milestone tier");
       text(r, "key", 80);
       text(r, "title", 160);
@@ -482,6 +533,14 @@ export function validateSingle(key: SingleKey, r: Record<string, unknown>): void
   }
   if (key === "reminderSettings") {
     range(r, "daily_logging_hour", 0, 23, "Reminder hour");
+  }
+  if (key === "powerSettings") {
+    const reasons = r.reasons;
+    if (!Array.isArray(reasons) || reasons.some((x) => typeof x !== "string" || !x.trim() || x.length > 80)) fail("Each reason needs a few words (80 characters at most).");
+    if ((reasons as unknown[]).length > 12) fail("Keep it to 12 reasons or fewer.");
+    text(r, "identity", 160);
+    range(r, "shorts_per_day", 0, 20, "Short-form videos per day");
+    range(r, "longs_per_week", 0, 20, "Long-form videos per week");
   }
 }
 

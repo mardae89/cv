@@ -400,7 +400,71 @@ export interface AudienceEntry {
   created_at?: string;
 }
 
-export type AchievementCategory = "weight" | "business" | "audience" | "athletic" | "habit" | "level";
+// ── Power List: the non-negotiables checked off every day
+/** Where an item's progress can come from besides ticking it: records logged elsewhere in the app. */
+export type PowerAuto = "food" | "workouts" | "shorts" | "longs";
+
+export interface PowerItem {
+  id: string;
+  user_id: string;
+  name: string;
+  /** "check": done or not. "count": done once `target` is reached (stories, pages, minutes). */
+  kind: "check" | "count";
+  target: number | null;
+  unit: string | null;
+  auto: PowerAuto | null;
+  /** Days it is due, 0 = Sunday … 6 = Saturday. */
+  days: number[];
+  sort_order: number;
+  /** It counts toward completion rates from this date. */
+  start_date: ISODate;
+  archived_on: ISODate | null;
+}
+
+export interface PowerLog {
+  id: string;
+  user_id: string;
+  item_id: string;
+  log_date: ISODate;
+  value: number | null;
+  done: boolean;
+}
+
+export interface PowerSettings {
+  user_id: string;
+  /** Why this matters — rotated through the app as a constant reminder. */
+  reasons: string[];
+  /** Who you're becoming, in one line. */
+  identity: string | null;
+  shorts_per_day: number;
+  longs_per_week: number;
+}
+
+// ── Content library
+export type ContentFormat = "short" | "long";
+export type FunnelStage = "top" | "middle" | "bottom";
+
+export interface ContentIdea {
+  id: string;
+  user_id: string;
+  num: number;
+  title: string;
+  format: ContentFormat;
+  section: string;
+  funnel: FunnelStage;
+  /** A direct call to action (the free group, coaching). */
+  cta: boolean;
+  /** From a section your notes mark as priority. */
+  priority: boolean;
+  status: "open" | "done";
+  /** The day it's scheduled to be posted. */
+  planned_for: ISODate | null;
+  completed_on: ISODate | null;
+  notes: string | null;
+  created_at?: string;
+}
+
+export type AchievementCategory = "weight" | "business" | "audience" | "power" | "athletic" | "habit" | "level";
 
 export interface AchievementRow {
   id: string;
@@ -493,4 +557,8 @@ export interface UserData {
   activityLogs: ActivityLog[];
   achievements: AchievementRow[];
   audience: AudienceEntry[];
+  powerItems: PowerItem[];
+  powerLogs: PowerLog[];
+  contentIdeas: ContentIdea[];
+  powerSettings: PowerSettings | null;
 }

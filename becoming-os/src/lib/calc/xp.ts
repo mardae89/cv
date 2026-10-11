@@ -5,6 +5,7 @@
 // record removes the XP that record earned (that's a correction, not a penalty).
 import { addDays, monthEnd, todayIn, weekStart } from "../dates";
 import type { ISODate, UserData } from "../types";
+import { dayResult, firstStart, GREEN_AT, indexPower } from "./power";
 
 export const XP = {
   weighIn: 5,
@@ -28,6 +29,9 @@ export const XP = {
   monthlyReview: 100,
   minorAchievement: 50,
   majorAchievement: 200,
+  powerItem: 5,
+  greenDay: 25,
+  perfectDay: 50,
 } as const;
 
 export type XpCategory = "body" | "training" | "habits" | "business" | "mind" | "reviews" | "milestones";
@@ -42,6 +46,8 @@ export function computeXP(
   data: Pick<UserData, "weights" | "checkins" | "symptoms" | "workouts" | "nutrition" | "habits" | "completions" |
     "tasks" | "restDays" | "journal" | "transactions" | "activityLogs" | "reviews" | "profile">,
   achievements: { achievedOn: ISODate | null; tier: "minor" | "major"; category: string }[],
+  today?: ISODate,
+  power?: Pick<UserData, "powerItems" | "powerLogs" | "contentIdeas">,
 ): XpResult {
   const byDay = new Map<ISODate, number>();
   const byCategory: Record<XpCategory, number> = {
@@ -102,6 +108,19 @@ export function computeXP(
     const end = r.period === "week" ? addDays(weekStart(r.period_start), 6) : monthEnd(r.period_start);
     const done = todayIn(data.profile.timezone, new Date(r.completed_at));
     add(done < end ? done : end, "reviews", r.period === "week" ? XP.weeklyReview : XP.monthlyReview);
+  }
+
+  // Power List: each completed item, plus a bonus for a green day and a perfect one.
+  if (today && power?.powerItems.length) {
+    const items = power.powerItems;
+    const idx = indexPower({ ...power, workouts: data.workouts, nutrition: data.nutrition });
+    for (let d = firstStart(items)!; d <= today; d = addDays(d, 1)) {
+      const r = dayResult(items, d, idx);
+      if (!r.due) continue;
+      add(d, "habits", r.done * XP.powerItem);
+      if ((r.pct ?? 0) >= GREEN_AT) add(d, "habits", XP.greenDay);
+      if (r.pct === 100) add(d, "habits", XP.perfectDay);
+    }
   }
 
   for (const a of achievements) {

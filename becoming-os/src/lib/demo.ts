@@ -3,6 +3,8 @@
 // Dec 15 so the dashboard reads as it would ten weeks in. None of these values
 // describe a real person or business.
 import { addDays, dateRange, dow, monthStart, weekStart } from "./dates";
+import { standardPowerList } from "./calc/power";
+import { CONTENT_PACK } from "./contentPack";
 import { BUSINESS_TEMPLATES, HABIT_TEMPLATES } from "./templates";
 
 export const DEMO_TODAY = "2026-12-15";
@@ -229,6 +231,41 @@ export function buildDemo(uid: string): DemoPlan {
     ];
   });
 
+  // ── power list: the standard list from day one, completed most days (sample pattern)
+  const powerItems = standardPowerList(START).map((it) => ({ ...it, id: uuid() }));
+  const powerLogs: Record<string, unknown>[] = [];
+  const contentIdeas = CONTENT_PACK.map((c) => ({
+    num: c.num, title: c.title, format: c.format, section: c.section, funnel: c.funnel, cta: c.cta, priority: c.priority,
+    status: "open", planned_for: null, completed_on: null, notes: null,
+  })) as Record<string, unknown>[];
+  const shorts = contentIdeas.filter((c) => c.format === "short");
+  const longs = contentIdeas.filter((c) => c.format === "long");
+  for (const d of days) {
+    if (d >= DEMO_TODAY) break;
+    const strong = rand() < 0.72; // most days strong, some slip
+    for (const it of powerItems) {
+      if (!it.days.includes(dow(d)) || it.auto === "workouts" || it.auto === "food") continue;
+      const hit = rand() < (strong ? 0.94 : 0.55);
+      if (it.auto === "shorts") {
+        // Posting is recorded by checking videos off the content list.
+        for (let k = 0; k < (hit ? 2 : rand() < 0.5 ? 1 : 0); k++) {
+          const c = shorts.find((x) => x.status === "open");
+          if (c) Object.assign(c, { status: "done", completed_on: d });
+        }
+        continue;
+      }
+      if (it.kind === "count") powerLogs.push({ item_id: it.id, log_date: d, value: hit ? it.target : Math.floor((it.target ?? 1) * rand() * 0.8), done: false });
+      else if (hit) powerLogs.push({ item_id: it.id, log_date: d, value: null, done: true });
+    }
+    if ([3, 4, 5].includes(dow(d)) && rand() < 0.8) {
+      const c = longs.find((x) => x.status === "open");
+      if (c) Object.assign(c, { status: "done", completed_on: d });
+    }
+  }
+  // Today's slate: the next two short-form ideas and a long-form one.
+  [...shorts.filter((c) => c.status === "open").slice(0, 2), longs.find((c) => c.status === "open")!]
+    .forEach((c) => (c.planned_for = DEMO_TODAY));
+
   return [
     { table: "body_goals", rows: u([{ start_weight: 250, start_date: START, target_loss: 50, stretch_loss: 60, start_waist: 46, pace: "steady", activity_level: "light", preferred_activities: ["Walking", "Strength training", "Cycling"] }]) },
     { table: "athletic_profiles", rows: u([{ readiness: "cleared_by_clinician", assessed_on: "2026-10-28", injury_notes: "Demo: mild ankle sprain, cleared for gradual return.", phase: "return_to_running", weekly_session_target: 4, training_days: [1, 2, 4, 6], goal_text: "Complete a 10K", race_name: "Spring 10K (demo)", race_date: "2027-05-15" }]) },
@@ -254,5 +291,8 @@ export function buildDemo(uid: string): DemoPlan {
     { table: "payments", rows: u(payments) },
     { table: "deals", rows: u(deals) },
     { table: "audience", rows: u(audience) },
+    { table: "powerItems", rows: u(powerItems) },
+    { table: "powerLogs", rows: u(powerLogs) },
+    { table: "contentIdeas", rows: u(contentIdeas) },
   ];
 }
