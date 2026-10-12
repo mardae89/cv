@@ -73,7 +73,7 @@ for (const vp of ["mobile", "desktop"] as const) {
       await form.getByLabel("Positioning").fill("Trading for people with full lives.");
       await form.getByRole("button", { name: "Remove rule 8" }).click();
       await form.getByRole("button", { name: "Add a rule" }).click();
-      await form.getByLabel("Rule 8").fill("Film the lesson, then cut the shorts.");
+      await form.getByLabel("Rule 8", { exact: true }).fill("Film the lesson, then cut the shorts.");
       await form.getByRole("button", { name: "Save strategy" }).click();
       await expect(form).toHaveCount(0);
       await expect.poll(async () => ((await stored(page)).singles.powerSettings?.strategy as { positioning: string } | undefined)?.positioning)

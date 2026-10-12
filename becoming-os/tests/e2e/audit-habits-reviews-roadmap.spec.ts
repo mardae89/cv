@@ -836,7 +836,7 @@ for (const vp of SIZES) {
 
       // Unticking a habit done today moves the chapter's completion.
       await go(page, "/");
-      const habitsCard = main(page).locator(".card").filter({ has: page.getByRole("heading", { name: "Today", exact: true }) }).first();
+      const habitsCard = main(page).locator(".card").filter({ hasText: "Daily execution" }).first();
       const doneBtn = habitsCard.locator("li > button[aria-pressed=true]").first();
       if (await doneBtn.count()) {
         await press(doneBtn);

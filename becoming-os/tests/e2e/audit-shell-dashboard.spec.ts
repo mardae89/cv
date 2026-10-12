@@ -98,6 +98,9 @@ const h1 = (page: Page) => page.getByRole("heading", { level: 1 });
 /** Each route and something that proves its page rendered. */
 const PAGES: Record<string, (page: Page) => Locator> = {
   "/": (p) => p.getByTestId("days-remaining"),
+  "/power": (p) => h1(p).filter({ hasText: "Power List" }),
+  "/content": (p) => h1(p).filter({ hasText: "Content Bank" }),
+  "/traffic": (p) => h1(p).filter({ hasText: "The four numbers" }),
   "/log": (p) => h1(p).filter({ hasText: "Record it" }),
   "/progress": (p) => h1(p).filter({ hasText: "Physical transformation" }),
   "/train": (p) => h1(p),
@@ -388,7 +391,7 @@ for (const vp of SIZES) {
       const { page, errors } = await open(browser, vp, "demo");
       const today = await appToday(page);
       // every habit on today's list toggles both ways, persists, and moves the ring
-      const todayCard = page.locator(".card").filter({ has: page.getByRole("heading", { name: "Today", exact: true }) }).first();
+      const todayCard = page.locator(".card").filter({ hasText: "Daily execution" }).first();
       const habits = todayCard.locator("li > button[aria-pressed]");
       const n = await habits.count();
       expect(n).toBeGreaterThan(0);
