@@ -42,8 +42,9 @@ for (const vp of ["mobile", "desktop"] as const) {
       await expect(page.getByText("Perfect day.", { exact: false }).first()).toBeVisible();
       await expect.poll(async () => (await rows(page, "powerLogs")).length).toBeGreaterThanOrEqual(8);
 
-      // Week and month PCR both read 100% for a single perfect day.
-      await settle(page);
+      // Week and month PCR both read 100% for a single perfect day. (The perfect-day
+      // celebration opens a moment after the last tick; wait until it's been dismissed.)
+      await settle(page, 1500);
       await page.getByRole("radio", { name: "Month" }).or(page.getByRole("button", { name: "Month" })).first().click();
       await expect(page.getByLabel("PCR 100%").first()).toBeVisible();
 
