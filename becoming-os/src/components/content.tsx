@@ -1,15 +1,15 @@
 // The content workflow shared by the Content page and the Today card: today's
 // filming focus, today's slate of ideas, check-off, slate filling, loading the
 // idea library, and the idea form. Every number is recomputed from saved ideas.
-import { Check, Library, Plus } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Library, Plus } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useStore } from "@/data/store";
 import { indexPower, isDue, itemState, settingsOf, weekOf } from "@/lib/calc/power";
 import { CONTENT_PACK } from "@/lib/contentPack";
-import { addDays, dow, fmtShort, fmtWeekday } from "@/lib/dates";
+import { addDays, dow, fmtDays, fmtShort, fmtWeekday } from "@/lib/dates";
 import { errorMessage, plural } from "@/lib/format";
-import type { ContentFormat, ContentIdea, FunnelStage, ISODate, PowerItem } from "@/lib/types";
+import type { ContentFormat, ContentIdea, FunnelStage, ISODate, PowerItem, PowerSettings } from "@/lib/types";
 import { useFeedback } from "./feedback";
 import { useSubmit } from "./forms/body";
 import { Button, Card, cx, Eyebrow, Field, Input, Meter, Pill, Segmented, Select, Textarea, Toggle } from "./ui";
@@ -39,7 +39,11 @@ export function useTargets() {
   const { data, today } = useStore();
   const settings = settingsOf(data);
   const stories = data.powerItems.find((i) => /stor(y|ies)/i.test(i.name) && i.kind === "count" && i.target && !(i.archived_on && i.archived_on <= today));
-  const parts = [`${settings.shorts_per_day} short-form a day`, `${settings.longs_per_week} long-form a week`];
+  const sd = settings.short_release_days;
+  const parts = [
+    `${settings.shorts_per_day} short-form ${sd.length === 7 ? "a day" : `a day, ${fmtDays(sd)}`}`,
+    `${settings.longs_per_week} long-form a week (${fmtDays(settings.long_release_days)})`,
+  ];
   if (stories) parts.push(`${stories.target} ${stories.unit || "stories"} a ${stories.days.length === 7 ? "day" : "scheduled day"}`);
   return { settings, line: parts.join(" · ") };
 }
@@ -75,10 +79,36 @@ export function contentDay(ideas: ContentIdea[], today: ISODate, shortTarget: nu
   };
 }
 
+/** Short-form target for a date: the daily number on release days, nothing on the others. */
+export const shortTargetOn = (s: Pick<PowerSettings, "shorts_per_day" | "short_release_days">, date: ISODate) =>
+  s.short_release_days.includes(dow(date)) ? s.shorts_per_day : 0;
+
 export function useContentDay(): ContentDay {
   const { data, today } = useStore();
   const s = settingsOf(data);
-  return contentDay(data.contentIdeas, today, s.shorts_per_day, s.longs_per_week);
+  return contentDay(data.contentIdeas, today, shortTargetOn(s, today), s.longs_per_week);
+}
+
+/** What's due for release today, and the next release day for each format. */
+export function useReleasePlan() {
+  const { data, today } = useStore();
+  const s = settingsOf(data);
+  const day = contentDay(data.contentIdeas, today, shortTargetOn(s, today), s.longs_per_week);
+  const next = (days: number[]) => {
+    for (let i = 1; i <= 7; i++) if (days.includes(dow(addDays(today, i)))) return addDays(today, i);
+    return null;
+  };
+  const longToday = s.long_release_days.includes(dow(today));
+  const longsLeft = Math.max(0, s.longs_per_week - day.longsWeek);
+  return {
+    day,
+    short: { today: day.shortTarget > 0, due: Math.max(0, day.shortTarget - day.shortsToday), next: next(s.short_release_days) },
+    long: { today: longToday && longsLeft > 0, releaseDay: longToday, left: longsLeft, next: next(s.long_release_days) },
+    open: {
+      short: data.contentIdeas.filter((c) => c.format === "short" && c.status === "open").length,
+      long: data.contentIdeas.filter((c) => c.format === "long" && c.status === "open").length,
+    },
+  };
 }
 
 // ─────────────────────────────────────────────────────────── actions ──
@@ -89,15 +119,16 @@ export function useContentActions() {
   const fail = (e: unknown) => toast(errorMessage(e), "error");
 
   const setDone = async (c: ContentIdea, done: boolean) => {
-    const before = contentDay(data.contentIdeas, today, settings.shorts_per_day, settings.longs_per_week);
+    const shortTarget = shortTargetOn(settings, today);
+    const before = contentDay(data.contentIdeas, today, shortTarget, settings.longs_per_week);
     try {
       await update("contentIdeas", c.id, done ? { status: "done", completed_on: today } : { status: "open", completed_on: null });
     } catch (e) {
       return fail(e);
     }
     if (!done) return;
-    if (c.format === "short" && settings.shorts_per_day > 0 && before.shortsToday + 1 === settings.shorts_per_day) {
-      toast(`Short-form target met: ${settings.shorts_per_day} of ${settings.shorts_per_day} today.`);
+    if (c.format === "short" && shortTarget > 0 && before.shortsToday + 1 === shortTarget) {
+      toast(`Short-form target met: ${shortTarget} of ${shortTarget} today.`);
     } else if (c.format === "long" && settings.longs_per_week > 0 && before.longsWeek + 1 === settings.longs_per_week) {
       toast(`Long-form target met for the week: ${settings.longs_per_week} of ${settings.longs_per_week}.`);
     }
@@ -112,7 +143,7 @@ export function useContentActions() {
     }
   };
 
-  /** Plans enough open ideas to meet today's short-form target, plus one long-form idea if the week needs it. */
+  /** Plans enough open ideas to meet today's short-form target, plus one long-form idea on a release day if the week needs it. */
   const fillSlate = async () => {
     const ideas = data.contentIdeas;
     const week = weekOf(today);
@@ -121,7 +152,8 @@ export function useContentActions() {
     const shortsOnSlate = ideas.filter((c) => c.format === "short" && onSlate(c)).length;
     const pool = ideas.filter((c) => c.status === "open" && !c.planned_for)
       .sort((a, b) => Number(b.priority) - Number(a.priority) || a.num - b.num);
-    const shorts = pool.filter((c) => c.format === "short").slice(0, Math.max(0, settings.shorts_per_day - shortsOnSlate));
+    const shortTarget = shortTargetOn(settings, today);
+    const shorts = pool.filter((c) => c.format === "short").slice(0, Math.max(0, shortTarget - shortsOnSlate));
     const longsDone = ideas.filter((c) => c.format === "long" && c.status === "done" && c.completed_on && c.completed_on >= week.from && c.completed_on <= week.to).length;
     const longsPlanned = ideas.filter((c) => c.format === "long" && c.status === "open" && c.planned_for && c.planned_for <= week.to).length;
     const longOnSlate = ideas.some((c) => c.format === "long" && onSlate(c));
@@ -129,8 +161,9 @@ export function useContentActions() {
     const long = releaseDay && longsDone + longsPlanned < settings.longs_per_week && !longOnSlate ? pool.find((c) => c.format === "long") : undefined;
     const add = [...shorts, ...(long ? [long] : [])];
     if (!add.length) {
-      const needsMore = shortsOnSlate < settings.shorts_per_day || (releaseDay && longsDone + longsPlanned < settings.longs_per_week && !longOnSlate);
-      toast(needsMore ? "No open ideas left to add. Add new ideas in the library." : "Today's slate already covers your targets.", "info");
+      const needsMore = shortsOnSlate < shortTarget || (releaseDay && longsDone + longsPlanned < settings.longs_per_week && !longOnSlate);
+      toast(needsMore ? "No open ideas left to add. Add new ideas in the library."
+        : !shortTarget && !releaseDay ? "Nothing is scheduled for release today. Change release days in Settings." : "Today's slate already covers your targets.", "info");
       return;
     }
     for (const c of add) await update("contentIdeas", c.id, { planned_for: today });
@@ -196,6 +229,18 @@ export function IdeaChips({ idea, section = true }: { idea: ContentIdea; section
       {idea.priority && <Pill tone="gold">Priority</Pill>}
       {section && <span className="text-[11.5px] text-faint">{idea.section}</span>}
     </div>
+  );
+}
+
+/** Previous / Next with "page of pages", shown only when there's more than one page. */
+export function Pager({ page, pages, onPage, label = "Pages" }: { page: number; pages: number; onPage: (p: number) => void; label?: string }) {
+  if (pages <= 1) return null;
+  return (
+    <nav className="mt-4 flex items-center justify-between gap-3 border-t border-hair pt-4" aria-label={label}>
+      <Button variant="secondary" disabled={page <= 1} onClick={() => onPage(page - 1)} icon={<ChevronLeft className="h-4 w-4" />}>Previous</Button>
+      <span className="num text-[12.5px] text-mute">{page} / {pages}</span>
+      <Button variant="secondary" disabled={page >= pages} onClick={() => onPage(page + 1)}>Next<ChevronRight className="h-4 w-4" /></Button>
+    </nav>
   );
 }
 
@@ -306,9 +351,11 @@ export function ScheduleStrip() {
     <ol className="grid gap-1.5 lg:grid-cols-7" aria-label="This week's production schedule">
       {days.map((d) => {
         const items = productionDue(data.powerItems, d);
-        const releaseLong = settingsOf(data).long_release_days.includes(dow(d));
+        const s = settingsOf(data);
+        const releaseLong = s.long_release_days.includes(dow(d));
+        const releaseShort = s.short_release_days.includes(dow(d)) && s.shorts_per_day > 0;
         const isToday = d === today;
-        const s = done(d, "short"), l = done(d, "long");
+        const sd = done(d, "short"), ld = done(d, "long");
         return (
           <li key={d} aria-current={isToday ? "date" : undefined}
             className={cx("flex items-center gap-3 rounded-xl border px-3 py-2 lg:flex-col lg:items-stretch lg:gap-2 lg:py-3",
@@ -319,13 +366,14 @@ export function ScheduleStrip() {
             </div>
             <div className="flex min-w-0 flex-1 flex-wrap gap-1">
               {releaseLong && <span className="rounded-md border border-gold/40 bg-gold-wash px-1.5 py-0.5 text-[11px] text-gold">Release long-form</span>}
+              {releaseShort && <span className="rounded-md border border-gold/25 px-1.5 py-0.5 text-[11px] text-gold">Release {s.shorts_per_day} short</span>}
               {items.map((i) => (
                 <span key={i.id} className="rounded-md border border-line bg-panel px-1.5 py-0.5 text-[11px] text-mute">{i.name}</span>
               ))}
-              {!items.length && !releaseLong && <span className="text-[11px] text-faint">{dow(d) === 0 || dow(d) === 6 ? "No filming" : "Nothing scheduled"}</span>}
+              {!items.length && !releaseLong && !releaseShort && <span className="text-[11px] text-faint">{dow(d) === 0 || dow(d) === 6 ? "No filming" : "Nothing scheduled"}</span>}
             </div>
-            {d <= today && (s > 0 || l > 0) && (
-              <div className="num shrink-0 text-[11px] text-mute lg:mt-auto">{[s && `${s} short`, l && `${l} long`].filter(Boolean).join(" · ")}</div>
+            {d <= today && (sd > 0 || ld > 0) && (
+              <div className="num shrink-0 text-[11px] text-mute lg:mt-auto">{[sd && `${sd} short`, ld && `${ld} long`].filter(Boolean).join(" · ")}</div>
             )}
           </li>
         );
@@ -339,7 +387,7 @@ export function ContentProgress({ day, className }: { day: ContentDay; className
   return (
     <div className={cx("grid gap-4 sm:grid-cols-2", className)}>
       <Meter label="Short-form today" right={`${day.shortsToday}/${day.shortTarget}`} value={day.shortsToday} max={day.shortTarget || 1}
-        sub={day.shortsToday >= day.shortTarget ? "Target met." : `${day.shortTarget - day.shortsToday} to go.`} />
+        sub={!day.shortTarget ? "Not a short-form release day." : day.shortsToday >= day.shortTarget ? "Target met." : `${day.shortTarget - day.shortsToday} to go.`} />
       <Meter label="Long-form this week" right={`${day.longsWeek}/${day.longTarget}`} value={day.longsWeek} max={day.longTarget || 1}
         sub={day.longsWeek >= day.longTarget ? "Target met." : `${day.longTarget - day.longsWeek} to go by ${fmtShort(day.week.to)}.`} />
     </div>

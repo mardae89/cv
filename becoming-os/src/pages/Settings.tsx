@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "r
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useFeedback } from "@/components/feedback";
 import { useSubmit } from "@/components/forms/body";
-import { Button, Card, Field, IconButton, Input, Notice, NumberInput, PageHeader, Segmented, Select, Textarea, Toggle } from "@/components/ui";
+import { Button, Card, DayPicker, Field, IconButton, Input, Notice, NumberInput, PageHeader, Segmented, Select, Textarea, Toggle } from "@/components/ui";
 import type { ExportFile } from "@/data/engine";
 import { saveFile } from "@/data/host";
 import { LIST_KEYS, SINGLE_DEFAULTS, SINGLE_KEYS, TABLES, validateRow, validateSingle } from "@/data/schema";
@@ -11,7 +11,7 @@ import { useStore } from "@/data/store";
 import { settingsOf } from "@/lib/calc/power";
 import { useTheme, type ThemeChoice } from "@/lib/theme";
 import { toCSV } from "@/lib/csv";
-import { fmtDate, todayIn } from "@/lib/dates";
+import { fmtDate, fmtDays, todayIn } from "@/lib/dates";
 import { round, num, errorMessage, plural } from "@/lib/format";
 import { ACTIVITY_OPTIONS } from "@/lib/templates";
 import type { Pace, ReminderSettings } from "@/lib/types";
@@ -409,6 +409,8 @@ function PowerSettingsCard() {
   const [shorts, setShorts] = useState(String(s.shorts_per_day));
   const [longs, setLongs] = useState(String(s.longs_per_week));
   const [reach, setReach] = useState(String(s.reach_per_day));
+  const [shortDays, setShortDays] = useState<number[]>(s.short_release_days);
+  const [longDays, setLongDays] = useState<number[]>(s.long_release_days);
   const move = (i: number, d: -1 | 1) => setReasons((r) => {
     const n = [...r];
     [n[i], n[i + d]] = [n[i + d], n[i]];
@@ -428,6 +430,7 @@ function PowerSettingsCard() {
         reasons: clean, identity: identity.trim() || null,
         shorts_per_day: whole(shorts, "Short-form per day"), longs_per_week: whole(longs, "Long-form per week"),
         reach_per_day: whole(reach, "New people per day"),
+        short_release_days: shortDays, long_release_days: longDays,
       });
       setReasons(clean);
       return "Saved.";
@@ -459,6 +462,15 @@ function PowerSettingsCard() {
           <Field label="Long-form per week"><NumberInput value={longs} onChange={setLongs} step="1" min="0" inputMode="numeric" /></Field>
           <Field label="New people reached per day"><NumberInput value={reach} onChange={setReach} step="1" min="0" inputMode="numeric" /></Field>
         </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field group label="Short-form release days" hint={`${fmtDays(shortDays)}. The daily short-form target applies only on these days.`}>
+            <DayPicker label="Short-form release days" value={shortDays} onChange={setShortDays} />
+          </Field>
+          <Field group label="Long-form release days" hint={`${fmtDays(longDays)}. The slate adds a long-form idea on these days until the weekly target is met.`}>
+            <DayPicker label="Long-form release days" value={longDays} onChange={setLongDays} />
+          </Field>
+        </div>
+        <p className="text-[12px] text-faint">The Power List items for posting have their own days and targets: edit them on the Power List.</p>
         <div className="flex flex-wrap items-center gap-3">
           <Button type="submit" busy={busy}>Save</Button>
           <Link to="/power" className="link text-[13px]">Edit the Power List items →</Link>

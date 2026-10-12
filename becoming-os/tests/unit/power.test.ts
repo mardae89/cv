@@ -124,7 +124,7 @@ describe("weekly and monthly PCR", () => {
   });
   it("writes the analysis only from what was logged", () => {
     const w = periodResult(list, MON, "2026-10-18", idx, "2026-10-20");
-    const t = contentTally(data.contentIdeas, MON, "2026-10-18", DEFAULT_SETTINGS, w.days.length);
+    const t = contentTally(data.contentIdeas, MON, "2026-10-18", DEFAULT_SETTINGS, w.days.map((d) => d.date));
     expect(t.shortTarget).toBe(14);
     expect(t.longTarget).toBe(4);
     const a = analyse(w, null, t, "week");

@@ -172,6 +172,7 @@ export const SINGLE_DEFAULTS: Record<SingleKey, Record<string, unknown>> = {
   powerSettings: {
     reasons: ["Travel the world", "Financial freedom", "Freedom with my time", "Help my family", "Live life fully", "Health"],
     identity: null, shorts_per_day: 2, longs_per_week: 4, reach_per_day: 10, long_release_days: [1, 2, 3, 4],
+    short_release_days: [0, 1, 2, 3, 4, 5, 6], strategy: null,
   },
 };
 
@@ -554,8 +555,19 @@ export function validateSingle(key: SingleKey, r: Record<string, unknown>): void
     range(r, "shorts_per_day", 0, 20, "Short-form videos per day");
     range(r, "longs_per_week", 0, 20, "Long-form videos per week");
     range(r, "reach_per_day", 0, 1000, "New people reached per day");
-    const lr = r.long_release_days;
-    if (lr != null && (!Array.isArray(lr) || lr.some((d) => !Number.isInteger(d) || d < 0 || d > 6))) fail("Long-form release days aren't valid.");
+    for (const [k, label] of [["long_release_days", "Long-form"], ["short_release_days", "Short-form"]] as const) {
+      const v = r[k];
+      if (v != null && (!Array.isArray(v) || v.some((d) => !Number.isInteger(d) || d < 0 || d > 6))) fail(`${label} release days aren't valid.`);
+    }
+    const st = r.strategy as Record<string, unknown> | null | undefined;
+    if (st != null) {
+      if (typeof st !== "object") fail("The content strategy isn't valid.");
+      for (const [k, max, label] of [["positioning", 400, "Positioning"], ["tone", 400, "Tone"], ["goal", 600, "Goal"], ["changed", 2000, "What changed"]] as const) {
+        if (typeof st[k] !== "string" || (st[k] as string).length > max) fail(`${label} must be text of ${max} characters or fewer.`);
+      }
+      const rules = st.rules;
+      if (!Array.isArray(rules) || rules.length > 20 || rules.some((x) => typeof x !== "string" || !x.trim() || x.length > 400)) fail("Each rule needs some text (400 characters at most), up to 20 rules.");
+    }
   }
 }
 

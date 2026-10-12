@@ -3,7 +3,7 @@
 // its section, a funnel stage set from what that section is for, and whether
 // it is a direct call to action. Format: S = short form (Reels, Shorts,
 // TikTok) · L = long form (YouTube, 8–20 min).
-import type { ContentFormat, FunnelStage } from "./types";
+import type { ContentFormat, ContentStrategy, FunnelStage } from "./types";
 
 type Row = ["S" | "L", string, FunnelStage, boolean, boolean, string];
 
@@ -171,8 +171,8 @@ export const SECTION_NOTES: Record<string, string> = {
   "Story and credibility": "Your background and why you're credible.",
 };
 
-/** Your positioning and rules for the content, from your notes. */
-export const STRATEGY = {
+/** Your positioning and rules for the content, from your notes. Editable in the Content Bank. */
+export const STRATEGY: ContentStrategy = {
   positioning: "Swing trading for people who have jobs and lives. The enemy is screen time, not the market.",
   tone: "Analyst, not hype man. Show the work. Admit the losses.",
   goal: "Get the right person into the free Skool tier. The right person is someone who watches you work and thinks “I want him to walk me through this.”",
@@ -187,4 +187,7 @@ export const STRATEGY = {
     "Proof of life: stories only, never feed, always tied to a trade.",
     "Every post ends the same way: the free group, by name, with one concrete thing they get inside it.",
   ],
-} as const;
+};
+
+/** The saved strategy, or the one from your notes. */
+export const strategyOf = (s: { strategy?: ContentStrategy | null }): ContentStrategy => s.strategy ?? STRATEGY;

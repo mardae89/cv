@@ -442,6 +442,20 @@ export interface PowerSettings {
   reach_per_day: number;
   /** Days long-form videos are released, 0 = Sunday … 6 = Saturday. */
   long_release_days: number[];
+  /** Days short-form videos are released (the daily target applies only on these). */
+  short_release_days: number[];
+  /** Your own content strategy; null uses the one from your notes. */
+  strategy: ContentStrategy | null;
+}
+
+export interface ContentStrategy {
+  positioning: string;
+  tone: string;
+  goal: string;
+  /** What changed from the first version of the plan. */
+  changed: string;
+  /** How to use the idea bank, one rule per line. */
+  rules: string[];
 }
 
 // ── Traffic Engine: the four numbers, by channel

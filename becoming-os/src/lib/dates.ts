@@ -152,6 +152,17 @@ export function fmtWeekRange(start: ISODate): string {
 export const DAY_LETTERS = ["S", "M", "T", "W", "T", "F", "S"];
 export const DAY_NAMES = DAYS;
 
+/** "every day", "weekdays", "Mon–Thu", or "Mon, Wed, Fri" for a set of weekdays (0 = Sunday). */
+export function fmtDays(days: number[]): string {
+  const set = [...new Set(days)].filter((d) => d >= 0 && d <= 6).sort();
+  if (!set.length) return "no days";
+  if (set.length === 7) return "every day";
+  if (set.join() === "1,2,3,4,5") return "weekdays";
+  if (set.join() === "0,6") return "weekends";
+  const run = set.every((d, i) => i === 0 || d === set[i - 1] + 1);
+  return run && set.length > 2 ? `${DAYS[set[0]]}–${DAYS[set[set.length - 1]]}` : set.map((d) => DAYS[d]).join(", ");
+}
+
 export interface Countdown {
   start: ISODate;
   end: ISODate;

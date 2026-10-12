@@ -248,9 +248,14 @@ export function buildDemo(uid: string): DemoPlan {
       const hit = rand() < (strong ? 0.94 : 0.55);
       if (it.auto === "shorts") {
         // Posting is recorded by checking videos off the content list.
+        // Once the bank runs low, shorts are cut from the week's long form, as the strategy says.
         for (let k = 0; k < (hit ? 2 : rand() < 0.5 ? 1 : 0); k++) {
-          const c = shorts.find((x) => x.status === "open");
-          if (c) Object.assign(c, { status: "done", completed_on: d });
+          const open = shorts.filter((x) => x.status === "open");
+          if (open.length > 45) Object.assign(open[0], { status: "done", completed_on: d });
+          else contentIdeas.push({
+            num: contentIdeas.length + 1, title: `Clip cut from this week's long form (${d.slice(5)}, ${k + 1})`, format: "short", section: "My ideas",
+            funnel: "middle", cta: false, priority: false, status: "done", planned_for: null, completed_on: d, notes: null,
+          });
         }
         continue;
       }

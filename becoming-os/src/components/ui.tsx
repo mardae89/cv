@@ -238,10 +238,10 @@ export function Segmented<T extends string>({ value, onChange, options, classNam
   );
 }
 
-export function DayPicker({ value, onChange }: { value: number[]; onChange: (v: number[]) => void }) {
+export function DayPicker({ value, onChange, label = "Days of the week" }: { value: number[]; onChange: (v: number[]) => void; label?: string }) {
   const toggle = (d: number) => onChange(value.includes(d) ? value.filter((x) => x !== d) : [...value, d].sort());
   return (
-    <div className="flex gap-1.5" role="group" aria-label="Days of the week">
+    <div className="flex flex-wrap gap-1.5" role="group" aria-label={label}>
       {DAY_LETTERS.map((l, d) => (
         <button key={d} type="button" aria-pressed={value.includes(d)} onClick={() => toggle(d)}
           aria-label={["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][d]}

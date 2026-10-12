@@ -30,8 +30,7 @@ function tallyFor(data: UserData, p: PeriodResult, today: ISODate) {
   const start = firstStart(data.powerItems);
   const from = start ? maxDate(p.from, start) : p.from;
   const to = minDate(p.to, today);
-  const days = Math.max(0, diffDays(from, to) + 1);
-  return contentTally(data.contentIdeas, p.from, p.to, settingsOf(data), days);
+  return contentTally(data.contentIdeas, p.from, p.to, settingsOf(data), dateRange(from, to));
 }
 
 export default function Power() {

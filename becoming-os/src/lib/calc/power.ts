@@ -42,6 +42,8 @@ export const DEFAULT_SETTINGS: Omit<PowerSettings, "user_id"> = {
   longs_per_week: 4,
   reach_per_day: 10,
   long_release_days: [1, 2, 3, 4],
+  short_release_days: [0, 1, 2, 3, 4, 5, 6],
+  strategy: null,
 };
 
 export const settingsOf = (data: Pick<UserData, "powerSettings">): Omit<PowerSettings, "user_id"> =>
@@ -274,13 +276,15 @@ export interface ContentTally {
   longTarget: number;
 }
 
-export function contentTally(ideas: ContentIdea[], from: ISODate, to: ISODate, settings: Omit<PowerSettings, "user_id">, daysCounted: number): ContentTally {
+/** Content completed from `from` to `to`, against targets for `counted` (the days the list was running). Short-form counts only release days. */
+export function contentTally(ideas: ContentIdea[], from: ISODate, to: ISODate, settings: Omit<PowerSettings, "user_id">, counted: ISODate[]): ContentTally {
   const done = ideas.filter((c) => c.status === "done" && c.completed_on && c.completed_on >= from && c.completed_on <= to);
-  const weeks = Math.max(1, Math.round(daysCounted / 7));
+  const weeks = Math.max(1, Math.round(counted.length / 7));
+  const shortDays = counted.filter((d) => settings.short_release_days.includes(dow(d))).length;
   return {
     shorts: done.filter((c) => c.format === "short").length,
     longs: done.filter((c) => c.format === "long").length,
-    shortTarget: settings.shorts_per_day * daysCounted,
+    shortTarget: settings.shorts_per_day * shortDays,
     longTarget: settings.longs_per_week * weeks,
   };
 }

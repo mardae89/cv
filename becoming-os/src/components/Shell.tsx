@@ -14,6 +14,8 @@ import { cx, Sheet } from "./ui";
 interface NavItem {
   to: string;
   label: string;
+  /** Shorter label for the phone tab bar. */
+  short?: string;
   icon: ReactNode;
   business?: boolean;
 }
@@ -22,7 +24,7 @@ const ic = "h-[18px] w-[18px]";
 const NAV: NavItem[] = [
   { to: "/", label: "Today", icon: <Home className={ic} /> },
   { to: "/power", label: "Power List", icon: <Zap className={ic} /> },
-  { to: "/content", label: "Content", icon: <Clapperboard className={ic} /> },
+  { to: "/content", label: "Content Bank", short: "Content", icon: <Clapperboard className={ic} /> },
   { to: "/traffic", label: "Traffic", icon: <Radar className={ic} /> },
   { to: "/log", label: "Log", icon: <Plus className={ic} /> },
   { to: "/progress", label: "Body", icon: <LineChart className={ic} /> },
@@ -102,7 +104,9 @@ function ThemeToggle({ className, withLabel }: { className?: string; withLabel?:
   const light = theme === "light";
   return (
     <button type="button" onClick={() => setChoice(light ? "night" : "day")} aria-label={light ? "Switch to Night theme" : "Switch to Day theme"}
-      title={light ? "Night theme" : "Day theme"} className={cx("inline-flex h-10 w-10 items-center justify-center rounded-xl text-mute transition hover:bg-raised hover:text-bone", className)}>
+      title={light ? "Night theme" : "Day theme"}
+      className={cx("inline-flex items-center rounded-xl text-mute transition hover:bg-raised hover:text-bone",
+        withLabel ? "w-full gap-3 px-3 py-2.5 text-[14px]" : "h-10 w-10 justify-center", className)}>
       {light ? <Moon className="h-[18px] w-[18px]" /> : <Sun className="h-[18px] w-[18px]" />}
       {withLabel && (light ? "Night theme" : "Day theme")}
     </button>
@@ -142,7 +146,7 @@ export function Shell() {
           <Bell className={ic} /> Notifications
           {unread > 0 && <span className="ml-auto rounded-full bg-gold px-1.5 text-[11px] font-bold text-ink">{unread}</span>}
         </NavLink>
-        <ThemeToggle withLabel className="mt-1 h-auto w-full justify-start gap-3 px-3 py-2.5 text-[14px]" />
+        <ThemeToggle withLabel className="mt-1" />
         <div className="mt-4 border-t border-hair px-3 pt-4 text-[11px] leading-relaxed text-faint">
           {data.profile.display_name && <>{data.profile.display_name}<br /></>}{fmtDate(today)}<br />
           {saveStatus.pending ? "Saving…" : host.mode === "shared-page" ? "Saved on this page" : "Saved in this browser only"}
@@ -201,7 +205,7 @@ export function Shell() {
               <NavLink key={to} to={to} end={to === "/"}
                 className={({ isActive }) => cx("flex w-16 flex-col items-center gap-1 py-2.5 text-[10.5px] font-medium",
                   isActive ? "text-gold" : "text-mute")}>
-                {n.icon}{n.label}
+                {n.icon}{n.short ?? n.label}
               </NavLink>
             );
           })}
