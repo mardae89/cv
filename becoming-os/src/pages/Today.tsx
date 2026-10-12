@@ -1,7 +1,9 @@
 import { Award, Check, Dumbbell, NotebookPen, Plus, Receipt, Scale, Utensils, X } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { AthleticCard, AudienceCard, BusinessCard, FitnessCard, PartnerFitnessCard } from "@/components/cards";
+import { AthleticCard, AudienceCard, BusinessCard, FitnessCard, PartnerFitnessCard, TrafficCard } from "@/components/cards";
+import { ContentTodayCard } from "@/components/content";
+import { PowerTodayCard, WhyBanner } from "@/components/power";
 import { useFeedback } from "@/components/feedback";
 import { Card, cx, Eyebrow, Meter, Notice, Ring } from "@/components/ui";
 import { useStore } from "@/data/store";
@@ -53,6 +55,17 @@ export function Today() {
           <span>{fmtDate(c.end)}</span>
         </div>
       </section>
+
+      <WhyBanner />
+
+      {/* the daily standard: Power List, today's content, the daily ten */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        <PowerTodayCard />
+        <div className="space-y-6">
+          <ContentTodayCard />
+          <TrafficCard />
+        </div>
+      </div>
 
       {missing.length > 0 && (
         <Notice tone="gold" title="Finish setting up when you're ready">

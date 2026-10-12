@@ -24,6 +24,7 @@ const Settings = lazy(() => import("./pages/Settings"));
 const Onboarding = lazy(() => import("./pages/Onboarding"));
 const Power = lazy(() => import("./pages/Power"));
 const Content = lazy(() => import("./pages/Content"));
+const Traffic = lazy(() => import("./pages/Traffic"));
 
 /** Sends a brand-new person to onboarding once; every step there is skippable. */
 function OnboardingGate({ children }: { children: ReactNode }) {
@@ -56,6 +57,7 @@ function AppRoutes({ host }: { host: Host }) {
             <Route path="log" element={page(<Log />)} />
             <Route path="power" element={page(<Power />)} />
             <Route path="content" element={page(<Content />)} />
+            <Route path="traffic" element={page(<Traffic />)} />
             <Route path="progress" element={page(<Progress />)} />
             <Route path="train" element={page(<Train />)} />
             <Route path="business" element={page(<Business />)} />

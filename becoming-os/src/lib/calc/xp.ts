@@ -47,7 +47,7 @@ export function computeXP(
     "tasks" | "restDays" | "journal" | "transactions" | "activityLogs" | "reviews" | "profile">,
   achievements: { achievedOn: ISODate | null; tier: "minor" | "major"; category: string }[],
   today?: ISODate,
-  power?: Pick<UserData, "powerItems" | "powerLogs" | "contentIdeas">,
+  power?: Pick<UserData, "powerItems" | "powerLogs" | "contentIdeas"> & { traffic?: UserData["traffic"] },
 ): XpResult {
   const byDay = new Map<ISODate, number>();
   const byCategory: Record<XpCategory, number> = {

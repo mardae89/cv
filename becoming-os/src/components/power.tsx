@@ -287,6 +287,7 @@ export function autoLine(s: ItemState): string | null {
     case "food": return n ? "Meals logged for this day" : "No meals logged yet";
     case "shorts": return `${plural(n, "short-form video")} completed in Content`;
     case "longs": return `${plural(n, "long-form video")} completed in Content`;
+    case "reached": return `${plural(n, "new person", "new people")} logged in Traffic`;
     default: return null;
   }
 }

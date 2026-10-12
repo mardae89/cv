@@ -402,7 +402,7 @@ export interface AudienceEntry {
 
 // ── Power List: the non-negotiables checked off every day
 /** Where an item's progress can come from besides ticking it: records logged elsewhere in the app. */
-export type PowerAuto = "food" | "workouts" | "shorts" | "longs";
+export type PowerAuto = "food" | "workouts" | "shorts" | "longs" | "reached";
 
 export interface PowerItem {
   id: string;
@@ -438,6 +438,26 @@ export interface PowerSettings {
   identity: string | null;
   shorts_per_day: number;
   longs_per_week: number;
+  /** New people reached per day (the Traffic Engine's daily ten). */
+  reach_per_day: number;
+}
+
+// ── Traffic Engine: the four numbers, by channel
+export type TrafficChannel =
+  | "existing_world" | "social_outbound" | "content" | "borrowed_audiences"
+  | "referrals" | "webinars" | "external_ads" | "skool_ads";
+
+/** One day's numbers for one channel. */
+export interface TrafficEntry {
+  id: string;
+  user_id: string;
+  log_date: ISODate;
+  channel: TrafficChannel;
+  reached: number;
+  conversations: number;
+  invitations: number;
+  members: number;
+  note: string | null;
 }
 
 // ── Content library
@@ -560,5 +580,6 @@ export interface UserData {
   powerItems: PowerItem[];
   powerLogs: PowerLog[];
   contentIdeas: ContentIdea[];
+  traffic: TrafficEntry[];
   powerSettings: PowerSettings | null;
 }

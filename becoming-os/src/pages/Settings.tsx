@@ -1,13 +1,14 @@
-import { AlertTriangle, Check, Download, Loader2, Upload } from "lucide-react";
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { AlertTriangle, Check, ChevronDown, ChevronUp, Download, Loader2, Upload, X } from "lucide-react";
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useFeedback } from "@/components/feedback";
 import { useSubmit } from "@/components/forms/body";
-import { Button, Card, Field, Input, Notice, NumberInput, PageHeader, Segmented, Select, Textarea, Toggle } from "@/components/ui";
+import { Button, Card, Field, IconButton, Input, Notice, NumberInput, PageHeader, Segmented, Select, Textarea, Toggle } from "@/components/ui";
 import type { ExportFile } from "@/data/engine";
 import { saveFile } from "@/data/host";
 import { LIST_KEYS, SINGLE_DEFAULTS, SINGLE_KEYS, TABLES, validateRow, validateSingle } from "@/data/schema";
 import { useStore } from "@/data/store";
+import { settingsOf } from "@/lib/calc/power";
 import { toCSV } from "@/lib/csv";
 import { fmtDate, todayIn } from "@/lib/dates";
 import { round, num, errorMessage, plural } from "@/lib/format";
@@ -50,6 +51,7 @@ export default function Settings() {
       <Section id="privacy" title="Privacy & sharing" sub={s.host.mode === "shared-page"
         ? "Your partner sees only a summary built from these choices, never your records, and can't edit anything of yours."
         : "Nothing is shared from this browser. These choices only take effect on your shared BECOMING OS page, for example after restoring a backup there."}><SharingForm /></Section>
+      <Section id="power" title="Power List & motivation" sub="Your reasons, who you're becoming, and the output targets every score is measured against."><PowerSettingsCard /></Section>
       <Section id="reminders" title="Reminders"><ReminderSettingsCard /></Section>
       <Section id="data" title="Your data"><DataSettings /></Section>
       <Section id="demo" title={data.profile.demo_mode ? "Sample data" : "Danger zone"}><DangerZone /></Section>
@@ -391,6 +393,75 @@ function DangerZone() {
         </p>
         <Button variant="danger" busy={busy} onClick={reset}>{demo ? "Clear sample data" : "Delete all my data"}</Button>
       </div>
+    </Card>
+  );
+}
+
+/** Why you're doing this, who you're becoming, and the daily and weekly output targets. */
+function PowerSettingsCard() {
+  const { data, saveSingle } = useStore();
+  const { busy, run } = useSubmit();
+  const s = settingsOf(data);
+  const [reasons, setReasons] = useState<string[]>(s.reasons);
+  const [identity, setIdentity] = useState(s.identity ?? "");
+  const [shorts, setShorts] = useState(String(s.shorts_per_day));
+  const [longs, setLongs] = useState(String(s.longs_per_week));
+  const [reach, setReach] = useState(String(s.reach_per_day));
+  const move = (i: number, d: -1 | 1) => setReasons((r) => {
+    const n = [...r];
+    [n[i], n[i + d]] = [n[i + d], n[i]];
+    return n;
+  });
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    run(async () => {
+      const clean = reasons.map((r) => r.trim()).filter(Boolean);
+      if (!clean.length) throw new Error("Keep at least one reason.");
+      const whole = (v: string, label: string) => {
+        const n = num(v);
+        if (v.trim() === "" || !Number.isInteger(n) || n < 0) throw new Error(`${label} must be a whole number.`);
+        return n;
+      };
+      await saveSingle("powerSettings", {
+        reasons: clean, identity: identity.trim() || null,
+        shorts_per_day: whole(shorts, "Short-form per day"), longs_per_week: whole(longs, "Long-form per week"),
+        reach_per_day: whole(reach, "New people per day"),
+      });
+      setReasons(clean);
+      return "Saved.";
+    });
+  };
+  return (
+    <Card>
+      <form onSubmit={submit} className="space-y-5" aria-label="Power List and motivation">
+        <div>
+          <div className="eyebrow mb-2">Why you're doing this</div>
+          <p className="mb-3 text-[12.5px] text-mute">Shown across the app, one at a time, every day.</p>
+          <ul className="space-y-2">
+            {reasons.map((r, i) => (
+              <li key={i} className="flex items-center gap-1.5">
+                <Input value={r} maxLength={80} aria-label={`Reason ${i + 1}`} onChange={(e) => setReasons((x) => x.map((y, j) => (j === i ? e.target.value : y)))} />
+                <IconButton type="button" label={`Move reason ${i + 1} up`} disabled={i === 0} onClick={() => move(i, -1)}><ChevronUp className="h-4 w-4" /></IconButton>
+                <IconButton type="button" label={`Move reason ${i + 1} down`} disabled={i === reasons.length - 1} onClick={() => move(i, 1)}><ChevronDown className="h-4 w-4" /></IconButton>
+                <IconButton type="button" label={`Remove reason ${i + 1}`} disabled={reasons.length === 1} className="hover:text-alert" onClick={() => setReasons((x) => x.filter((_, j) => j !== i))}><X className="h-4 w-4" /></IconButton>
+              </li>
+            ))}
+          </ul>
+          {reasons.length < 12 && <Button type="button" size="sm" variant="secondary" className="mt-3" onClick={() => setReasons((x) => [...x, ""])}>Add a reason</Button>}
+        </div>
+        <Field label="Who I'm becoming" hint="One line, in the present tense. For example: “A disciplined trader and coach who shows up every day.”">
+          <Input value={identity} maxLength={160} onChange={(e) => setIdentity(e.target.value)} />
+        </Field>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Field label="Short-form per day"><NumberInput value={shorts} onChange={setShorts} step="1" min="0" inputMode="numeric" /></Field>
+          <Field label="Long-form per week"><NumberInput value={longs} onChange={setLongs} step="1" min="0" inputMode="numeric" /></Field>
+          <Field label="New people reached per day"><NumberInput value={reach} onChange={setReach} step="1" min="0" inputMode="numeric" /></Field>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button type="submit" busy={busy}>Save</Button>
+          <Link to="/power" className="link text-[13px]">Edit the Power List items →</Link>
+        </div>
+      </form>
     </Card>
   );
 }

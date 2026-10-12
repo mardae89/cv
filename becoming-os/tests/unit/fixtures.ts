@@ -13,7 +13,7 @@ export function makeData(over: Partial<UserData> = {}): UserData {
     weights: [], checkins: [], symptoms: [], nutrition: [], photos: [], workouts: [], sets: [],
     habits: [], completions: [], restDays: [], tasks: [], journal: [], reviews: [], roadmapNotes: [],
     businesses: [], offers: [], customers: [], transactions: [], payments: [], deals: [], metrics: [],
-    activityLogs: [], achievements: [], audience: [], powerItems: [], powerLogs: [], contentIdeas: [], powerSettings: null,
+    activityLogs: [], achievements: [], audience: [], powerItems: [], powerLogs: [], contentIdeas: [], traffic: [], powerSettings: null,
     ...over,
   };
 }

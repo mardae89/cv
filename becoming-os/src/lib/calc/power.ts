@@ -40,6 +40,7 @@ export const DEFAULT_SETTINGS: Omit<PowerSettings, "user_id"> = {
   identity: null,
   shorts_per_day: 2,
   longs_per_week: 4,
+  reach_per_day: 10,
 };
 
 export const settingsOf = (data: Pick<UserData, "powerSettings">): Omit<PowerSettings, "user_id"> =>
@@ -73,13 +74,15 @@ export interface PowerIndex {
   food: Set<ISODate>;
   shorts: Map<ISODate, number>;
   longs: Map<ISODate, number>;
+  reached: Map<ISODate, number>;
 }
 
 const key = (itemId: string, date: ISODate) => `${itemId}|${date}`;
 const bump = (m: Map<ISODate, number>, d: ISODate) => m.set(d, (m.get(d) ?? 0) + 1);
 
-export function indexPower(data: Pick<UserData, "powerLogs" | "workouts" | "nutrition" | "contentIdeas">): PowerIndex {
-  const idx: PowerIndex = { logs: new Map(), workouts: new Map(), food: new Set(), shorts: new Map(), longs: new Map() };
+export function indexPower(data: Pick<UserData, "powerLogs" | "workouts" | "nutrition" | "contentIdeas"> & { traffic?: UserData["traffic"] }): PowerIndex {
+  const idx: PowerIndex = { logs: new Map(), workouts: new Map(), food: new Set(), shorts: new Map(), longs: new Map(), reached: new Map() };
+  for (const t of data.traffic ?? []) idx.reached.set(t.log_date, (idx.reached.get(t.log_date) ?? 0) + num(t.reached));
   for (const l of data.powerLogs) idx.logs.set(key(l.item_id, l.log_date), l);
   for (const w of data.workouts) if (isSession(w)) bump(idx.workouts, w.workout_date);
   for (const n of data.nutrition) idx.food.add(n.log_date);
@@ -97,6 +100,7 @@ export function autoValue(item: PowerItem, date: ISODate, idx: PowerIndex): numb
     case "food": return idx.food.has(date) ? 1 : 0;
     case "shorts": return idx.shorts.get(date) ?? 0;
     case "longs": return idx.longs.get(date) ?? 0;
+    case "reached": return idx.reached.get(date) ?? 0;
     default: return null;
   }
 }

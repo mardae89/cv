@@ -459,6 +459,7 @@ const AUTO_OPTIONS: { value: PowerAuto | ""; label: string }[] = [
   { value: "workouts", label: "Workouts logged" },
   { value: "shorts", label: "Short videos completed" },
   { value: "longs", label: "Long videos completed" },
+  { value: "reached", label: "New people reached (Traffic)" },
 ];
 const DAY_FULL = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 

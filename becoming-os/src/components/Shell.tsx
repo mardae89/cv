@@ -1,12 +1,13 @@
 import {
   Award, BarChart3, Bell, Briefcase, CheckSquare, Home, LineChart, Map, Menu, NotebookPen,
-  Plus, Settings, Users, Activity, X, Zap, Clapperboard,
+  Plus, Settings, Users, Activity, X, Zap, Clapperboard, Radar,
 } from "lucide-react";
 import { useLayoutEffect, useState, type ReactNode } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { useStore } from "@/data/store";
 import { fmtDate } from "@/lib/dates";
 import { CelebrationHost } from "./Celebration";
+import { WhyBanner } from "./power";
 import { cx, Sheet } from "./ui";
 
 interface NavItem {
@@ -21,6 +22,7 @@ const NAV: NavItem[] = [
   { to: "/", label: "Today", icon: <Home className={ic} /> },
   { to: "/power", label: "Power List", icon: <Zap className={ic} /> },
   { to: "/content", label: "Content", icon: <Clapperboard className={ic} /> },
+  { to: "/traffic", label: "Traffic", icon: <Radar className={ic} /> },
   { to: "/log", label: "Log", icon: <Plus className={ic} /> },
   { to: "/progress", label: "Body", icon: <LineChart className={ic} /> },
   { to: "/train", label: "Train", icon: <Activity className={ic} /> },
@@ -157,6 +159,8 @@ export function Shell() {
         )}
 
         <main key={loc.pathname} className="mx-auto max-w-page px-4 pb-[calc(8rem+env(safe-area-inset-bottom,0px))] pt-6 sm:px-6 lg:px-10 lg:pb-16 lg:pt-10">
+          {/* Today and the Power List show the full reminder; every other page keeps a slim one. */}
+          {loc.pathname !== "/" && loc.pathname !== "/power" && <div className="mb-5"><WhyBanner compact /></div>}
           <Outlet />
         </main>
       </div>

@@ -34,7 +34,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTMLBut
 
 export function IconButton({ label, className, children, ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { label: string }) {
   return (
-    <button aria-label={label} title={label}
+    <button type="button" aria-label={label} title={label}
       className={cx("inline-flex h-10 w-10 items-center justify-center rounded-xl text-mute transition hover:bg-raised hover:text-bone", className)}
       {...rest}>
       {children}

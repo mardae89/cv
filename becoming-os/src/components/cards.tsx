@@ -3,6 +3,8 @@ import { Link } from "react-router-dom";
 import { useStore } from "@/data/store";
 import { longestRun, PHASES, trainingWeek } from "@/lib/calc/athletic";
 import { fmtChange, fmtCount, PLATFORMS, summarize } from "@/lib/calc/audience";
+import { settingsOf } from "@/lib/calc/power";
+import { METRICS, reachedOn, trafficWeek } from "@/lib/calc/traffic";
 import { goalStatus, METRIC_LABEL, monthFinance } from "@/lib/calc/business";
 import { nextMilestone } from "@/lib/calc/milestones";
 import { weightProgress } from "@/lib/calc/weight";
@@ -156,6 +158,24 @@ export function AudienceCard({ compact, onLogPage }: { compact?: boolean; onLogP
         </p>
       )}
       {!onLogPage && <Link to="/log?tab=audience" className="link mt-3 inline-block text-[13px]">{sums.length ? "Update counts" : "Record your counts"} →</Link>}
+    </Card>
+  );
+}
+
+/** The Traffic Engine's four numbers for this week, and today's daily ten. */
+export function TrafficCard() {
+  const { data, today } = useStore();
+  const target = settingsOf(data).reach_per_day;
+  const w = trafficWeek(data.traffic, today);
+  const reached = reachedOn(data.traffic, today);
+  return (
+    <Card>
+      <CardHead eyebrow="Traffic Engine · this week" title="The four numbers" to="/traffic" />
+      <div className="grid grid-cols-4 gap-2">
+        {METRICS.map((m) => <Stat key={m.key} label={m.short === "Conversations" ? "Convos" : m.short} value={w.totals[m.key].toLocaleString("en-US")} accent={m.key === "members"} />)}
+      </div>
+      <Meter className="mt-4" value={reached} max={Math.max(1, target)} label="New people today" right={`${reached} / ${target}`} />
+      <Link to="/traffic" className="link mt-3 inline-block text-[13px]">Log numbers →</Link>
     </Card>
   );
 }

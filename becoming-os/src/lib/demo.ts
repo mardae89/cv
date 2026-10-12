@@ -262,6 +262,17 @@ export function buildDemo(uid: string): DemoPlan {
       if (c) Object.assign(c, { status: "done", completed_on: d });
     }
   }
+  // ── traffic engine: daily outreach, mostly social outbound (sample numbers)
+  const traffic: Record<string, unknown>[] = [];
+  for (const d of days) {
+    if (d >= DEMO_TODAY) break;
+    const reached = 6 + Math.floor(rand() * 9);
+    const conversations = Math.round(reached * (0.25 + rand() * 0.15));
+    const invitations = Math.round(conversations * (0.3 + rand() * 0.2));
+    traffic.push({ log_date: d, channel: "social_outbound", reached, conversations, invitations, members: rand() < invitations * 0.25 ? 1 : 0, note: null });
+    if (dow(d) === 2 && rand() < 0.7) traffic.push({ log_date: d, channel: "existing_world", reached: 3 + Math.floor(rand() * 4), conversations: 2, invitations: 1, members: rand() < 0.4 ? 1 : 0, note: null });
+  }
+
   // Today's slate: the next two short-form ideas and a long-form one.
   [...shorts.filter((c) => c.status === "open").slice(0, 2), longs.find((c) => c.status === "open")!]
     .forEach((c) => (c.planned_for = DEMO_TODAY));
@@ -294,5 +305,6 @@ export function buildDemo(uid: string): DemoPlan {
     { table: "powerItems", rows: u(powerItems) },
     { table: "powerLogs", rows: u(powerLogs) },
     { table: "contentIdeas", rows: u(contentIdeas) },
+    { table: "traffic", rows: u(traffic) },
   ];
 }

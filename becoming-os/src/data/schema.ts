@@ -8,7 +8,7 @@ export const LIST_KEYS = [
   "weights", "checkins", "symptoms", "nutrition", "photos", "workouts", "sets", "habits", "completions",
   "restDays", "tasks", "journal", "reviews", "roadmapNotes", "businesses", "offers", "customers",
   "transactions", "payments", "deals", "metrics", "activityLogs", "achievements", "notifications", "audience",
-  "powerItems", "powerLogs", "contentIdeas",
+  "powerItems", "powerLogs", "contentIdeas", "traffic",
 ] as const;
 export type ListKey = (typeof LIST_KEYS)[number];
 
@@ -134,6 +134,10 @@ export const TABLES: Record<ListKey, TableDef> = {
     parents: [{ field: "item_id", table: "powerItems", onDelete: "cascade", required: true }],
     defaults: { value: null, done: false },
   },
+  traffic: {
+    bucketBy: "log_date", unique: [["log_date", "channel"]],
+    defaults: { reached: 0, conversations: 0, invitations: 0, members: 0, note: null },
+  },
   contentIdeas: {
     defaults: { section: "My ideas", funnel: "top", cta: false, priority: false, status: "open", planned_for: null, completed_on: null, notes: null },
   },
@@ -167,7 +171,7 @@ export const SINGLE_DEFAULTS: Record<SingleKey, Record<string, unknown>> = {
   },
   powerSettings: {
     reasons: ["Travel the world", "Financial freedom", "Freedom with my time", "Help my family", "Live life fully", "Health"],
-    identity: null, shorts_per_day: 2, longs_per_week: 4,
+    identity: null, shorts_per_day: 2, longs_per_week: 4, reach_per_day: 10,
   },
 };
 
@@ -226,7 +230,8 @@ const INT_FIELDS: Partial<Record<ListKey | SingleKey, string[]>> = {
   powerItems: ["target", "sort_order"],
   powerLogs: ["value"],
   contentIdeas: ["num"],
-  powerSettings: ["shorts_per_day", "longs_per_week"],
+  traffic: ["reached", "conversations", "invitations", "members"],
+  powerSettings: ["shorts_per_day", "longs_per_week", "reach_per_day"],
   goals: ["weekly_training_minutes"],
   athletic: ["weekly_session_target"],
   reminderSettings: ["daily_logging_hour"],
@@ -428,7 +433,7 @@ export function validateRow(table: ListKey, r: Record<string, unknown>): void {
       text(r, "name", 80);
       text(r, "unit", 20);
       oneOf(r, "kind", ["check", "count"], "Item type");
-      oneOf(r, "auto", ["food", "workouts", "shorts", "longs"], "Automatic source");
+      oneOf(r, "auto", ["food", "workouts", "shorts", "longs", "reached"], "Automatic source");
       dates(r, ["start_date", "archived_on"]);
       if (r.kind === "count") {
         if (r.target == null) fail("Set a target for a counted item (e.g. 6 stories).");
@@ -442,6 +447,13 @@ export function validateRow(table: ListKey, r: Record<string, unknown>): void {
       required(r, ["item_id", "log_date"]);
       dates(r, ["log_date"]);
       range(r, "value", 0, 100000, "Amount");
+      break;
+    case "traffic":
+      required(r, ["log_date", "channel"]);
+      dates(r, ["log_date"]);
+      oneOf(r, "channel", ["existing_world", "social_outbound", "content", "borrowed_audiences", "referrals", "webinars", "external_ads", "skool_ads"], "Channel");
+      for (const f of ["reached", "conversations", "invitations", "members"]) range(r, f, 0, 1_000_000, f[0].toUpperCase() + f.slice(1));
+      text(r, "note", 300);
       break;
     case "contentIdeas":
       required(r, ["title", "format"]);
@@ -541,6 +553,7 @@ export function validateSingle(key: SingleKey, r: Record<string, unknown>): void
     text(r, "identity", 160);
     range(r, "shorts_per_day", 0, 20, "Short-form videos per day");
     range(r, "longs_per_week", 0, 20, "Long-form videos per week");
+    range(r, "reach_per_day", 0, 1000, "New people reached per day");
   }
 }
 
