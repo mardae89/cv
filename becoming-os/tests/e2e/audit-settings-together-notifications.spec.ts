@@ -567,14 +567,17 @@ for (const vp of SIZES) {
       await expectUncovered(markAll);
       await expect(clear).toBeDisabled();
 
-      // Mark one read.
-      const other = list.filter({ hasNotText: "Nothing logged today yet" }).first();
-      const otherTitle = (await other.locator("div.text-bone").first().textContent())!;
-      await press(other.getByRole("button", { name: /^Mark read/ }));
-      await expect(other.getByRole("button", { name: /^Mark read/ })).toHaveCount(0);
-      await expect(unreadLabel(total - 1)).toBeVisible();
-      await poll(async () => (await notes()).find((n) => n.title === otherTitle)?.read_at).toBeTruthy();
-      await expect(clear).toBeEnabled();
+      // Mark one read. How many reminders are due depends on the date, so this needs a third
+      // one to leave something unread for "Mark all read" after the daily reminder is opened.
+      if (total >= 3) {
+        const other = list.filter({ hasNotText: "Nothing logged today yet" }).first();
+        const otherTitle = (await other.locator("div.text-bone").first().textContent())!;
+        await press(other.getByRole("button", { name: /^Mark read/ }));
+        await expect(other.getByRole("button", { name: /^Mark read/ })).toHaveCount(0);
+        await expect(unreadLabel(total - 1)).toBeVisible();
+        await poll(async () => (await notes()).find((n) => n.title === otherTitle)?.read_at).toBeTruthy();
+        await expect(clear).toBeEnabled();
+      }
 
       // Open goes where the reminder points and marks it read.
       await press(daily.getByRole("link", { name: "Open: Nothing logged today yet" }));

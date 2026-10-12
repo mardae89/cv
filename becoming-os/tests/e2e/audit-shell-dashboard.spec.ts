@@ -165,9 +165,9 @@ for (const vp of SIZES) {
       if (vp === "mobile") {
         const bar = page.getByRole("navigation", { name: "Primary" });
         await expect(page.locator("aside")).toBeHidden();
-        // the bottom bar: Today, Body, +, Train (no business), More
+        // the bottom bar: Today, Power List, +, Content, More
         await expect(bar.getByRole("link")).toHaveCount(4);
-        for (const [name, route] of [["Body", "/progress"], ["Train", "/train"], ["Log", "/log"], ["Today", "/"]] as const) {
+        for (const [name, route] of [["Power List", "/power"], ["Content", "/content"], ["Log", "/log"], ["Today", "/"]] as const) {
           await press(bar.getByRole("link", { name, exact: true }), vp);
           await expectOn(page, route);
           await expect(bar.getByRole("link", { name, exact: true })).toHaveAttribute("aria-current", "page");
@@ -176,11 +176,14 @@ for (const vp of SIZES) {
         // More: every page not on the bar, plus Alerts
         const more = bar.getByRole("button", { name: "More" });
         const sheet = page.getByRole("dialog", { name: "Everything" });
-        const inMore = ["Habits", "Reviews", "Roadmap", "Milestones", "Charts", "Together", "Settings", "Alerts"];
-        const routeOf: Record<string, string> = { Habits: "/habits", Reviews: "/reviews", Roadmap: "/roadmap", Milestones: "/achievements", Charts: "/charts", Together: "/together", Settings: "/settings", Alerts: "/notifications" };
+        const inMore = ["Traffic", "Body", "Train", "Habits", "Reviews", "Roadmap", "Milestones", "Charts", "Together", "Settings", "Alerts"];
+        const routeOf: Record<string, string> = {
+          Traffic: "/traffic", Body: "/progress", Train: "/train", Habits: "/habits", Reviews: "/reviews", Roadmap: "/roadmap",
+          Milestones: "/achievements", Charts: "/charts", Together: "/together", Settings: "/settings", Alerts: "/notifications",
+        };
         await press(more, vp);
         await expect(sheet.getByRole("link")).toHaveCount(inMore.length);
-        await expect(sheet.getByRole("link", { name: "Train" })).toHaveCount(0);
+        await expect(sheet.getByRole("link", { name: /^(Power List|Content Bank)$/ })).toHaveCount(0);
         for (const name of inMore) {
           if (!(await sheet.isVisible())) await press(more, vp);
           await press(sheet.getByRole("link", { name, exact: true }), vp);
@@ -211,7 +214,7 @@ for (const vp of SIZES) {
       } else {
         await expect(page.getByRole("navigation", { name: "Primary" })).toBeHidden();
         const side = page.locator("aside");
-        const links: [string, string][] = [["Log", "/log"], ["Body", "/progress"], ["Train", "/train"], ["Habits", "/habits"], ["Reviews", "/reviews"],
+        const links: [string, string][] = [["Power List", "/power"], ["Content Bank", "/content"], ["Traffic", "/traffic"], ["Log", "/log"], ["Body", "/progress"], ["Train", "/train"], ["Habits", "/habits"], ["Reviews", "/reviews"],
           ["Roadmap", "/roadmap"], ["Milestones", "/achievements"], ["Charts", "/charts"], ["Together", "/together"], ["Settings", "/settings"], ["Today", "/"]];
         await expect(side.getByRole("link", { name: "Business" })).toHaveCount(0);
         for (const [name, route] of links) {
@@ -385,13 +388,14 @@ for (const vp of SIZES) {
       const { page, errors } = await open(browser, vp, "demo");
       const today = await appToday(page);
       // every habit on today's list toggles both ways, persists, and moves the ring
-      const habits = page.locator("li > button[aria-pressed]");
+      const todayCard = page.locator(".card").filter({ has: page.getByRole("heading", { name: "Today", exact: true }) }).first();
+      const habits = todayCard.locator("li > button[aria-pressed]");
       const n = await habits.count();
       expect(n).toBeGreaterThan(0);
       const first = habits.first();
       const name = (await first.locator("span.flex-1").textContent())!;
       const before = await first.getAttribute("aria-pressed");
-      const ringText = async () => (await page.locator("text=/^\\d+\\/\\d+$/").first().textContent())!;
+      const ringText = async () => (await todayCard.locator("text=/^\\d+\\/\\d+$/").first().textContent())!;
       const r0 = await ringText();
       await press(first, vp);
       await expect(first).toHaveAttribute("aria-pressed", before === "true" ? "false" : "true");
@@ -401,13 +405,13 @@ for (const vp of SIZES) {
       await poll(async () => (await rows(page, "completions")).some((c) => c.habit_id === hid && c.completed_on === today)).toBe(before !== "true");
       await page.reload();
       await clearCelebrations(page);
-      await expect(page.locator("li > button[aria-pressed]").filter({ hasText: name })).toHaveAttribute("aria-pressed", before === "true" ? "false" : "true");
-      await press(page.locator("li > button[aria-pressed]").filter({ hasText: name }), vp);
-      await expect(page.locator("li > button[aria-pressed]").filter({ hasText: name })).toHaveAttribute("aria-pressed", before!);
+      await expect(habits.filter({ hasText: name })).toHaveAttribute("aria-pressed", before === "true" ? "false" : "true");
+      await press(habits.filter({ hasText: name }), vp);
+      await expect(habits.filter({ hasText: name })).toHaveAttribute("aria-pressed", before!);
       await expect.poll(ringText).toBe(r0);
       // the remaining habit buttons are each reachable and respond
       for (let i = 1; i < n; i++) {
-        const b = page.locator("li > button[aria-pressed]").nth(i);
+        const b = habits.nth(i);
         const was = await b.getAttribute("aria-pressed");
         await press(b, vp);
         await expect(b).toHaveAttribute("aria-pressed", was === "true" ? "false" : "true");
@@ -450,7 +454,7 @@ for (const vp of SIZES) {
       const { page, errors } = await open(browser, vp, "demo");
       await navTo(page, vp, "/achievements");
       const filters = page.getByRole("radiogroup").first();
-      const opts = ["All", "Weight", "Business", "Audience", "Athletic", "Consistency", "Levels"];
+      const opts = ["All", "Power List", "Weight", "Business", "Audience", "Athletic", "Consistency", "Levels"];
       await expect(filters.getByRole("radio")).toHaveText(opts);
       const tiles = page.locator("div.grid > button");
       const total = await tiles.count();

@@ -24,8 +24,8 @@ How to start: **[DEPLOY.md](DEPLOY.md)**.
 | Area | Where | What it does |
 |---|---|---|
 | Today | `/` | Countdown (day N of 227, days left, % elapsed), today's scheduled habits and tasks with an execution score, next milestone, progress cards, this week's results |
-| Power List | `/power` | The daily non-negotiables (wake 5:45am, both exercise sessions, food logged, 6 stories, 2 shorts, 5 pages, no impulsive purchases, bed by 10:30pm, plus the filming/editing schedule), day ring, PCR by week or month with 75/80/90 ratings, weekly analysis, red/green calendar, trend, previous weeks, "who you're becoming" evidence |
-| Content | `/content` | Today's slate (crossed out when done), filming focus, short/long targets, the 129-idea library — 10 per page, filter by format, funnel stage, CTA, section, status |
+| Power List | `/power` | The daily non-negotiables (wake 5:45am, both exercise sessions, food logged, 6 stories, 2 shorts, 5 pages, no impulsive purchases, bed by 10:30pm, plus the filming/editing schedule), day ring, PCR by week or month with 75/80/90 ratings, weekly analysis, calendar coloured by the day's score (bright green 90%+, green 75%+, orange over 50%, red 50% or under), trend, previous weeks, "who you're becoming" evidence |
+| Content Bank | `/content` | Release today: pick short or long form and see ten open ideas at a time (priority sections first), with Next. Today's slate (crossed out when done), filming focus, the week's release schedule. The bank of 129 ideas — 10 per page, filter by format, funnel stage, CTA, section, status. Your strategy (positioning, tone, goal, rules), editable, and what each section is for |
 | Traffic | `/traffic` | The four numbers — people reached, conversations, invitations, members — by channel, weekly totals, conversion, the daily ten, where to find people |
 | Logging | `/log` | Weigh-ins, waist, check-ins (sleep, energy, soreness, fatigue, water), pain & symptoms, progress photos, workouts with sets/reps/weights, meals and macros, business transactions, outreach/content counts, habits, journal |
 | Body | `/progress` | 7-day-average trend, 50 lb and 60 lb meters, weekly averages, waist, plan vs. sustainable pace, weight milestones with photos, full history |
@@ -37,16 +37,22 @@ How to start: **[DEPLOY.md](DEPLOY.md)**.
 | Milestones | `/achievements` | Level, XP, every milestone (locked/unlocked), permanent timeline, shareable cards |
 | Charts | `/charts` | Every metric with date ranges and previous-period comparison |
 | Together | `/together` | Partner progress (as shared), shared milestones and reflections, your sharing levels |
-| Settings | `/settings` | Goals, readiness, privacy, reminders, where your records are stored, backup export/import, reset |
+| Settings | `/settings` | Day or Night theme, your reasons and "who I'm becoming", content targets and release days (short form and long form), goals, readiness, privacy, reminders, where your records are stored, backup export/import, reset |
 
 ## How the numbers work
 
 **Power List Completion Rate (PCR).** Items completed ÷ items due, over a day,
-week or month. A day is green at 75% or more and red below that once it's over.
+week or month. A finished day is bright green at 90%+, green at 75%+, orange above
+50% and red at 50% or under; today shows as in progress until it reaches green.
 75%+ is good, 80%+ great, 90%+ exceptional. A week's score is given once the week
 ends. Some items fill in from other records: exercise sessions from logged
-workouts, "log food" from meal logs, shorts from videos checked off in Content,
+workouts, "log food" from meal logs, shorts from videos checked off in the Content Bank,
 and (optionally) a reach item from people reached in Traffic.
+
+**Content targets.** The short-form target (2 a day by default) applies on your
+short-form release days; long-form (4 a week) is slotted in on long-form release
+days (Mon–Thu by default) until the week's target is met. Both are set in
+Settings → Power List & motivation.
 
 All metrics are recomputed from saved records on every change (`src/lib/calc/`), so
 editing or deleting anything updates every meter, chart and milestone.

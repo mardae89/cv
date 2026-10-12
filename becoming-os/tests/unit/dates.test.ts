@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addMonths, countdown, dateRange, diffDays, dow, monthEnd, todayIn, weekStart } from "../../src/lib/dates";
+import { addMonths, countdown, dateRange, diffDays, dow, fmtDays, monthEnd, todayIn, weekStart } from "../../src/lib/dates";
 
 describe("mission countdown", () => {
   it("spans 226 days and 227 calendar dates", () => {
@@ -54,5 +54,17 @@ describe("calendar helpers", () => {
     const instant = new Date("2026-10-11T03:30:00Z"); // still Oct 10 in New York
     expect(todayIn("America/New_York", instant)).toBe("2026-10-10");
     expect(todayIn("Europe/London", instant)).toBe("2026-10-11");
+  });
+});
+
+describe("weekday sets", () => {
+  it("names common sets and runs, and lists the rest", () => {
+    expect(fmtDays([0, 1, 2, 3, 4, 5, 6])).toBe("every day");
+    expect(fmtDays([5, 1, 2, 3, 4])).toBe("weekdays");
+    expect(fmtDays([6, 0])).toBe("weekends");
+    expect(fmtDays([1, 2, 3, 4])).toBe("Mon–Thu");
+    expect(fmtDays([1, 3, 5])).toBe("Mon, Wed, Fri");
+    expect(fmtDays([2, 3])).toBe("Tue, Wed");
+    expect(fmtDays([])).toBe("no days");
   });
 });

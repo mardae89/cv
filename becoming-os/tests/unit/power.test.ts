@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { SINGLE_DEFAULTS, validateSingle } from "../../src/data/schema";
 import { evaluate } from "../../src/lib/calc/milestones";
 import {
   analyse, contentTally, dayResult, dayStatus, DEFAULT_SETTINGS, greenStreak, indexPower, isDue, periodResult, periods, rating,
@@ -131,6 +132,14 @@ describe("weekly and monthly PCR", () => {
     expect(a.headline).toMatch(/^Great week: 88% PCR/);
     expect(a.points.join(" ")).toContain("6 green days, 0 orange, 1 red, 6 perfect");
   });
+  it("counts the short-form target only on short-form release days", () => {
+    const days = ["2026-10-12", "2026-10-13", "2026-10-14", "2026-10-15", "2026-10-16", "2026-10-17", "2026-10-18"];
+    const weekdays = contentTally([], MON, "2026-10-18", { ...DEFAULT_SETTINGS, short_release_days: [1, 2, 3, 4, 5] }, days);
+    expect(weekdays.shortTarget).toBe(10);
+    expect(weekdays.longTarget).toBe(4);
+    const twoDays = contentTally([], MON, "2026-10-18", { ...DEFAULT_SETTINGS, short_release_days: [1, 3] }, days.slice(0, 2));
+    expect(twoDays.shortTarget).toBe(2);
+  });
 });
 
 describe("power milestones and XP", () => {
@@ -152,5 +161,20 @@ describe("power milestones and XP", () => {
     expect(during.milestones.find((m) => m.key === "power.week_exceptional")?.achievedOn).toBeNull();
     const after = evaluate(makeData({ powerItems: list, powerLogs: logs }), "2026-10-19");
     expect(after.milestones.find((m) => m.key === "power.week_exceptional")?.achievedOn).toBe("2026-10-18");
+  });
+});
+
+describe("power settings validation", () => {
+  const base = { ...SINGLE_DEFAULTS.powerSettings } as Record<string, unknown>;
+  const strategy = { positioning: "P", tone: "T", goal: "G", changed: "", rules: ["One rule"] };
+  it("accepts the defaults, release days and a written strategy", () => {
+    expect(() => validateSingle("powerSettings", base)).not.toThrow();
+    expect(() => validateSingle("powerSettings", { ...base, short_release_days: [1, 2, 3, 4, 5], strategy })).not.toThrow();
+  });
+  it("rejects bad release days and empty strategy rules", () => {
+    expect(() => validateSingle("powerSettings", { ...base, short_release_days: [7] })).toThrow(/Short-form release days/);
+    expect(() => validateSingle("powerSettings", { ...base, long_release_days: ["Mon"] })).toThrow(/Long-form release days/);
+    expect(() => validateSingle("powerSettings", { ...base, strategy: { ...strategy, rules: ["  "] } })).toThrow(/rule/);
+    expect(() => validateSingle("powerSettings", { ...base, strategy: { ...strategy, tone: 5 } })).toThrow(/Tone/);
   });
 });

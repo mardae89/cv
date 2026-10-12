@@ -68,8 +68,11 @@ async function settle(app: FrameLocator) {
   }
 }
 
-const BOTTOM: Record<string, string> = { "/": "Today", "/progress": "Body", "/log": "Log", "/business": "Business", "/train": "Train" };
-const MORE: Record<string, string> = { "/together": "Together", "/settings": "Settings", "/business": "Business", "/train": "Train" };
+const BOTTOM: Record<string, string> = { "/": "Today", "/power": "Power List", "/log": "Log", "/content": "Content" };
+const MORE: Record<string, string> = {
+  "/progress": "Body", "/traffic": "Traffic", "/together": "Together", "/settings": "Settings", "/business": "Business", "/train": "Train",
+  "/habits": "Habits", "/reviews": "Reviews", "/roadmap": "Roadmap", "/achievements": "Milestones", "/charts": "Charts",
+};
 
 /** Moves around the app the way a person would — routes live in memory inside the frame, so there's no URL to visit. */
 async function go(app: FrameLocator, to: string) {

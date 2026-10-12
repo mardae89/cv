@@ -2,13 +2,16 @@ import { ChevronLeft, ChevronRight, Lightbulb } from "lucide-react";
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useSubmit } from "@/components/forms/body";
+import { PcrBadge, usePowerIndex } from "@/components/power";
 import { Button, Card, cx, Eyebrow, Field, Meter, Notice, PageHeader, Pill, Segmented, Stat, Table, Textarea, Toggle } from "@/components/ui";
 import { useStore } from "@/data/store";
+import { contentTally, firstStart, periodResult, settingsOf } from "@/lib/calc/power";
 import { buildReview } from "@/lib/calc/reviews";
+import { METRICS, trafficPeriod } from "@/lib/calc/traffic";
 import { weightProgress } from "@/lib/calc/weight";
-import { addDays, addMonths, dow, fmtDate, fmtMonth, fmtWeekRange, monthEnd, monthStart, weekStart } from "@/lib/dates";
+import { addDays, addMonths, dateRange, dow, fmtDate, fmtMonth, fmtWeekRange, maxDate, minDate, monthEnd, monthStart, weekStart } from "@/lib/dates";
 import { lb, money, pct, signed } from "@/lib/format";
-import type { Review } from "@/lib/types";
+import type { ISODate, Review } from "@/lib/types";
 
 export default function Reviews() {
   const { data, today, ev } = useStore();
@@ -71,6 +74,8 @@ export default function Reviews() {
           <p className="text-[12px] text-mute">{r.habits.done} of {r.habits.scheduled} scheduled</p>
         </Card>
       </div>
+
+      <PowerReview from={from} to={to} period={period} />
 
       {r.business && (
         <Card>
@@ -137,6 +142,44 @@ export default function Reviews() {
       {period === "month" && <p className="text-[13px] text-mute">This month's reflection also appears in its <Link to="/roadmap" className="link">roadmap chapter</Link>.</p>}
       <History />
     </div>
+  );
+}
+
+/** The Power List score, content output and the four traffic numbers for the period under review. */
+function PowerReview({ from, to, period }: { from: ISODate; to: ISODate; period: "week" | "month" }) {
+  const { data, today } = useStore();
+  const idx = usePowerIndex();
+  if (!data.powerItems.length && !data.traffic.length && !data.contentIdeas.length) return null;
+  const p = periodResult(data.powerItems, from, to, idx, today);
+  const start = firstStart(data.powerItems);
+  const end = minDate(to, today);
+  const tally = contentTally(data.contentIdeas, from, to, settingsOf(data), dateRange(start ? maxDate(from, start) : from, end));
+  const traffic = trafficPeriod(data.traffic, from, end);
+  return (
+    <Card>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <Eyebrow>Power List · content · traffic</Eyebrow>
+        <Link to="/power" className="text-[12.5px] text-mute hover:text-gold">Power List →</Link>
+      </div>
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div>
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="num text-[34px] font-semibold leading-none">{p.pct === null ? "—" : `${Math.round(p.pct)}%`}</span>
+            <PcrBadge pct={p.pct} />
+          </div>
+          <p className="mt-2 text-[12px] text-mute">
+            {p.due ? `PCR · ${p.done} of ${p.due} items · ${p.greenDays} green · ${p.orangeDays} orange · ${p.redDays} red${p.perfectDays ? ` · ${p.perfectDays} perfect` : ""}` : `No Power List items were due this ${period}.`}
+          </p>
+        </div>
+        <div className="space-y-4">
+          <Meter thin value={tally.shorts} max={Math.max(1, tally.shortTarget)} label="Short-form" right={`${tally.shorts}/${tally.shortTarget}`} />
+          <Meter thin value={tally.longs} max={Math.max(1, tally.longTarget)} label="Long-form" right={`${tally.longs}/${tally.longTarget}`} />
+        </div>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+          {METRICS.map((m) => <Stat key={m.key} label={m.label} value={Math.round(traffic.totals[m.key]).toLocaleString("en-US")} />)}
+        </div>
+      </div>
+    </Card>
   );
 }
 

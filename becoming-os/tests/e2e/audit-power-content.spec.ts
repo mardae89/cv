@@ -43,6 +43,7 @@ for (const vp of ["mobile", "desktop"] as const) {
       await expect.poll(async () => (await rows(page, "powerLogs")).length).toBeGreaterThanOrEqual(8);
 
       // Week and month PCR both read 100% for a single perfect day.
+      await settle(page);
       await page.getByRole("radio", { name: "Month" }).or(page.getByRole("button", { name: "Month" })).first().click();
       await expect(page.getByLabel("PCR 100%").first()).toBeVisible();
 
