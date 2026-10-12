@@ -1,3 +1,4 @@
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import { HashRouter, MemoryRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { FeedbackProvider } from "./components/feedback";
@@ -44,7 +45,7 @@ function LoadError({ msg, retry }: { msg: string; retry: () => void }) {
   );
 }
 
-const page = (el: ReactNode) => <Suspense fallback={<Spinner />}>{el}</Suspense>;
+const page = (el: ReactNode) => <ErrorBoundary><Suspense fallback={<Spinner />}>{el}</Suspense></ErrorBoundary>;
 
 function AppRoutes({ host }: { host: Host }) {
   return (
@@ -97,7 +98,11 @@ export function App() {
   if (error) return <LoadError msg={error} retry={() => setAttempt((a) => a + 1)} />;
   if (!host) return <Spinner label="Opening" />;
   // Inside the claude.ai page the address bar isn't ours, so routes live in memory.
-  return isFramed()
-    ? <MemoryRouter><AppRoutes host={host} /></MemoryRouter>
-    : <HashRouter><AppRoutes host={host} /></HashRouter>;
+  return (
+    <ErrorBoundary whole>
+      {isFramed()
+        ? <MemoryRouter><AppRoutes host={host} /></MemoryRouter>
+        : <HashRouter><AppRoutes host={host} /></HashRouter>}
+    </ErrorBoundary>
+  );
 }

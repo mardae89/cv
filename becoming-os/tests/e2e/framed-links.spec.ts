@@ -1,5 +1,6 @@
-// Inside the claude.ai viewer, any <a href> click is treated as a link to
-// another website, so in-app navigation must not depend on it. This frames the
+// Inside the claude.ai viewer, a click on an <a> element is taken over by the
+// viewer (it loads the address in place of the app), so in-app navigation must
+// not use <a> elements there. This frames the
 // app with that behaviour simulated and walks every navigation link, at
 // desktop and phone sizes.
 import { expect, test, type Browser, type FrameLocator } from "@playwright/test";
@@ -24,11 +25,15 @@ async function open(browser: Browser, viewport: { width: number; height: number 
     body: `<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>html,body{margin:0;height:100%}iframe{display:block;border:0;width:100%;height:100%}</style></head><body><iframe id="app" src="/"></iframe></body></html>`,
   }));
   await server.attach(ctx, ME);
-  // The viewer takes over every <a href> click.
+  // The viewer takes over any click on an <a> element and loads its address in
+  // place of the app (a blank page), as seen in desktop browsers.
   await ctx.addInitScript(() => {
     if (window.self === window.top) return;
     document.addEventListener("click", (e) => {
-      if ((e.target as Element | null)?.closest?.("a[href]")) e.preventDefault();
+      const a = (e.target as Element | null)?.closest?.("a");
+      if (!a) return;
+      e.preventDefault();
+      location.href = (a as HTMLAnchorElement).href || "about:blank";
     }, true);
   });
   const page = await ctx.newPage();
@@ -46,6 +51,8 @@ const heading = (app: FrameLocator) => app.locator("main h1").first();
 test("framed, desktop: every sidebar link and the keyboard navigate", async ({ browser }) => {
   const { app, errors } = await open(browser, { width: 1280, height: 800 });
   const side = app.locator("aside");
+  // No navigation item is an <a> element inside the viewer.
+  await expect(app.locator("aside a, nav a, main a")).toHaveCount(0);
   for (const [name, h] of PAGES) {
     await side.getByRole("link", { name, exact: true }).click();
     await expect(heading(app)).toHaveText(h);
