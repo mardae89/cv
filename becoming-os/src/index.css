@@ -37,8 +37,9 @@
 @tailwind components;
 @tailwind utilities;
 
-/* BECOMING OS is a single, deliberately dark theme: matte black ground,
-   white type, gold reserved for progress and achievement. */
+/* Two themes. Night (default): matte black ground, white type. Day: white
+   ground, near-black type. Gold is reserved for progress and achievement in
+   both; the day gold is deeper so it stays readable on white. */
 :root {
   --ink: #0a0a0b;
   --panel: #111113;
@@ -68,7 +69,45 @@
   --c-gold-dim: 109 90 43;
   --c-alert: 217 115 95;
   --c-calm: 143 179 160;
+  /* Day scores: bright green 90%+, green 75%+, orange over 50%, red at 50% or under. */
+  --c-best: 74 222 128;
+  --c-good: 111 191 138;
+  --c-warn: 236 150 64;
   color-scheme: dark;
+}
+
+:root[data-app-theme="light"] {
+  --ink: #f8f7f4;
+  --panel: #ffffff;
+  --raised: #f2f0eb;
+  --line: #dcd8cf;
+  --hair: #e9e6df;
+  --bone: #121214;
+  --mute: #5d5c66;
+  --faint: #86858e;
+  --gold: #8f6d1f;
+  --gold-hi: #7a5c16;
+  --gold-dim: #d8c08a;
+  --gold-wash: rgba(143, 109, 31, 0.09);
+  --alert: #b8452f;
+  --calm: #3c7a5c;
+  --c-ink: 248 247 244;
+  --c-panel: 255 255 255;
+  --c-raised: 242 240 235;
+  --c-line: 220 216 207;
+  --c-hair: 233 230 223;
+  --c-bone: 18 18 20;
+  --c-mute: 93 92 102;
+  --c-faint: 134 133 142;
+  --c-gold: 143 109 31;
+  --c-gold-hi: 122 92 22;
+  --c-gold-dim: 216 192 138;
+  --c-alert: 184 69 47;
+  --c-calm: 60 122 92;
+  --c-best: 21 160 75;
+  --c-good: 46 125 80;
+  --c-warn: 196 104 14;
+  color-scheme: light;
 }
 
 html, body, #root { min-height: 100%; }
@@ -86,6 +125,14 @@ body {
   .grid > * { min-width: 0; }
   input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
   input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.75); }
+  :root[data-app-theme="light"] input[type="date"]::-webkit-calendar-picker-indicator { filter: none; opacity: 0.6; }
+  /* Charts take their greys from the theme (CSS beats SVG presentation attributes). */
+  .recharts-cartesian-grid line { stroke: rgb(var(--c-hair)); }
+  .recharts-cartesian-axis-tick-value, .recharts-reference-line .recharts-label { fill: rgb(var(--c-faint)); }
+  .recharts-reference-line-line { stroke: rgb(var(--c-line)); }
+  .recharts-tooltip-cursor { stroke: rgb(var(--c-line)); }
+  .recharts-rectangle.recharts-tooltip-cursor { fill: rgb(var(--c-bone) / 0.04); stroke: none; }
+  .recharts-dot, .recharts-active-dot circle, .chart-dot { stroke: rgb(var(--c-panel)); }
 }
 
 @layer components {

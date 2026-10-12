@@ -9,6 +9,7 @@ import { saveFile } from "@/data/host";
 import { LIST_KEYS, SINGLE_DEFAULTS, SINGLE_KEYS, TABLES, validateRow, validateSingle } from "@/data/schema";
 import { useStore } from "@/data/store";
 import { settingsOf } from "@/lib/calc/power";
+import { useTheme, type ThemeChoice } from "@/lib/theme";
 import { toCSV } from "@/lib/csv";
 import { fmtDate, todayIn } from "@/lib/dates";
 import { round, num, errorMessage, plural } from "@/lib/format";
@@ -38,6 +39,7 @@ export default function Settings() {
   return (
     <div className="space-y-10">
       <PageHeader eyebrow="Settings" title="Your system" />
+      <Section id="appearance" title="Appearance"><AppearanceSettings /></Section>
       <Section id="storage" title="Storage"><StorageSettings /></Section>
       <Section id="profile" title="Profile"><ProfileSettings /></Section>
       <Section id="body" title="Body goals" sub="Changing the baseline recalculates every meter and milestone from your records."><BodySettings /></Section>
@@ -462,6 +464,19 @@ function PowerSettingsCard() {
           <Link to="/power" className="link text-[13px]">Edit the Power List items →</Link>
         </div>
       </form>
+    </Card>
+  );
+}
+
+/** Day (white) or Night (black) — a choice for this device. */
+function AppearanceSettings() {
+  const { choice, setChoice } = useTheme();
+  return (
+    <Card>
+      <Field label="Theme" group hint="Day is white with black type; Night is black with white type. Gold accents in both. Saved on this device.">
+        <Segmented<ThemeChoice> label="Theme" value={choice} onChange={setChoice}
+          options={[{ value: "day", label: "Day" }, { value: "night", label: "Night" }, { value: "system", label: "Match device" }]} />
+      </Field>
     </Card>
   );
 }

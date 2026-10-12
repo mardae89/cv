@@ -170,3 +170,21 @@ export const SECTION_NOTES: Record<string, string> = {
   "Community and coaching pulls": "Direct calls to the free group. Make the free thing concrete and the paid thing scarce.",
   "Story and credibility": "Your background and why you're credible.",
 };
+
+/** Your positioning and rules for the content, from your notes. */
+export const STRATEGY = {
+  positioning: "Swing trading for people who have jobs and lives. The enemy is screen time, not the market.",
+  tone: "Analyst, not hype man. Show the work. Admit the losses.",
+  goal: "Get the right person into the free Skool tier. The right person is someone who watches you work and thinks “I want him to walk me through this.”",
+  changed: "The investigative lane and lifestyle content were cut back hard: they pull an audience, not a buyer. The space went to what your first client asked for directly: watching you teach a real person, the schedule problem in both directions, the honest math on replacing income, and pride in the work. Learning alongside me is new and the most important section.",
+  rules: [
+    "Learning alongside me is the priority. One piece of footage of you teaching a real person outperforms ten polished solo videos. Ask permission while you have the client.",
+    "Receipts are non-negotiable: a setup before the outcome, every single week.",
+    "Replacing your income is your integrity layer. Publish the honest timeline loudly and make buyers watch the account-size and timeline videos before they pay.",
+    "Draw long form from Learning alongside me, the Wick Catching mechanism, Receipts, the time problem and Replacing your income.",
+    "Cut most short form directly from that week's long form.",
+    "Investigative long form: one per quarter, not one per week.",
+    "Proof of life: stories only, never feed, always tied to a trade.",
+    "Every post ends the same way: the free group, by name, with one concrete thing they get inside it.",
+  ],
+} as const;

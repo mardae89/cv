@@ -1,6 +1,6 @@
 import {
   Award, BarChart3, Bell, Briefcase, CheckSquare, Home, LineChart, Map, Menu, NotebookPen,
-  Plus, Settings, Users, Activity, X, Zap, Clapperboard, Radar,
+  Plus, Settings, Users, Activity, X, Zap, Clapperboard, Radar, Sun, Moon,
 } from "lucide-react";
 import { useLayoutEffect, useState, type ReactNode } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
@@ -8,6 +8,7 @@ import { useStore } from "@/data/store";
 import { fmtDate } from "@/lib/dates";
 import { CelebrationHost } from "./Celebration";
 import { WhyBanner } from "./power";
+import { useTheme } from "@/lib/theme";
 import { cx, Sheet } from "./ui";
 
 interface NavItem {
@@ -95,6 +96,19 @@ function HostNotice() {
   );
 }
 
+/** One tap between Day and Night. */
+function ThemeToggle({ className, withLabel }: { className?: string; withLabel?: boolean }) {
+  const { theme, setChoice } = useTheme();
+  const light = theme === "light";
+  return (
+    <button type="button" onClick={() => setChoice(light ? "night" : "day")} aria-label={light ? "Switch to Night theme" : "Switch to Day theme"}
+      title={light ? "Night theme" : "Day theme"} className={cx("inline-flex h-10 w-10 items-center justify-center rounded-xl text-mute transition hover:bg-raised hover:text-bone", className)}>
+      {light ? <Moon className="h-[18px] w-[18px]" /> : <Sun className="h-[18px] w-[18px]" />}
+      {withLabel && (light ? "Night theme" : "Day theme")}
+    </button>
+  );
+}
+
 export function Shell() {
   const { data, notifications, today, host, saveStatus } = useStore();
   const [more, setMore] = useState(false);
@@ -128,6 +142,7 @@ export function Shell() {
           <Bell className={ic} /> Notifications
           {unread > 0 && <span className="ml-auto rounded-full bg-gold px-1.5 text-[11px] font-bold text-ink">{unread}</span>}
         </NavLink>
+        <ThemeToggle withLabel className="mt-1 h-auto w-full justify-start gap-3 px-3 py-2.5 text-[14px]" />
         <div className="mt-4 border-t border-hair px-3 pt-4 text-[11px] leading-relaxed text-faint">
           {data.profile.display_name && <>{data.profile.display_name}<br /></>}{fmtDate(today)}<br />
           {saveStatus.pending ? "Saving…" : host.mode === "shared-page" ? "Saved on this page" : "Saved in this browser only"}
@@ -141,10 +156,13 @@ export function Shell() {
           {/* mobile top bar */}
           <div className="flex items-center justify-between border-b border-hair bg-ink/90 px-4 py-3 backdrop-blur lg:hidden">
             <Wordmark />
+            <div className="flex items-center">
+            <ThemeToggle />
             <Link to="/notifications" aria-label={`Notifications${unread ? `, ${unread} unread` : ""}`} className="relative p-2 text-mute">
               <Bell className="h-5 w-5" />
               {unread > 0 && <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-gold" />}
             </Link>
+            </div>
           </div>
           <SaveError />
         </div>

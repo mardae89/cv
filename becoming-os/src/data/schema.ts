@@ -171,7 +171,7 @@ export const SINGLE_DEFAULTS: Record<SingleKey, Record<string, unknown>> = {
   },
   powerSettings: {
     reasons: ["Travel the world", "Financial freedom", "Freedom with my time", "Help my family", "Live life fully", "Health"],
-    identity: null, shorts_per_day: 2, longs_per_week: 4, reach_per_day: 10,
+    identity: null, shorts_per_day: 2, longs_per_week: 4, reach_per_day: 10, long_release_days: [1, 2, 3, 4],
   },
 };
 
@@ -554,6 +554,8 @@ export function validateSingle(key: SingleKey, r: Record<string, unknown>): void
     range(r, "shorts_per_day", 0, 20, "Short-form videos per day");
     range(r, "longs_per_week", 0, 20, "Long-form videos per week");
     range(r, "reach_per_day", 0, 1000, "New people reached per day");
+    const lr = r.long_release_days;
+    if (lr != null && (!Array.isArray(lr) || lr.some((d) => !Number.isInteger(d) || d < 0 || d > 6))) fail("Long-form release days aren't valid.");
   }
 }
 

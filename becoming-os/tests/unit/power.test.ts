@@ -66,15 +66,27 @@ describe("day results", () => {
     const done = r.items.filter((s) => s.done).map((s) => s.item.name);
     expect(done).toEqual(["Both exercise sessions", "Log food", "Short-form videos posted"]);
   });
-  it("colours days green at 75% and red below once over", () => {
+  it("colours days: 90%+ bright green, 75%+ green, over 50% orange, 50% or under red", () => {
     const today = "2026-10-14";
     // Monday: 10 due, 8 done = 80% → green. Tuesday: 10 due, 7 done = 70% → red.
     const data = makeData({ powerLogs: [...complete(list, MON, ["Read", "In bed"]), ...complete(list, "2026-10-13", ["Read", "In bed", "No impulsive"])] });
     const idx = indexPower(data);
     expect(dayStatus(dayResult(list, MON, idx), today)).toBe("green");
-    expect(dayStatus(dayResult(list, "2026-10-13", idx), today)).toBe("red");
+    expect(dayStatus(dayResult(list, "2026-10-13", idx), today)).toBe("orange");
     expect(dayStatus(dayResult(list, today, idx), today)).toBe("in-progress");
     expect(dayStatus(dayResult(list, "2026-10-20", idx), today)).toBe("future");
+    const at = (pct: number, date = "2026-10-13") => dayStatus({ date, due: 100, done: pct, pct, items: [] }, today);
+    expect(at(100)).toBe("best");
+    expect(at(90)).toBe("best");
+    expect(at(89)).toBe("green");
+    expect(at(75)).toBe("green");
+    expect(at(74)).toBe("orange");
+    expect(at(51)).toBe("orange");
+    expect(at(50)).toBe("red");
+    expect(at(0)).toBe("red");
+    // Today is only judged once it's over — unless it's already green.
+    expect(at(60, today)).toBe("in-progress");
+    expect(at(92, today)).toBe("best");
   });
 });
 
@@ -117,7 +129,7 @@ describe("weekly and monthly PCR", () => {
     expect(t.longTarget).toBe(4);
     const a = analyse(w, null, t, "week");
     expect(a.headline).toMatch(/^Great week: 88% PCR/);
-    expect(a.points.join(" ")).toContain("6 green days, 1 red, 6 perfect");
+    expect(a.points.join(" ")).toContain("6 green days, 0 orange, 1 red, 6 perfect");
   });
 });
 

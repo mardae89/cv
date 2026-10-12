@@ -60,7 +60,7 @@ export function dayStatusLine(r: DayResult, today: ISODate): string {
 const RATING_TONE: Record<RatingKey, string> = {
   exceptional: "border-gold bg-gold text-ink",
   great: "border-gold/50 bg-gold-wash text-gold",
-  good: "border-[#6fbf8a]/45 bg-[#6fbf8a]/10 text-[#6fbf8a]",
+  good: "border-good/45 bg-good/10 text-good",
   below: "border-alert/45 bg-alert/10 text-alert",
 };
 
@@ -455,7 +455,7 @@ export function PowerTodayCard() {
         <div className="min-w-0 flex-1">
           <Eyebrow className="mb-1 text-gold">Power List</Eyebrow>
           <h2 className="text-[28px] leading-none">Today</h2>
-          <p className={cx("mt-1.5 text-[12.5px]", status === "green" ? "text-[#6fbf8a]" : "text-mute")}>{dayStatusLine(r, today)}</p>
+          <p className={cx("mt-1.5 text-[12.5px]", status === "best" ? "text-best" : status === "green" ? "text-good" : "text-mute")}>{dayStatusLine(r, today)}</p>
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
             {r.pct !== null && <PcrBadge pct={r.pct} size="sm" />}
             <StreakFlame current={streak.current} />
@@ -476,29 +476,33 @@ export function PowerTodayCard() {
 
 // ───────────────────────────────────────────────────────────── calendar ──
 const STATUS_WORD: Record<DayStatus, string> = {
-  green: "green day", red: "red day", "in-progress": "in progress", future: "upcoming", none: "nothing due",
+  best: "bright green day", green: "green day", orange: "orange day", red: "red day", "in-progress": "in progress", future: "upcoming", none: "nothing due",
 };
 const CELL: Record<DayStatus, string> = {
-  green: "border-[#6fbf8a]/50 bg-[#6fbf8a]/15 text-bone",
-  red: "border-alert/45 bg-alert/10 text-bone",
+  best: "border-best bg-best/30 text-bone",
+  green: "border-good/60 bg-good/20 text-bone",
+  orange: "border-warn/55 bg-warn/20 text-bone",
+  red: "border-alert/55 bg-alert/20 text-bone",
   "in-progress": "border-dashed border-gold/70 bg-gold-wash text-bone",
-  future: "border-hair text-faint/70",
-  none: "border-hair text-faint",
+  future: "border-hair text-faint",
+  none: "border-hair/60 text-faint",
 };
-const PCT_TONE: Record<DayStatus, string> = { green: "text-[#6fbf8a]", red: "text-alert", "in-progress": "text-gold", future: "", none: "" };
+const PCT_TONE: Record<DayStatus, string> = { best: "text-best", green: "text-good", orange: "text-warn", red: "text-alert", "in-progress": "text-gold", future: "", none: "" };
 
 export function CalendarLegend() {
+  const sw = (cls: string) => <span className={cx("h-3 w-3 shrink-0 rounded border", cls)} />;
   return (
     <ul className="flex flex-wrap gap-x-4 gap-y-1.5 text-[11.5px] text-mute">
-      <li className="flex items-center gap-1.5"><span className="h-3 w-3 rounded border border-[#6fbf8a]/50 bg-[#6fbf8a]/30" />{GREEN_AT}% or more</li>
-      <li className="flex items-center gap-1.5"><span className="h-3 w-3 rounded border border-alert/50 bg-alert/25" />Under {GREEN_AT}%</li>
-      <li className="flex items-center gap-1.5"><span className="h-3 w-3 rounded border border-dashed border-gold/70" />Today, in progress</li>
-      <li className="flex items-center gap-1.5"><span className="h-3 w-3 rounded border border-line" />Nothing due</li>
+      <li className="flex items-center gap-1.5">{sw("border-best bg-best/40")}90% or more</li>
+      <li className="flex items-center gap-1.5">{sw("border-good/60 bg-good/30")}75% or more</li>
+      <li className="flex items-center gap-1.5">{sw("border-warn/60 bg-warn/30")}Over 50%</li>
+      <li className="flex items-center gap-1.5">{sw("border-alert/60 bg-alert/30")}50% or under</li>
+      <li className="flex items-center gap-1.5">{sw("border-dashed border-gold/70")}Today, in progress</li>
     </ul>
   );
 }
 
-/** Month grid, Monday first: green at 75%+, red under 75% once the day is over. */
+/** Month grid, Monday first: bright green 90%+, green 75%+, orange over 50%, red 50% or under (once the day is over). */
 export function PowerCalendar({ month, selected, onSelect, onMonthChange }: {
   month: ISODate; selected?: ISODate; onSelect?: (d: ISODate) => void; onMonthChange?: (m: ISODate) => void;
 }) {
@@ -523,7 +527,7 @@ export function PowerCalendar({ month, selected, onSelect, onMonthChange }: {
         <div className="min-w-0 flex-1 text-center">
           <div className="font-display text-[22px] leading-none text-bone">{fmtMonth(m0)}</div>
           <div className="num mt-1 text-[11.5px] text-mute">
-            {summary.pct === null ? "Nothing due" : `${pctText(summary.pct)} PCR · ${summary.greenDays} green · ${summary.redDays} red`}
+            {summary.pct === null ? "Nothing due" : `${pctText(summary.pct)} PCR · ${summary.greenDays} green · ${summary.orangeDays} orange · ${summary.redDays} red`}
           </div>
         </div>
         {onMonthChange && (
@@ -618,7 +622,8 @@ export function PcrTrendChart({ points, height = 220, tick }: { points: TrendPoi
 /** A day as a small coloured dot (history sheets). */
 export function DayDot({ r, today }: { r: DayResult; today: ISODate }) {
   const st = dayStatus(r, today);
-  const tone = st === "green" ? "bg-[#6fbf8a]/80 text-ink" : st === "red" ? "bg-alert/70 text-ink" : st === "in-progress" ? "border border-dashed border-gold text-gold" : "border border-line text-faint";
+  const tone = st === "best" ? "bg-best text-ink" : st === "green" ? "bg-good/80 text-ink" : st === "orange" ? "bg-warn/80 text-ink"
+    : st === "red" ? "bg-alert/75 text-ink" : st === "in-progress" ? "border border-dashed border-gold text-gold" : "border border-line text-faint";
   return (
     <span role="img" aria-label={`${fmtLongDate(r.date)}: ${r.pct === null ? STATUS_WORD[st] : `${pctText(r.pct)} PCR, ${STATUS_WORD[st]}`}`}
       title={`${fmtShort(r.date)} · ${r.pct === null ? STATUS_WORD[st] : pctText(r.pct)}`}

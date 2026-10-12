@@ -41,6 +41,7 @@ export const DEFAULT_SETTINGS: Omit<PowerSettings, "user_id"> = {
   shorts_per_day: 2,
   longs_per_week: 4,
   reach_per_day: 10,
+  long_release_days: [1, 2, 3, 4],
 };
 
 export const settingsOf = (data: Pick<UserData, "powerSettings">): Omit<PowerSettings, "user_id"> =>
@@ -146,14 +147,24 @@ export function dayResult(items: PowerItem[], date: ISODate, idx: PowerIndex): D
   return { date, due: states.length, done, pct: states.length ? (done / states.length) * 100 : null, items: states };
 }
 
-export type DayStatus = "green" | "red" | "in-progress" | "future" | "none";
+/** Above this a day under 75% shows orange rather than red. */
+export const ORANGE_ABOVE = 50;
+export const BEST_AT = 90;
 
-/** Calendar colour: green at 75%+, red under 75% once the day is over, neutral before the list existed. */
+export type DayStatus = "best" | "green" | "orange" | "red" | "in-progress" | "future" | "none";
+
+/**
+ * Calendar colour. 90%+ bright green, 75%+ green, over 50% orange, 50% or
+ * under red. Today stays "in progress" until it reaches green; it's only
+ * judged orange or red once it's over. Neutral before the list existed.
+ */
 export function dayStatus(r: DayResult, today: ISODate): DayStatus {
   if (r.date > today) return "future";
   if (r.pct === null) return "none";
+  if (r.pct >= BEST_AT) return "best";
   if (r.pct >= GREEN_AT) return "green";
-  return r.date === today ? "in-progress" : "red";
+  if (r.date === today) return "in-progress";
+  return r.pct > ORANGE_ABOVE ? "orange" : "red";
 }
 
 /** The first date any item counts from. */
@@ -177,7 +188,11 @@ export interface PeriodResult {
   due: number;
   done: number;
   pct: number | null;
+  /** Days at 75% or more (bright green included). */
   greenDays: number;
+  /** Finished days over 50% but under 75%. */
+  orangeDays: number;
+  /** Finished days at 50% or under. */
   redDays: number;
   perfectDays: number;
   perItem: ItemRate[];
@@ -212,7 +227,8 @@ export function periodResult(items: PowerItem[], from: ISODate, to: ISODate, idx
   return {
     from, to, days, due, done, pct: due ? (done / due) * 100 : null,
     greenDays: days.filter((d) => (d.pct ?? 0) >= GREEN_AT).length,
-    redDays: finished.filter((d) => (d.pct ?? 0) < GREEN_AT).length,
+    orangeDays: finished.filter((d) => (d.pct ?? 0) < GREEN_AT && (d.pct ?? 0) > ORANGE_ABOVE).length,
+    redDays: finished.filter((d) => (d.pct ?? 0) <= ORANGE_ABOVE).length,
     perfectDays: days.filter((d) => d.pct === 100).length,
     perItem, complete: to < today,
   };
@@ -285,7 +301,7 @@ export function analyse(p: PeriodResult, prev: PeriodResult | null, tally: Conte
   const headline = p.complete
     ? `${r.label} ${label}: ${pctText(p.pct)} PCR across ${p.due} scheduled items.`
     : `${pctText(p.pct)} PCR so far this ${label} (${p.done} of ${p.due} items).`;
-  points.push(`${p.greenDays} green day${p.greenDays === 1 ? "" : "s"}, ${p.redDays} red${p.perfectDays ? `, ${p.perfectDays} perfect` : ""}.`);
+  points.push(`${p.greenDays} green day${p.greenDays === 1 ? "" : "s"}, ${p.orangeDays} orange, ${p.redDays} red${p.perfectDays ? `, ${p.perfectDays} perfect` : ""}.`);
   if (prev?.pct != null) {
     const diff = p.pct - prev.pct;
     points.push(Math.abs(diff) < 0.5 ? `Level with last ${label} (${pctText(prev.pct)}).`

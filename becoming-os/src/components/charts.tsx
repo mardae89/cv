@@ -70,7 +70,7 @@ export function Chart({ data, x, series, fmt = (v) => String(v), xFmt = fmtShort
           {series.map((s) => {
             if (s.type === "bar") return <Bar key={s.key} dataKey={s.key} name={s.label} fill={s.color} radius={[4, 4, 0, 0]} maxBarSize={24} />;
             if (s.type === "dots") return <Scatter key={s.key} dataKey={s.key} name={s.label} fill={s.color} shape={(p: { cx?: number; cy?: number }) => (
-              p.cx === undefined || p.cy === undefined ? <g /> : <circle cx={p.cx} cy={p.cy} r={3} fill={s.color} stroke="#111113" strokeWidth={1.5} />
+              p.cx === undefined || p.cy === undefined ? <g /> : <circle className="chart-dot" cx={p.cx} cy={p.cy} r={3} fill={s.color} stroke="#111113" strokeWidth={1.5} />
             )} />;
             if (s.type === "area") return <Area key={s.key} dataKey={s.key} name={s.label} stroke={s.color} strokeWidth={2} fill={s.color} fillOpacity={0.1} type="monotone" connectNulls dot={false} />;
             return <Line key={s.key} dataKey={s.key} name={s.label} stroke={s.color} strokeWidth={2} dot={false} type="monotone"

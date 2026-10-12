@@ -440,6 +440,8 @@ export interface PowerSettings {
   longs_per_week: number;
   /** New people reached per day (the Traffic Engine's daily ten). */
   reach_per_day: number;
+  /** Days long-form videos are released, 0 = Sunday … 6 = Saturday. */
+  long_release_days: number[];
 }
 
 // ── Traffic Engine: the four numbers, by channel

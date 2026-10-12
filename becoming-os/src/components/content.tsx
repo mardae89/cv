@@ -125,10 +125,11 @@ export function useContentActions() {
     const longsDone = ideas.filter((c) => c.format === "long" && c.status === "done" && c.completed_on && c.completed_on >= week.from && c.completed_on <= week.to).length;
     const longsPlanned = ideas.filter((c) => c.format === "long" && c.status === "open" && c.planned_for && c.planned_for <= week.to).length;
     const longOnSlate = ideas.some((c) => c.format === "long" && onSlate(c));
-    const long = longsDone + longsPlanned < settings.longs_per_week && !longOnSlate ? pool.find((c) => c.format === "long") : undefined;
+    const releaseDay = settings.long_release_days.includes(dow(today));
+    const long = releaseDay && longsDone + longsPlanned < settings.longs_per_week && !longOnSlate ? pool.find((c) => c.format === "long") : undefined;
     const add = [...shorts, ...(long ? [long] : [])];
     if (!add.length) {
-      const needsMore = shortsOnSlate < settings.shorts_per_day || (longsDone + longsPlanned < settings.longs_per_week && !longOnSlate);
+      const needsMore = shortsOnSlate < settings.shorts_per_day || (releaseDay && longsDone + longsPlanned < settings.longs_per_week && !longOnSlate);
       toast(needsMore ? "No open ideas left to add. Add new ideas in the library." : "Today's slate already covers your targets.", "info");
       return;
     }
@@ -305,6 +306,7 @@ export function ScheduleStrip() {
     <ol className="grid gap-1.5 lg:grid-cols-7" aria-label="This week's production schedule">
       {days.map((d) => {
         const items = productionDue(data.powerItems, d);
+        const releaseLong = settingsOf(data).long_release_days.includes(dow(d));
         const isToday = d === today;
         const s = done(d, "short"), l = done(d, "long");
         return (
@@ -316,9 +318,11 @@ export function ScheduleStrip() {
               <div className="num text-[11px] text-faint">{fmtShort(d)}</div>
             </div>
             <div className="flex min-w-0 flex-1 flex-wrap gap-1">
-              {items.length ? items.map((i) => (
+              {releaseLong && <span className="rounded-md border border-gold/40 bg-gold-wash px-1.5 py-0.5 text-[11px] text-gold">Release long-form</span>}
+              {items.map((i) => (
                 <span key={i.id} className="rounded-md border border-line bg-panel px-1.5 py-0.5 text-[11px] text-mute">{i.name}</span>
-              )) : <span className="text-[11px] text-faint">{dow(d) === 0 || dow(d) === 6 ? "No filming" : "Nothing scheduled"}</span>}
+              ))}
+              {!items.length && !releaseLong && <span className="text-[11px] text-faint">{dow(d) === 0 || dow(d) === 6 ? "No filming" : "Nothing scheduled"}</span>}
             </div>
             {d <= today && (s > 0 || l > 0) && (
               <div className="num shrink-0 text-[11px] text-mute lg:mt-auto">{[s && `${s} short`, l && `${l} long`].filter(Boolean).join(" · ")}</div>
@@ -361,7 +365,7 @@ export function ContentTodayCard() {
           <h2 id="content-today-title" className="text-[28px] leading-none">Today's content</h2>
           {focus.length > 0 && <p className="mt-1.5 text-[12.5px] text-mute">{focus.map((i) => i.name).join(" · ")}</p>}
         </div>
-        <Link to="/content" className="inline-flex h-10 shrink-0 items-center text-[12.5px] text-mute hover:text-gold">Open content →</Link>
+        <Link to="/content" className="inline-flex h-10 shrink-0 items-center text-[12.5px] text-mute hover:text-gold">Content Bank →</Link>
       </div>
 
       {empty ? (

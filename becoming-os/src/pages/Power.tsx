@@ -149,7 +149,7 @@ const DayPanel = forwardRef<HTMLElement, { day: ISODate; setDay: (d: ISODate) =>
         <div className="min-w-0 flex-1">
           <Eyebrow className="mb-1">{isToday ? "Today" : fmtShort(day)}</Eyebrow>
           <h2 className="text-[26px] leading-[1.05] sm:text-[30px]">{fmtLongDate(day).replace(/, \d{4}$/, "")}</h2>
-          <p className={cx("mt-1.5 text-[13px]", status === "green" ? "text-[#6fbf8a]" : status === "red" ? "text-alert" : "text-mute")} aria-live="polite">
+          <p className={cx("mt-1.5 text-[13px]", status === "best" ? "text-best" : status === "green" ? "text-good" : status === "orange" ? "text-warn" : status === "red" ? "text-alert" : "text-mute")} aria-live="polite">
             {dayStatusLine(r, today)}
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -218,8 +218,9 @@ function PeriodBreakdown({ p, prev, grain }: { p: PeriodResult; prev: PeriodResu
           </ul>
         )}
       </div>
-      <div className="grid grid-cols-3 gap-3 border-t border-hair pt-4">
-        <Stat label="Green days" value={<span className="text-[#6fbf8a]">{p.greenDays}</span>} />
+      <div className="grid grid-cols-2 gap-3 border-t sm:grid-cols-4 border-hair pt-4">
+        <Stat label="Green days" value={<span className="text-good">{p.greenDays}</span>} />
+        <Stat label="Orange days" value={<span className={p.orangeDays ? "text-warn" : ""}>{p.orangeDays}</span>} />
         <Stat label="Red days" value={<span className={p.redDays ? "text-alert" : ""}>{p.redDays}</span>} />
         <Stat label="Perfect" value={p.perfectDays} accent={p.perfectDays > 0} />
       </div>
@@ -318,7 +319,7 @@ function History({ grain, idx }: { grain: Grain; idx: PowerIndex }) {
                   <span className="min-w-0 flex-1">
                     <span className="block text-[14px] text-bone">{periodLabel(p, grain)}</span>
                     <span className="num mt-0.5 block text-[11.5px] text-mute">
-                      {p.greenDays} green · {p.redDays} red · {t.shorts}/{t.shortTarget} short · {t.longs}/{t.longTarget} long
+                      {p.greenDays} green · {p.orangeDays} orange · {p.redDays} red · {t.shorts}/{t.shortTarget} short · {t.longs}/{t.longTarget} long
                     </span>
                   </span>
                   <PcrBadge pct={p.pct} size="sm" />
@@ -413,7 +414,7 @@ function Evidence({ idx }: { idx: PowerIndex }) {
         {start ? (start <= today ? `The record since ${fmtShort(start)}, ${plural(diffDays(start, today) + 1, "day")} in.` : `Your list starts ${fmtShort(start)}.`) : ""}
       </p>
       <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-5 sm:grid-cols-3">
-        <Tile value={<span className="text-[#6fbf8a]">{life?.greenDays ?? 0}</span>} label="Green days" />
+        <Tile value={<span className="text-good">{life?.greenDays ?? 0}</span>} label="Green days" />
         <Tile value={<span className="text-gold">{life?.perfectDays ?? 0}</span>} label="Perfect days" />
         <Tile value={streak.best} label="Best green streak" sub={`${streak.current} current`} />
         <Tile value={(life?.done ?? 0).toLocaleString("en-US")} label="Items completed" sub={life?.pct != null ? `${pctText(life.pct)} lifetime PCR` : undefined} />
@@ -433,7 +434,7 @@ function Evidence({ idx }: { idx: PowerIndex }) {
           {mom !== null ? (
             <div className="text-[13px] text-bone">
               {fmtMonth(first.from)} {pctText(first.pct)} → {fmtMonth(last.from)} {pctText(last.pct)}
-              <span className={cx("num ml-2 font-semibold", mom >= 0 ? "text-[#6fbf8a]" : "text-alert")}>{mom >= 0 ? "+" : "−"}{Math.abs(Math.round(mom))} pts</span>
+              <span className={cx("num ml-2 font-semibold", mom >= 0 ? "text-good" : "text-alert")}>{mom >= 0 ? "+" : "−"}{Math.abs(Math.round(mom))} pts</span>
             </div>
           ) : <div className="text-[13px] text-faint">Compares your first month with the latest once there are two.</div>}
         </div>

@@ -18,6 +18,9 @@ export default {
         gold: { DEFAULT: c("gold"), hi: c("gold-hi"), dim: c("gold-dim"), wash: "var(--gold-wash)" },
         alert: c("alert"),
         calm: c("calm"),
+        best: c("best"),
+        good: c("good"),
+        warn: c("warn"),
       },
       fontFamily: {
         display: ['"Cormorant Garamond"', "ui-serif", "Georgia", "serif"],
