@@ -1,5 +1,5 @@
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
+import { Suspense, useEffect, useState, type ReactNode } from "react";
 import { HashRouter, MemoryRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { FeedbackProvider } from "./components/feedback";
 import { Shell } from "./components/Shell";
@@ -8,24 +8,26 @@ import { detectHost, isFramed, type Host } from "./data/host";
 import { DataProvider, useStore } from "./data/store";
 import { errorMessage } from "./lib/format";
 import { Today } from "./pages/Today";
+// Every page is part of the one file: loading pages on demand broke inside the
+// claude.ai viewer in desktop browsers ("n is not a function") and saves nothing here.
 
-const Log = lazy(() => import("./pages/Log"));
-const Progress = lazy(() => import("./pages/Progress"));
-const Train = lazy(() => import("./pages/Train"));
-const Business = lazy(() => import("./pages/Business"));
-const Workspace = lazy(() => import("./pages/Workspace"));
-const Habits = lazy(() => import("./pages/Habits"));
-const Reviews = lazy(() => import("./pages/Reviews"));
-const Roadmap = lazy(() => import("./pages/Roadmap"));
-const Achievements = lazy(() => import("./pages/Achievements"));
-const Charts = lazy(() => import("./pages/Charts"));
-const Together = lazy(() => import("./pages/Together"));
-const Notifications = lazy(() => import("./pages/Notifications"));
-const Settings = lazy(() => import("./pages/Settings"));
-const Onboarding = lazy(() => import("./pages/Onboarding"));
-const Power = lazy(() => import("./pages/Power"));
-const Content = lazy(() => import("./pages/Content"));
-const Traffic = lazy(() => import("./pages/Traffic"));
+import Log from "./pages/Log";
+import Progress from "./pages/Progress";
+import Train from "./pages/Train";
+import Business from "./pages/Business";
+import Workspace from "./pages/Workspace";
+import Habits from "./pages/Habits";
+import Reviews from "./pages/Reviews";
+import Roadmap from "./pages/Roadmap";
+import Achievements from "./pages/Achievements";
+import Charts from "./pages/Charts";
+import Together from "./pages/Together";
+import Notifications from "./pages/Notifications";
+import Settings from "./pages/Settings";
+import Onboarding from "./pages/Onboarding";
+import Power from "./pages/Power";
+import Content from "./pages/Content";
+import Traffic from "./pages/Traffic";
 
 /** Sends a brand-new person to onboarding once; every step there is skippable. */
 function OnboardingGate({ children }: { children: ReactNode }) {

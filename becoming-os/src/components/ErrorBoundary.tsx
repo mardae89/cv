@@ -20,7 +20,8 @@ export class ErrorBoundary extends Component<{ children: ReactNode; whole?: bool
   render() {
     const { error } = this.state;
     if (!error) return this.props.children;
-    const detail = `${error.name}: ${error.message}`;
+    const where = (error.stack ?? "").split("\n").filter((l) => l.trim() && !l.includes(error.message)).slice(0, 4).map((l) => l.trim().slice(0, 160));
+    const detail = [`${error.name}: ${error.message}`, ...where, `Browser: ${navigator.userAgent}`].join("\n");
     return (
       <div role="alert" className={this.props.whole ? "mx-auto max-w-lg px-4 py-16" : "py-6"}>
         <div className="rounded-2xl border border-alert/40 bg-panel p-6">

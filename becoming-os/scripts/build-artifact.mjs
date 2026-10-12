@@ -91,6 +91,9 @@ fs.rmSync(tmpDir, { recursive: true, force: true });
 // The page's content security policy forbids eval and every network request, so
 // say plainly if anything that looks like either made it into the bundle.
 const evalHits = (js.match(/\bnew Function\(|[^.\w$]eval\(/g) ?? []).length;
+// Pages loaded on demand (React.lazy + Vite's preload helper) failed inside the
+// claude.ai viewer in desktop browsers; every page must be part of the one bundle.
+if (js.includes("vite:preloadError")) fail("the bundle loads code on demand; import pages directly instead of with lazy()");
 const urls = [...new Set(js.match(/https?:\/\/[^\s"'`)\\]+/g) ?? [])].sort();
 
 const kb = (n) => `${(n / 1024).toFixed(0)} KB`;
