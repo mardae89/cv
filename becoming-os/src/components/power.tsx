@@ -314,7 +314,9 @@ export function PowerItemRow({ s, date, compact }: { s: ItemState; date: ISODate
   const count = s.item.kind === "count";
   const manual = s.log?.value ?? 0;
   const [draft, setDraft] = useState(String(s.value));
-  useEffect(() => setDraft(String(s.value)), [s.value]);
+  useEffect(() => {
+    setDraft(String(s.value));
+  }, [s.value]);
 
   const setValue = (n: number) => {
     const v = Math.max(0, Math.min(100000, Math.round(n)));

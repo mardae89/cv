@@ -29,6 +29,13 @@ async function open(browser: Browser, viewport: { width: number; height: number 
   // place of the app (a blank page), as seen in desktop browsers.
   await ctx.addInitScript(() => {
     if (window.self === window.top) return;
+    // In the Claude desktop app, scrollTo returns a value rather than undefined;
+    // an effect that returns its result would hand React a non-function cleanup.
+    const scrollTo = window.scrollTo.bind(window);
+    (window as unknown as { scrollTo: (...a: unknown[]) => unknown }).scrollTo = (...a: unknown[]) => {
+      (scrollTo as (...x: unknown[]) => void)(...a);
+      return Promise.resolve();
+    };
     document.addEventListener("click", (e) => {
       const a = (e.target as Element | null)?.closest?.("a");
       if (!a) return;
@@ -51,10 +58,12 @@ const heading = (app: FrameLocator) => app.locator("main h1").first();
 test("framed, desktop: every sidebar link and the keyboard navigate", async ({ browser }) => {
   const { app, errors } = await open(browser, { width: 1280, height: 800 });
   const side = app.locator("aside");
+  const crashed = app.getByRole("alert").filter({ hasText: "couldn't open" });
   // No navigation item is an <a> element inside the viewer.
   await expect(app.locator("aside a, nav a, main a")).toHaveCount(0);
   for (const [name, h] of PAGES) {
     await side.getByRole("link", { name, exact: true }).click();
+    await expect(crashed).toHaveCount(0);
     await expect(heading(app)).toHaveText(h);
     await expect(side.getByRole("link", { name, exact: true })).toHaveAttribute("aria-current", "page");
   }

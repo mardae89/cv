@@ -54,7 +54,9 @@ export default function Onboarding() {
   const step = steps[Math.min(i, steps.length - 1)];
   const [busy, setBusy] = useState(false);
   // Each step starts at its heading, not wherever the last one was scrolled to.
-  useEffect(() => window.scrollTo(0, 0), [i]);
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [i]);
 
   // body
   const g = data.goals;

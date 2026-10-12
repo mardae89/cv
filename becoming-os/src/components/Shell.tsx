@@ -126,7 +126,11 @@ export function Shell() {
   const onMorePage = !bottom.some((to) => to === "/" ? loc.pathname === "/" : loc.pathname.startsWith(to));
   // A new page starts at its top, not at the previous page's scroll position.
   // (Runs before page effects, so a page can still scroll to a #section.)
-  useLayoutEffect(() => window.scrollTo(0, 0), [loc.pathname]);
+  // Braces matter: inside the Claude desktop app scrollTo returns a value, which
+  // React would then try to call as this effect's cleanup.
+  useLayoutEffect(() => {
+    window.scrollTo(0, 0);
+  }, [loc.pathname]);
 
   return (
     <div className="min-h-screen lg:flex">
