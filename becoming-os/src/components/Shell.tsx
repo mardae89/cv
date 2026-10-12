@@ -3,7 +3,8 @@ import {
   Plus, Settings, Users, Activity, X, Zap, Clapperboard, Radar, Sun, Moon,
 } from "lucide-react";
 import { useLayoutEffect, useState, type ReactNode } from "react";
-import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
+import { Link, NavLink } from "@/components/AppLink";
 import { useStore } from "@/data/store";
 import { fmtDate } from "@/lib/dates";
 import { CelebrationHost } from "./Celebration";

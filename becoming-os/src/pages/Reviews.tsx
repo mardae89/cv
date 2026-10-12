@@ -1,6 +1,7 @@
 import { ChevronLeft, ChevronRight, Lightbulb } from "lucide-react";
 import { useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
+import { Link } from "@/components/AppLink";
 import { useSubmit } from "@/components/forms/body";
 import { PcrBadge, usePowerIndex } from "@/components/power";
 import { Button, Card, cx, Eyebrow, Field, Meter, Notice, PageHeader, Pill, Segmented, Stat, Table, Textarea, Toggle } from "@/components/ui";

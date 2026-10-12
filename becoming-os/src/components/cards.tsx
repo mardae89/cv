@@ -1,5 +1,5 @@
 import { ArrowRight } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link } from "@/components/AppLink";
 import { useStore } from "@/data/store";
 import { longestRun, PHASES, trainingWeek } from "@/lib/calc/athletic";
 import { fmtChange, fmtCount, PLATFORMS, summarize } from "@/lib/calc/audience";

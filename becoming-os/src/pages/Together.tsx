@@ -1,6 +1,6 @@
 import { HardDrive, Users } from "lucide-react";
 import { useState, type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "@/components/AppLink";
 import { PartnerFitnessCard } from "@/components/cards";
 import { Chart, ChartCard, GOLD, NEUTRAL } from "@/components/charts";
 import { useSubmit } from "@/components/forms/body";

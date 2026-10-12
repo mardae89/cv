@@ -1,6 +1,7 @@
 import { Check } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
+import { Link } from "@/components/AppLink";
 import { CheckinForm, PhotoUpload, SymptomForm, WeightForm } from "@/components/forms/body";
 import { AudienceForm } from "@/components/forms/audience";
 import { ActivityLogger, DealForm, KIND_LABEL, TransactionForm } from "@/components/forms/business";

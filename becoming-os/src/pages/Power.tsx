@@ -1,6 +1,6 @@
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, ListChecks, Pencil, Plus } from "lucide-react";
 import { forwardRef, useMemo, useRef, useState, type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "@/components/AppLink";
 import { ChartCard, monthTick } from "@/components/charts";
 import { useFeedback } from "@/components/feedback";
 import { useSubmit } from "@/components/forms/body";

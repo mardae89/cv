@@ -1,6 +1,6 @@
 import { Download, Plus } from "lucide-react";
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "@/components/AppLink";
 import { Chart, ChartCard, GOLD, monthTick, SERIES } from "@/components/charts";
 import { useFeedback } from "@/components/feedback";
 import { useSubmit } from "@/components/forms/body";

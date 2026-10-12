@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "@/components/AppLink";
 import { useSubmit } from "@/components/forms/body";
 import { Button, Card, cx, Eyebrow, Field, Notice, PageHeader, Pill, Select, Textarea } from "@/components/ui";
 import { useStore } from "@/data/store";

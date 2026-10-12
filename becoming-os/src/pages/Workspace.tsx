@@ -1,6 +1,7 @@
 import { ArrowLeft, Plus } from "lucide-react";
 import { useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
+import { Link } from "@/components/AppLink";
 import { useFeedback } from "@/components/feedback";
 import { useSubmit } from "@/components/forms/body";
 import { ActivityLogger, DealForm, STAGES, TransactionForm } from "@/components/forms/business";

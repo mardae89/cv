@@ -1,6 +1,6 @@
 import { Award, Check, Dumbbell, NotebookPen, Plus, Receipt, Scale, Utensils, X } from "lucide-react";
 import { useState, type FormEvent } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "@/components/AppLink";
 import { AthleticCard, AudienceCard, BusinessCard, FitnessCard, PartnerFitnessCard, TrafficCard } from "@/components/cards";
 import { ContentTodayCard } from "@/components/content";
 import { PowerTodayCard, WhyBanner } from "@/components/power";

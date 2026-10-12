@@ -5,7 +5,7 @@
 import { ArrowRight, Check, ChevronLeft, ChevronRight, Flame, Minus, Plus } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Link } from "react-router-dom";
+import { Link } from "@/components/AppLink";
 import { Bar, CartesianGrid, ComposedChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useStore } from "@/data/store";
 import {

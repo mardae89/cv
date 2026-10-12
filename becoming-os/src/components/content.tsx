@@ -3,7 +3,7 @@
 // idea library, and the idea form. Every number is recomputed from saved ideas.
 import { Check, ChevronLeft, ChevronRight, Library, Plus } from "lucide-react";
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "@/components/AppLink";
 import { useStore } from "@/data/store";
 import { indexPower, isDue, itemState, settingsOf, weekOf } from "@/lib/calc/power";
 import { CONTENT_PACK } from "@/lib/contentPack";

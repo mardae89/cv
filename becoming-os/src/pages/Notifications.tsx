@@ -1,5 +1,5 @@
 import { Bell } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link } from "@/components/AppLink";
 import { useFeedback } from "@/components/feedback";
 import { Button, Card, cx, EmptyState, Notice, PageHeader } from "@/components/ui";
 import { useStore } from "@/data/store";

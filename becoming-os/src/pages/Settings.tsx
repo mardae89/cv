@@ -1,6 +1,7 @@
 import { AlertTriangle, Check, ChevronDown, ChevronUp, Download, Loader2, Upload, X } from "lucide-react";
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
+import { Link } from "@/components/AppLink";
 import { useFeedback } from "@/components/feedback";
 import { useSubmit } from "@/components/forms/body";
 import { Button, Card, DayPicker, Field, IconButton, Input, Notice, NumberInput, PageHeader, Segmented, Select, Textarea, Toggle } from "@/components/ui";

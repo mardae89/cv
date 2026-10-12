@@ -1,6 +1,7 @@
 import { CalendarMinus, CalendarPlus, Library, Pencil, Plus, Search, Trash2, Wand2, X } from "lucide-react";
 import { useRef, useState, type FormEvent } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
+import { Link } from "@/components/AppLink";
 import {
   DoneBox, FilmingFocus, FORMAT_LABEL, FUNNEL_LABEL, FUNNEL_ORDER, IdeaChips, IdeaForm, IdeaTitle, Pager, productionDue, RowAction,
   ScheduleStrip, useContentActions, useContentDay, useReleasePlan, useTargets,
