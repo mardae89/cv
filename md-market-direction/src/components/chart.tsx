@@ -84,10 +84,12 @@ export interface ChartLevel {
   extendRight?: boolean;
   /** Drawn back: a rung behind the one that matters now. */
   faint?: boolean;
-  /** Identifies the level to the owner when it is dragged. */
+  /** Identifies the level to the owner when it is selected or dragged. */
   id?: string;
-  /** Lets the level be dragged up and down to a price of the reader's choosing. */
+  /** Lets the level be selected, dragged, and its ends changed. */
   draggable?: boolean;
+  /** Carry the line to the left edge as well. */
+  extendLeft?: boolean;
 }
 
 /** A point on a bar — a structure point, or where a shift landed. */
@@ -111,6 +113,9 @@ export function PriceChart({
   levels,
   markers,
   onLevelMove,
+  selectedLevel,
+  onSelectLevel,
+  overlay,
   focusT,
   symbolControl,
   viewControl,
@@ -125,6 +130,12 @@ export function PriceChart({
   markers?: ChartMarker[];
   /** Called while a draggable level is being dragged, with its new price. */
   onLevelMove?: (id: string, price: number) => void;
+  /** The level the reader has selected, if any. */
+  selectedLevel?: string | null;
+  /** Called when a level is selected, or the selection is dropped. */
+  onSelectLevel?: (id: string | null) => void;
+  /** Pinned inside the chart body — controls for whatever is selected. */
+  overlay?: ReactNode;
   /** Scroll so this bar time is centred. Changing it moves the view once. */
   focusT?: number | null;
   /** Rendered in the chart's own toolbar — a symbol picker, so the market can
@@ -384,13 +395,18 @@ export function PriceChart({
     const x = clientX - rect.left;
     const y = clientY - rect.top;
     if (x > plotW) return null;
+    let hit: string | null = null;
     for (const lv of levels ?? []) {
       if (!lv.draggable || !lv.id) continue;
-      // Generous enough to catch with a thumb, tight enough that an ordinary
-      // pan near the line still pans.
-      if (Math.abs(Y(lv.price) - y) <= 10) return lv.id;
+      // A thumb is about 10mm across, so the band is wide; once a line is
+      // selected it is wider still, because that one is the one being worked on.
+      const reach = lv.id === selectedLevel ? 22 : 12;
+      if (Math.abs(Y(lv.price) - y) > reach) continue;
+      // The selected line wins where two overlap: it is the one in hand.
+      if (lv.id === selectedLevel) return lv.id;
+      if (hit == null) hit = lv.id;
     }
-    return null;
+    return hit;
   };
 
   const onPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
@@ -398,8 +414,11 @@ export function PriceChart({
     const held = levelAt(e.clientX, e.clientY);
     if (held && pointers.current.size === 0) {
       dragLevel.current = held;
+      if (held !== selectedLevel) onSelectLevel?.(held);
       return;
     }
+    // A press anywhere else puts the line down.
+    if (selectedLevel && zoneAt(e.clientX, e.clientY) === "plot") onSelectLevel?.(null);
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     const pts = Array.from(pointers.current.values());
     const rect = svgRef.current!.getBoundingClientRect();
@@ -571,6 +590,11 @@ export function PriceChart({
         <div className="p-4 text-sm text-mute">Chart data unavailable.</div>
       ) : (
         <div className="chart-body relative">
+          {overlay ? (
+            // Below the OHLC legend rather than over it: the numbers are what a
+            // reader checks while they are moving a line.
+            <div className="pointer-events-auto absolute left-2 top-10 z-20">{overlay}</div>
+          ) : null}
           <svg
             ref={svgRef}
             width={width}
@@ -735,27 +759,42 @@ export function PriceChart({
                 for (let i = 0; i < slice.length; i++) if (slice[i].t <= t) best = i;
                 return best;
               };
-              const x0 = X(idx(lv.fromT)) - step / 2;
+              const anchor = X(idx(lv.fromT)) - step / 2;
+              const x0 = lv.extendLeft ? 0 : anchor;
               const x1 = lv.extendRight
                 ? plotW
-                : Math.max(X(idx(lv.toT)) + step / 2, x0 + step);
+                : Math.max(X(idx(lv.toT)) + step / 2, (lv.extendLeft ? anchor : x0) + step);
               const y = Y(lv.price);
+              const selected = lv.draggable && lv.id != null && lv.id === selectedLevel;
               return (
                 <g key={`lv${k}`} pointerEvents="none">
                   {lv.draggable ? (
                     // Something to take hold of, and a wider band of line to
                     // grab: the level is meant to be put where the reader wants
-                    // it, so it has to look like it can be moved.
+                    // it, so it has to look like it can be moved. Selected, it
+                    // lights up and grows handles at both ends and the middle.
                     <>
-                      <line x1={x0} x2={x1} y1={y} y2={y} stroke={lv.color} strokeWidth={9} opacity={0.12} />
-                      <circle cx={Math.max(x0, 10)} cy={y} r={4} fill={lv.color} />
-                      <circle cx={Math.max(x0, 10)} cy={y} r={7} fill="none" stroke={lv.color} strokeWidth={1} opacity={0.5} />
+                      <line
+                        x1={x0} x2={x1} y1={y} y2={y}
+                        stroke={lv.color}
+                        strokeWidth={selected ? 16 : 9}
+                        opacity={selected ? 0.22 : 0.12}
+                      />
+                      {(selected ? [x0 + 6, (x0 + x1) / 2, x1 - 6] : [Math.max(x0, 10)]).map((hx, hi) => (
+                        <g key={`h${hi}`}>
+                          <circle cx={hx} cy={y} r={selected ? 5 : 4} fill={lv.color} stroke="var(--color-void)" strokeWidth={1} />
+                          {selected ? null : (
+                            <circle cx={hx} cy={y} r={7} fill="none" stroke={lv.color} strokeWidth={1} opacity={0.5} />
+                          )}
+                        </g>
+                      ))}
                     </>
                   ) : null}
                   <line
                     x1={x0} x2={x1} y1={y} y2={y}
-                    stroke={lv.color} strokeWidth={lv.faint ? 1 : 1.4}
-                    opacity={lv.faint ? 0.5 : 1}
+                    stroke={lv.color}
+                    strokeWidth={selected ? 2.4 : lv.faint ? 1 : 1.4}
+                    opacity={lv.faint && !selected ? 0.5 : 1}
                     strokeDasharray={lv.dashed ? "5 4" : undefined}
                   />
                   {lv.label ? (
@@ -768,10 +807,12 @@ export function PriceChart({
                       // A line running to the right edge is labelled there,
                       // next to the price it has to be broken at, the way a
                       // hand-drawn level is annotated.
-                      const anchorEnd = lv.extendRight || x0 + 4 > plotW - 80;
+                      // The label sits at whichever end the line finishes on,
+                      // so it never floats away from the line it names.
+                      const anchorEnd = lv.extendRight || lv.extendLeft || x0 + 4 > plotW - 80;
                       const lx = lv.extendRight
                         ? plotW - 4
-                        : Math.min(Math.max(x0 + 4, 4), plotW - 4);
+                        : Math.min(Math.max((lv.extendLeft ? x1 : x0) + (lv.extendLeft ? -4 : 4), 4), plotW - 4);
                       const w = lv.label.length * 5.4 + 8;
                       // Above its own line by default; below it when another
                       // line runs through where the text would sit.

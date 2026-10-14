@@ -66,26 +66,30 @@ const STATE_TONE: Record<ZoneState, string> = {
 };
 
 /**
- * A structure line the reader has dragged somewhere else.
+ * An edit the reader has made to a structure line: where they put it, and how
+ * far they want it to run.
  *
- * Kept against the structure point it was moved from, so it holds while that
- * point is the one in force and steps aside the moment a new one forms — a hand
- * placed line is worth keeping, but not once it is answering a question nobody
- * is asking any more.
+ * Kept against the structure point it was made on, so it holds while that point
+ * is on the chart and is dropped once it is gone — a hand placed line is worth
+ * keeping, but not once it is answering a question nobody is asking any more.
  */
-interface MovedLine {
-  anchorT: number;
-  price: number;
+interface LineEdit {
+  price?: number;
+  extent?: LineExtent;
 }
 
-const MOVED_KEY = "wick:moved-lines";
-const MOVED_LINE_ID = "structure";
+type LineExtent = "right" | "left" | "both";
 
-function readMoved(): Record<string, MovedLine> {
+const EDITS_KEY = "wick:line-edits";
+
+/** Identifies a line across refetches: its name and the bar it sits on. */
+const lineId = (label: string, t: number) => `${label}@${t}`;
+
+function readEdits(): Record<string, Record<string, LineEdit>> {
   if (typeof window === "undefined") return {};
   try {
-    const raw = window.localStorage.getItem(MOVED_KEY);
-    return raw ? (JSON.parse(raw) as Record<string, MovedLine>) : {};
+    const raw = window.localStorage.getItem(EDITS_KEY);
+    return raw ? (JSON.parse(raw) as Record<string, Record<string, LineEdit>>) : {};
   } catch {
     return {};
   }
@@ -100,45 +104,43 @@ export default function WickPage() {
     [symbol, timeframe],
   );
 
-  /* Lines the reader has moved, by market and timeframe, kept in the browser so
+  /* Lines the reader has edited, by market and timeframe, kept in the browser so
      they survive a reload and a change of symbol and back. */
-  const [moved, setMoved] = useState<Record<string, MovedLine>>({});
-  useEffect(() => setMoved(readMoved()), []);
-  const movedKey = `${symbol}|${timeframe}`;
-  const line = data?.sos.line ?? null;
-  const movedLine = moved[movedKey];
-  // A move belongs to the structure point it was made on. Once the engine moves
-  // to a new one, the hand placed price is dropped rather than quietly applied
-  // to a different level.
-  const movedPrice = line && movedLine && movedLine.anchorT === line.t ? movedLine.price : null;
+  const [edits, setEdits] = useState<Record<string, Record<string, LineEdit>>>({});
+  const [selected, setSelected] = useState<string | null>(null);
+  useEffect(() => setEdits(readEdits()), []);
+  // A different market or timeframe is a different chart: nothing stays selected.
+  useEffect(() => setSelected(null), [symbol, timeframe, view]);
 
-  const setLinePrice = (price: number | null) => {
-    if (!line) return;
-    setMoved((prev) => {
-      const next = { ...prev };
-      if (price == null) delete next[movedKey];
-      else next[movedKey] = { anchorT: line.t, price };
-      return next;
+  const editsKey = `${symbol}|${timeframe}`;
+  const myEdits = useMemo(() => edits[editsKey] ?? {}, [edits, editsKey]);
+
+  const editLine = (id: string, change: LineEdit | null) => {
+    setEdits((prev) => {
+      const forKey = { ...(prev[editsKey] ?? {}) };
+      if (change == null) delete forKey[id];
+      else forKey[id] = { ...forKey[id], ...change };
+      return { ...prev, [editsKey]: forKey };
     });
   };
 
   /* Written back a moment after the line stops moving rather than on every
      frame of the drag — the browser only has to remember where it ended up. */
-  const firstMovedRender = useRef(true);
+  const firstEditRender = useRef(true);
   useEffect(() => {
-    if (firstMovedRender.current) {
-      firstMovedRender.current = false;
+    if (firstEditRender.current) {
+      firstEditRender.current = false;
       return;
     }
     const id = window.setTimeout(() => {
       try {
-        window.localStorage.setItem(MOVED_KEY, JSON.stringify(moved));
+        window.localStorage.setItem(EDITS_KEY, JSON.stringify(edits));
       } catch {
         /* a line that cannot be remembered still works for this session */
       }
     }, 300);
     return () => window.clearTimeout(id);
-  }, [moved]);
+  }, [edits]);
 
 
 
@@ -185,32 +187,41 @@ export default function WickPage() {
       t: number,
       label: "HL" | "LH",
       shift: "buy" | "sell",
-      opts: { current?: boolean; broken?: boolean; last?: boolean; moved?: boolean },
+      opts: { current?: boolean; broken?: boolean; last?: boolean },
     ) => {
-      if (out.some((l) => Math.abs(l.price - price) < 1e-9)) return;
-      const price_ = fmtPrice(price, data.precision);
+      const id = lineId(label, t);
+      const edit = myEdits[id] ?? {};
+      const at = edit.price ?? price;
+      if (out.some((l) => Math.abs(l.price - at) < 1e-9)) return;
+      const extent: LineExtent = edit.extent ?? "right";
+      const price_ = fmtPrice(at, data.precision);
+      const moved = edit.price != null;
       out.push({
-        price,
+        price: at,
         fromT: t,
         toT: t,
-        extendRight: true,
+        extendRight: extent !== "left",
+        extendLeft: extent !== "right",
         dashed: true,
         color: label === "HL" ? "#4ade80" : "#f87171",
-        // The line in force can be taken hold of and dragged to where the reader
-        // reads the structure to be. Nothing else on the chart moves.
-        id: opts.current ? MOVED_LINE_ID : undefined,
-        draggable: opts.current,
+        // Every structure line can be taken hold of: tapped to select, dragged
+        // to where the reader reads the structure to be, and run out to either
+        // edge. The engine's reading is a starting point, not the last word.
+        id,
+        draggable: true,
         // Only the two lines that mean something carry text: the one in force,
         // and the one the last shift broke. The rungs behind them are already
-        // named where they start, by the HL or LH mark on the elbow itself, and
-        // labelling every one of them crowds the right edge into a stack.
+        // named where they start, by the dot on the elbow itself, and labelling
+        // every one of them crowds the right edge into a stack.
         label: opts.current
-          ? `${label} ${price_}${opts.moved ? " · moved" : ""} · close ${shift === "sell" ? "below" : "above"} = shift`
+          ? `${label} ${price_}${moved ? " · moved" : ""} · close ${shift === "sell" ? "below" : "above"} = shift`
           : opts.last
-            ? `${label} ${price_} · broken`
-            : undefined,
+            ? `${label} ${price_}${moved ? " · moved" : ""} · broken`
+            : moved
+              ? `${label} ${price_} · moved`
+              : undefined,
         // Older rungs of the staircase sit back; the line in force leads.
-        faint: !opts.current,
+        faint: !opts.current && !opts.last,
       });
     };
     // Newest first, so the line in force wins the label slot nearest its own
@@ -218,17 +229,12 @@ export default function WickPage() {
     // and the oldest of them are nowhere near price — the nearest dozen is what
     // a chart can show and what price could plausibly come back to.
     for (const l of data.sos.lines.slice(-12).reverse()) {
-      const useMoved = l.current && movedPrice != null;
-      add(useMoved ? movedPrice : l.price, l.t, l.label, l.shift, {
-        current: l.current,
-        broken: l.broken,
-        moved: useMoved,
-      });
+      add(l.price, l.t, l.label, l.shift, { current: l.current, broken: l.broken });
     }
     const e = data.sos.latest;
     if (e) add(e.line, e.lineT, e.lineLabel, e.direction, { broken: true, last: true });
     return out;
-  }, [data, view, movedPrice]);
+  }, [data, view, myEdits]);
 
   /* Structure points, as dots only. The letters and the leader lines pointing
      at them were taller than the swings they named, so the colour carries the
@@ -328,9 +334,8 @@ export default function WickPage() {
               <SosPanel
                 sos={data.sos}
                 timeframe={timeframe}
-                precision={data.precision}
-                movedPrice={movedPrice}
-                onReset={() => setLinePrice(null)}
+                edited={Object.keys(myEdits).length > 0}
+                onResetAll={() => setEdits((prev) => ({ ...prev, [editsKey]: {} }))}
               />
             ) : null}
 
@@ -360,9 +365,20 @@ export default function WickPage() {
               zones={zones}
               levels={sosLevels}
               markers={sosMarkers}
-              onLevelMove={(id, price) => {
-                if (id === MOVED_LINE_ID) setLinePrice(price);
-              }}
+              onLevelMove={(id, price) => editLine(id, { price })}
+              selectedLevel={selected}
+              onSelectLevel={setSelected}
+              overlay={
+                view === "sos" && selected ? (
+                  <LineTools
+                    extent={myEdits[selected]?.extent ?? "right"}
+                    moved={myEdits[selected]?.price != null}
+                    onExtent={(extent) => editLine(selected, { extent })}
+                    onReset={() => editLine(selected, null)}
+                    onDone={() => setSelected(null)}
+                  />
+                ) : null
+              }
               focusT={sosFocus}
               symbolControl={<SymbolSearch value={symbol} onPick={setSymbol} compact />}
               viewControl={
@@ -651,30 +667,76 @@ function ReadyBoard({
   );
 }
 
-/** Says the line is where the reader put it, and offers it back. */
-function MovedNote({
-  price,
-  precision,
-  onReset,
-}: {
-  price: number | null;
-  precision: number;
-  onReset: () => void;
-}) {
-  if (price == null) return null;
+/** Says some lines are where the reader put them, and offers them back. */
+function MovedNote({ edited, onResetAll }: { edited: boolean; onResetAll: () => void }) {
+  if (!edited) return null;
   return (
     <>
       {" "}
-      <span className="text-bone">
-        You moved the line to {fmtPrice(price, precision)}.
-      </span>{" "}
+      <span className="text-bone">You have moved lines on this chart.</span>{" "}
       <button
-        onClick={onReset}
+        onClick={onResetAll}
         className="display text-[10px] font-bold uppercase tracking-widest text-gold underline-offset-2 hover:underline"
       >
-        Put it back
+        Put them all back
       </button>
     </>
+  );
+}
+
+/**
+ * What to do with the line that is selected: how far it runs, put it back where
+ * the structure had it, or let it go.
+ */
+function LineTools({
+  extent,
+  moved,
+  onExtent,
+  onReset,
+  onDone,
+}: {
+  extent: LineExtent;
+  moved: boolean;
+  onExtent: (extent: LineExtent) => void;
+  onReset: () => void;
+  onDone: () => void;
+}) {
+  const choices: { key: LineExtent; label: string; title: string }[] = [
+    { key: "left", label: "←", title: "Run the line to the left only" },
+    { key: "both", label: "↔", title: "Run the line both ways" },
+    { key: "right", label: "→", title: "Run the line to the right only" },
+  ];
+  return (
+    <div className="flex items-stretch gap-1 border border-gold/50 bg-void/90 p-1 shadow-lg backdrop-blur">
+      <span className="display self-center px-1 text-[10px] font-bold uppercase tracking-widest text-gold">
+        Line
+      </span>
+      {choices.map((c) => (
+        <button
+          key={c.key}
+          onClick={() => onExtent(c.key)}
+          title={c.title}
+          className={`min-w-8 px-2 py-1 text-sm leading-none transition ${
+            extent === c.key ? "bg-gold text-void" : "text-mute hover:text-gold"
+          }`}
+        >
+          {c.label}
+        </button>
+      ))}
+      <button
+        onClick={onReset}
+        disabled={!moved && extent === "right"}
+        className="display px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-mute transition hover:text-gold disabled:opacity-40"
+      >
+        Put back
+      </button>
+      <button
+        onClick={onDone}
+        className="display px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-gold transition hover:underline"
+      >
+        Done
+      </button>
+    </div>
   );
 }
 
@@ -698,8 +760,9 @@ function LineNote({ line, count }: { line: StructureLine; count: number }) {
   return (
     <>
       The line in force sits on the newest {name} at {line.price.toFixed(5)} and runs to the right
-      edge — a candle closing {line.shift === "sell" ? "below" : "above"} it is the shift. Drag it
-      on the chart to put it where you read the structure to be.{rest}
+      edge — a candle closing {line.shift === "sell" ? "below" : "above"} it is the shift. Tap any line on the
+      chart to take hold of it: drag it to where you read the structure to be, and run it left,
+      right or both ways.{rest}
     </>
   );
 }
@@ -712,16 +775,14 @@ function LineNote({ line, count }: { line: StructureLine; count: number }) {
 function SosPanel({
   sos,
   timeframe,
-  precision,
-  movedPrice,
-  onReset,
+  edited,
+  onResetAll,
 }: {
   sos: WickResponse["sos"];
   timeframe: Timeframe;
-  precision: number;
-  /** Where the reader dragged the line, if they did. */
-  movedPrice: number | null;
-  onReset: () => void;
+  /** Whether any line on this chart has been moved or re-run by hand. */
+  edited: boolean;
+  onResetAll: () => void;
 }) {
   const e = sos.latest;
   if (!e) {
@@ -729,7 +790,7 @@ function SosPanel({
       <p className="mt-4 text-sm text-mute">
         No structure shift on the {TF_SPOKEN[timeframe]}.{" "}
         {sos.line ? <LineNote line={sos.line} count={sos.lines.length} /> : "No structure point yet: nothing has formed since price last closed through the 50 EMA."}
-        <MovedNote price={movedPrice} precision={precision} onReset={onReset} />
+        <MovedNote edited={edited} onResetAll={onResetAll} />
       </p>
     );
   }
@@ -759,7 +820,7 @@ function SosPanel({
       {sos.line ? (
         <p className="text-sm text-mute">
           <LineNote line={sos.line} count={sos.lines.length} />
-          <MovedNote price={movedPrice} precision={precision} onReset={onReset} />
+          <MovedNote edited={edited} onResetAll={onResetAll} />
         </p>
       ) : null}
       {steps.map((st) => (
