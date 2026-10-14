@@ -2,10 +2,19 @@ import { buildContext } from "@/lib/engine/context";
 import { resolveAsset } from "@/lib/data/universe";
 import { TF_MS } from "@/lib/data/synth";
 import { ema } from "@/lib/engine/indicators";
-import { detectWickSetup, scanHistory } from "@/lib/engine/wick";
-import { WICK_DEFAULTS, WICK_TIMEFRAMES, type WickSettings } from "@/lib/config/wick";
+import { checkAlignment, detectWickSetup, scanHistory } from "@/lib/engine/wick";
+import { sosSnapshot } from "@/lib/engine/sos";
+import {
+  entryTimeframes,
+  lowerRungs,
+  rungsFor,
+  SOS_DEFAULTS,
+  WICK_DEFAULTS,
+  WICK_TIMEFRAMES,
+  type WickSettings,
+} from "@/lib/config/wick";
 import { CACHE_SHORT, fail, ok } from "@/lib/api";
-import type { Timeframe } from "@/lib/types";
+import type { Candle, Timeframe } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -60,6 +69,18 @@ export async function GET(req: Request) {
   const live = detectWickSetup(asset.symbol, candles, tf, settings, periodMs);
   const history = scanHistory(asset.symbol, candles, tf, settings, periodMs);
 
+  /* Alignment needs the rungs below this one. Fetched only when there is a
+     setup to check — no setup, no reason to pull more series. */
+  if (live.setup && live.direction) {
+    const needed = lowerRungs(tf, rungsFor(settings.alignment));
+    const series: Partial<Record<Timeframe, Candle[]>> = {};
+    for (const lower of needed) series[lower] = await ctx.candles(asset.symbol, lower);
+    live.setup.alignment = checkAlignment(tf, live.direction, series, settings);
+  }
+
+  /* The shift-of-structure read on the same series, both directions. */
+  const sos = sosSnapshot(candles, tf, SOS_DEFAULTS);
+
   const closes = candles.map((c) => c.c);
 
   return ok(
@@ -75,6 +96,8 @@ export async function GET(req: Request) {
         rules: live.rules,
         direction: live.direction,
       },
+      entryTimeframes: entryTimeframes(tf),
+      sos,
       history,
       // Returned so the chart can draw the same 50 EMA the rules were read from.
       ema50: ema(closes, 50).slice(Math.max(0, candles.length - 400)),

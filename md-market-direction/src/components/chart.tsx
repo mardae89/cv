@@ -66,11 +66,33 @@ export interface ChartZone {
   label?: string;
 }
 
+/** A horizontal price level across a time span — the shift-of-structure line. */
+export interface ChartLevel {
+  price: number;
+  fromT: number;
+  toT: number;
+  color: string;
+  label?: string;
+  dashed?: boolean;
+}
+
+/** A labelled point on a bar — where a shift, pullback or confirmation landed. */
+export interface ChartMarker {
+  t: number;
+  price: number;
+  label: string;
+  color: string;
+  /** Above the bar, or below it. */
+  side: "above" | "below";
+}
+
 export function PriceChart({
   symbol,
   initialTimeframe = "1D",
   height = 420,
   zones,
+  levels,
+  markers,
   focusT,
   symbolControl,
   timeframe: controlledTimeframe,
@@ -80,6 +102,8 @@ export function PriceChart({
   initialTimeframe?: Timeframe;
   height?: number;
   zones?: ChartZone[];
+  levels?: ChartLevel[];
+  markers?: ChartMarker[];
   /** Scroll so this bar time is centred. Changing it moves the view once. */
   focusT?: number | null;
   /** Rendered in the chart's own toolbar — a symbol picker, so the market can
@@ -246,8 +270,14 @@ export function PriceChart({
       const zoneEdges = (zones ?? [])
         .filter((z) => z.toT >= windowFrom && z.fromT <= windowTo)
         .flatMap((z) => [z.priceA, z.priceB]);
-      const hi = Math.max(...slice.map((c) => c.h), ...overlay, ...zoneEdges);
-      const lo = Math.min(...slice.map((c) => c.l), ...overlay, ...zoneEdges);
+      const levelEdges = (levels ?? [])
+        .filter((l) => l.toT >= windowFrom && l.fromT <= windowTo)
+        .map((l) => l.price);
+      const markerEdges = (markers ?? [])
+        .filter((m) => m.t >= windowFrom && m.t <= windowTo)
+        .map((m) => m.price);
+      const hi = Math.max(...slice.map((c) => c.h), ...overlay, ...zoneEdges, ...levelEdges, ...markerEdges);
+      const lo = Math.min(...slice.map((c) => c.l), ...overlay, ...zoneEdges, ...levelEdges, ...markerEdges);
       const pad = (hi - lo) * 0.08 || hi * 0.01;
       top = hi + pad;
       bot = lo - pad;
@@ -572,6 +602,53 @@ export function PriceChart({
                       {z.label}
                     </text>
                   ) : null}
+                </g>
+              );
+            })}
+
+            {/* structure levels and sequence markers */}
+            {(levels ?? []).map((lv, k) => {
+              const idx = (t: number) => {
+                if (!slice.length) return 0;
+                if (t <= slice[0].t) return 0;
+                if (t >= slice[slice.length - 1].t) return slice.length - 1;
+                let best = 0;
+                for (let i = 0; i < slice.length; i++) if (slice[i].t <= t) best = i;
+                return best;
+              };
+              const x0 = X(idx(lv.fromT)) - step / 2;
+              const x1 = Math.max(X(idx(lv.toT)) + step / 2, x0 + step);
+              const y = Y(lv.price);
+              return (
+                <g key={`lv${k}`} pointerEvents="none">
+                  <line
+                    x1={x0} x2={x1} y1={y} y2={y}
+                    stroke={lv.color} strokeWidth={1.4}
+                    strokeDasharray={lv.dashed ? "5 4" : undefined}
+                  />
+                  {lv.label ? (
+                    <text x={x0 + 4} y={y - 5} fill={lv.color} fontSize={9} fontFamily="ui-monospace, monospace">
+                      {lv.label}
+                    </text>
+                  ) : null}
+                </g>
+              );
+            })}
+
+            {(markers ?? []).map((m, k) => {
+              let best = -1;
+              for (let i = 0; i < slice.length; i++) if (slice[i].t <= m.t) best = i;
+              if (best < 0) return null;
+              const x = X(best);
+              const y = Y(m.price);
+              const up = m.side === "above";
+              const ty = up ? y - 10 : y + 18;
+              return (
+                <g key={`mk${k}`} pointerEvents="none">
+                  <circle cx={x} cy={y} r={3} fill={m.color} />
+                  <text x={x} y={ty} fill={m.color} fontSize={9} textAnchor="middle" fontFamily="ui-monospace, monospace">
+                    {m.label}
+                  </text>
                 </g>
               );
             })}

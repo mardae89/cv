@@ -149,3 +149,51 @@ export function lowerRungs(tf: Timeframe, count: number): Timeframe[] {
 export function rungsFor(alignment: WickAlignment): number {
   return alignment === "strict" ? 2 : 1;
 }
+
+/**
+ * ENTRY TIMEFRAMES.
+ *
+ * The ladder says where the PULLBACK is read. Timing the entry happens lower
+ * still: a weekly zone is hundreds of pips tall, and nobody enters off it.
+ *
+ * Three and four rungs below the signal timeframe, down the app's full
+ * timeframe list rather than the pullback ladder — which is what gives the
+ * weekly its 1H and 30M.
+ */
+const DESCENDING: Timeframe[] = ["1W", "1D", "4H", "1H", "30M", "15M", "5M"];
+
+export function entryTimeframes(tf: Timeframe): Timeframe[] {
+  const i = DESCENDING.indexOf(tf);
+  if (i < 0) return [];
+  return [DESCENDING[i + 3], DESCENDING[i + 4]].filter(Boolean) as Timeframe[];
+}
+
+/* -------------------------------------------------------------------------- */
+/*  SHIFT OF STRUCTURE                                                        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * What counts as the pullback between the shift and the confirmation candle.
+ *
+ *   candle — at least one candle closing against the trade direction
+ *   retest — price trades back to within `retestAtr` of the shift line
+ */
+export type SosPullback = "candle" | "retest";
+
+export interface SosSettings {
+  /** Confirmation candle body, as a multiple of ATR(14). */
+  confirmBodyAtr: number;
+  /** How the pullback between shift and confirmation is recognised. */
+  pullback: SosPullback;
+  /** For the retest reading: how close to the shift line price must return. */
+  retestAtr: number;
+  /** Candles the confirmation may arrive within after the pullback. */
+  confirmWithin: number;
+}
+
+export const SOS_DEFAULTS: SosSettings = {
+  confirmBodyAtr: 0.3,
+  pullback: "candle",
+  retestAtr: 0.5,
+  confirmWithin: 10,
+};

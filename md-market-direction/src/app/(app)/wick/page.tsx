@@ -3,10 +3,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useApi } from "@/lib/hooks";
 import { symbolMatches } from "@/lib/symbols";
-import { PriceChart, type ChartZone } from "@/components/chart";
+import { PriceChart, type ChartLevel, type ChartMarker, type ChartZone } from "@/components/chart";
 import { EmptyState, ErrorState, Eyebrow, Panel, SectionHeading, Skeleton } from "@/components/primitives";
-import { WICK_TIMEFRAMES, TF_SPOKEN } from "@/lib/config/wick";
+import { WICK_TIMEFRAMES, TF_SPOKEN, type WickAlignment } from "@/lib/config/wick";
 import type { HistoricalSetup, WickRule, WickSetup, ZoneState } from "@/lib/engine/wick";
+import type { SosEvent } from "@/lib/engine/sos";
 import { fmtPrice } from "@/lib/utils/format";
 import type { Timeframe } from "@/lib/types";
 
@@ -18,8 +19,12 @@ interface WickResponse {
   demo: boolean;
   live: { setup: WickSetup | null; rules: WickRule[]; direction: "buy" | "sell" | null };
   history: HistoricalSetup[];
+  entryTimeframes: Timeframe[];
+  sos: { timeframe: Timeframe; buy: SosEvent | null; sell: SosEvent | null; events: SosEvent[] };
   generatedAt: number;
 }
+
+type WickView = "zones" | "sos";
 
 /* Phase 4 replaces this with the saved colour. Until then one constant, in one
    place, so swapping it is a one-line change. */
@@ -45,9 +50,11 @@ const STATE_TONE: Record<ZoneState, string> = {
 export default function WickPage() {
   const [symbol, setSymbol] = useState("EUR/USD");
   const [timeframe, setTimeframe] = useState<Timeframe>("1D");
+  const [alignment, setAlignment] = useState<WickAlignment>("loose");
+  const [view, setView] = useState<WickView>("zones");
   const { data, loading, error, refresh } = useApi<WickResponse>(
-    `/api/wick?symbol=${encodeURIComponent(symbol)}&timeframe=${timeframe}`,
-    [symbol, timeframe],
+    `/api/wick?symbol=${encodeURIComponent(symbol)}&timeframe=${timeframe}&alignment=${alignment}`,
+    [symbol, timeframe, alignment],
   );
 
 
@@ -55,6 +62,7 @@ export default function WickPage() {
   /* ONE zone on the chart: the live one, anchored on the previous candle and
      drawn over the current one. */
   const zones = useMemo<ChartZone[]>(() => {
+    if (view !== "zones") return [];
     const setup = data?.live.setup;
     if (!setup) return [];
     return [{
@@ -67,7 +75,40 @@ export default function WickPage() {
       opacity: ZONE_OPACITY,
       label: setup.direction.toUpperCase(),
     }];
-  }, [data]);
+  }, [data, view]);
+
+  /* The shift-of-structure view: the line a body had to close beyond, and the
+     bars where each step of the sequence landed. */
+  const sosLine = useMemo<ChartLevel[]>(() => {
+    if (view !== "sos" || !data) return [];
+    const e = data.sos.buy ?? data.sos.sell;
+    if (!e) return [];
+    const colour = e.direction === "buy" ? "#4ade80" : "#f87171";
+    return [{
+      price: e.line,
+      fromT: e.lineT,
+      toT: e.confirmT ?? e.pullbackT ?? e.shiftT,
+      color: colour,
+      dashed: true,
+      label: e.direction === "buy" ? "lower high" : "higher low",
+    }];
+  }, [data, view]);
+
+  const sosMarkers = useMemo<ChartMarker[]>(() => {
+    if (view !== "sos" || !data) return [];
+    const e = data.sos.buy ?? data.sos.sell;
+    if (!e) return [];
+    const up = e.direction === "buy";
+    const colour = up ? "#4ade80" : "#f87171";
+    const out: ChartMarker[] = [
+      { t: e.shiftT, price: e.shiftClose, label: "SHIFT", color: colour, side: up ? "above" : "below" },
+    ];
+    if (e.pullbackT) out.push({ t: e.pullbackT, price: e.line, label: "PULLBACK", color: "#9ca3af", side: up ? "below" : "above" });
+    if (e.confirmT && e.confirmClose != null) {
+      out.push({ t: e.confirmT, price: e.confirmClose, label: e.confirmKind === "engulfing" ? "ENGULF" : "CONFIRM", color: colour, side: up ? "above" : "below" });
+    }
+    return out;
+  }, [data, view]);
 
   const p = data?.precision ?? 5;
 
@@ -94,6 +135,24 @@ export default function WickPage() {
               </button>
             ))}
           </div>
+          <Segmented
+            label="View"
+            value={view}
+            onChange={(v) => setView(v as WickView)}
+            options={[
+              { value: "zones", label: "Fib zones" },
+              { value: "sos", label: "SOS" },
+            ]}
+          />
+          <Segmented
+            label="Alignment"
+            value={alignment}
+            onChange={(v) => setAlignment(v as WickAlignment)}
+            options={[
+              { value: "loose", label: "Loose" },
+              { value: "strict", label: "Strict" },
+            ]}
+          />
         </div>
       </Panel>
 
@@ -122,6 +181,34 @@ export default function WickPage() {
                   </span>
                 </div>
                 <p className="mt-2 text-sm text-mute">{data.live.setup.pullbackLabel}</p>
+                {data.live.setup.zone.state === "in-zone" ? (
+                  <div className="mt-3 border border-gold/40 bg-gold/10 px-4 py-3">
+                    <div className="display text-xs font-bold uppercase tracking-widest text-gold">
+                      Price is in the zone
+                    </div>
+                    <p className="mt-1 text-sm text-bone">
+                      Drop to the{" "}
+                      {data.entryTimeframes.map((t) => TF_SPOKEN[t]).join(" or the ")} to time an entry.
+                      The {TF_SPOKEN[timeframe]} zone is where to look; it is not an entry level.
+                    </p>
+                  </div>
+                ) : null}
+
+                {data.live.setup.alignment ? (
+                  <p className="mt-3 text-xs text-mute">
+                    <span className="uppercase tracking-widest text-faint">
+                      {alignment === "strict" ? "Strict" : "Loose"} alignment ·{" "}
+                    </span>
+                    {data.live.setup.alignment.passed
+                      ? `${data.live.setup.alignment.aligned.map((t) => TF_SPOKEN[t]).join(" and ")} ${
+                          data.live.setup.alignment.aligned.length === 1 ? "agrees" : "agree"
+                        } with this direction.`
+                      : `${data.live.setup.alignment.missed.map((t) => TF_SPOKEN[t]).join(" and ")} ${
+                          data.live.setup.alignment.missed.length === 1 ? "does" : "do"
+                        } not agree — this setup would not appear on the board.`}
+                  </p>
+                ) : null}
+
                 <div className="mt-4 grid gap-3 sm:grid-cols-3">
                   <Stat label="Zone (0.382)" value={fmtPrice(data.live.setup.zone.zoneNear, p)} />
                   <Stat label="Zone (0.75)" value={fmtPrice(data.live.setup.zone.zoneFar, p)} />
@@ -133,6 +220,8 @@ export default function WickPage() {
                 No setup on the candle forming now. The rules that did not pass are listed below.
               </p>
             )}
+
+            {view === "sos" ? <SosPanel sos={data.sos} timeframe={timeframe} /> : null}
 
             <div className="mt-5 space-y-1.5">
               {data.live.rules.map((r) => (
@@ -158,12 +247,14 @@ export default function WickPage() {
                 if (WICK_TIMEFRAMES.includes(tf)) setTimeframe(tf);
               }}
               zones={zones}
+              levels={sosLine}
+              markers={sosMarkers}
               symbolControl={<SymbolSearch value={symbol} onPick={setSymbol} compact />}
             />
           </div>
 
           {/* ------------------------------ READY NOW ----------------------------- */}
-          <ReadyBoard timeframe={timeframe} current={symbol} onPick={setSymbol} />
+          <ReadyBoard timeframe={timeframe} alignment={alignment} current={symbol} onPick={setSymbol} />
 
           <p className="pb-4 text-[11px] leading-relaxed text-faint">
             Educational tool. These are setups matching the Wick Catching method, not buy or sell
@@ -318,6 +409,7 @@ function SymbolSearch({
 
 interface ScanRow {
   symbol: string;
+  pullbackLabel: string;
   name: string;
   precision: number;
   direction: "buy" | "sell";
@@ -337,18 +429,22 @@ interface ScanRow {
  */
 function ReadyBoard({
   timeframe,
+  alignment,
   current,
   onPick,
 }: {
   timeframe: Timeframe;
+  alignment: WickAlignment;
   current: string;
   onPick: (symbol: string) => void;
 }) {
   const { data, loading, error, refresh } = useApi<{
     timeframe: Timeframe;
     scanned: number;
+    rejectedByAlignment: number;
+    entryTimeframes: Timeframe[];
     rows: ScanRow[];
-  }>(`/api/wick/scan?timeframe=${timeframe}`, [timeframe]);
+  }>(`/api/wick/scan?timeframe=${timeframe}&alignment=${alignment}`, [timeframe, alignment]);
 
   const inZone = data?.rows.filter((r) => r.state === "in-zone").length ?? 0;
 
@@ -359,12 +455,14 @@ function ReadyBoard({
         {data ? (
           <span className="text-[10px] uppercase tracking-widest text-faint">
             {data.rows.length} of {data.scanned} markets{inZone ? ` · ${inZone} in zone` : ""}
+            {data.rejectedByAlignment ? ` · ${data.rejectedByAlignment} filtered out` : ""}
           </span>
         ) : null}
       </div>
       <p className="mb-4 mt-1 text-xs text-faint">
         Markets whose previous {TF_SPOKEN[timeframe]} candle matches the method and whose zone is
-        still live. Pick one to load it on the chart.
+        still live, with {alignment === "strict" ? "the next two timeframes" : "the next timeframe"} down
+        agreeing. Pick one to load it on the chart.
       </p>
 
       {error ? <ErrorState message={error} onRetry={refresh} /> : null}
@@ -398,12 +496,19 @@ function ReadyBoard({
                 <span className="ticker hidden flex-1 text-xs text-mute sm:block">
                   {fmtPrice(r.zoneNear, r.precision)} – {fmtPrice(r.zoneFar, r.precision)}
                 </span>
-                <span
-                  className={`ml-auto shrink-0 text-[10px] uppercase tracking-widest ${
-                    r.state === "in-zone" ? "text-bull" : "text-flat"
-                  }`}
-                >
-                  {STATE_LABEL[r.state]}
+                <span className="ml-auto shrink-0 text-right">
+                  <span
+                    className={`block text-[10px] uppercase tracking-widest ${
+                      r.state === "in-zone" ? "text-bull" : "text-flat"
+                    }`}
+                  >
+                    {STATE_LABEL[r.state]}
+                  </span>
+                  {r.state === "in-zone" && data ? (
+                    <span className="block text-[9px] uppercase tracking-widest text-gold">
+                      enter on {data.entryTimeframes.map((t) => TF_SPOKEN[t]).join(" / ")}
+                    </span>
+                  ) : null}
                 </span>
               </button>
             </li>
@@ -411,5 +516,90 @@ function ReadyBoard({
         </ul>
       ) : null}
     </Panel>
+  );
+}
+
+function Segmented({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-[10px] uppercase tracking-widest text-faint">{label}</span>
+      <div className="flex border border-hairline">
+        {options.map((o) => (
+          <button
+            key={o.value}
+            onClick={() => onChange(o.value)}
+            className={`px-3 py-1.5 font-display text-[11px] font-semibold uppercase tracking-widest transition ${
+              o.value === value ? "bg-gold text-void" : "text-mute hover:text-gold"
+            }`}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The shift-of-structure sequence, in the order it has to happen. A step that
+ * has not occurred is shown unfilled rather than hidden, so what the market is
+ * still waiting for is as visible as what it has already done.
+ */
+function SosPanel({ sos, timeframe }: { sos: WickResponse["sos"]; timeframe: Timeframe }) {
+  const e = sos.buy ?? sos.sell;
+  if (!e) {
+    return (
+      <p className="mt-4 text-sm text-mute">
+        No structure shift on the {TF_SPOKEN[timeframe]}. A shift needs a candle body to close beyond
+        the most recent {sos.buy === null && sos.sell === null ? "lower high (buys) or higher low (sells)" : "structure line"} and
+        on the correct side of the 50 EMA.
+      </p>
+    );
+  }
+  const up = e.direction === "buy";
+  const steps: { done: boolean; label: string; detail: string }[] = [
+    {
+      done: true,
+      label: `Structure shifted ${up ? "up" : "down"}`,
+      detail: `A body closed ${up ? "above the last lower high" : "below the last higher low"} at ${e.line.toFixed(5)}, and on the ${up ? "bull" : "bear"} side of the 50 EMA.`,
+    },
+    {
+      done: e.pullbackT != null,
+      label: "Pullback",
+      detail: e.pullbackT ? "Price pulled back after the shift." : "Waiting for price to pull back.",
+    },
+    {
+      done: e.confirmT != null,
+      label: "Confirmation candle",
+      detail: e.confirmT
+        ? `${e.confirmKind === "engulfing" ? "An engulfing candle" : "A medium-to-strong body"} closed ${up ? "above" : "below"} the 50 EMA.`
+        : "Waiting for an engulfing or medium-to-strong candle that closes the right side of the 50 EMA.",
+    },
+  ];
+
+  return (
+    <div className="mt-4 space-y-2">
+      {steps.map((st) => (
+        <div key={st.label} className="flex items-start gap-2.5 text-sm">
+          <span className={`mt-0.5 text-xs ${st.done ? (up ? "text-bull" : "text-bear") : "text-faint"}`}>
+            {st.done ? "✓" : "○"}
+          </span>
+          <span className={st.done ? "text-bone" : "text-mute"}>
+            {st.label}
+            <span className="text-faint"> — {st.detail}</span>
+          </span>
+        </div>
+      ))}
+    </div>
   );
 }
