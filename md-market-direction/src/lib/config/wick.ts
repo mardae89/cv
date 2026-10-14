@@ -192,10 +192,10 @@ export type SosPullback = "candle" | "retest";
 
 export interface SosSettings {
   /**
-   * Bars either side of an elbow. Lower finds more structure points; 3 was
-   * missing turns that matter on the lower timeframes.
+   * How far price must come off a turn, as a multiple of ATR(14), before that
+   * turn counts as a structure point. Lower marks more of them.
    */
-  swingK: number;
+  swingAtr: number;
   /** Confirmation candle body, as a multiple of ATR(14). */
   confirmBodyAtr: number;
   /** How the pullback between shift and confirmation is recognised. */
@@ -207,7 +207,7 @@ export interface SosSettings {
 }
 
 export const SOS_DEFAULTS: SosSettings = {
-  swingK: 2,
+  swingAtr: 0.1,
   confirmBodyAtr: 0.3,
   pullback: "candle",
   retestAtr: 0.5,

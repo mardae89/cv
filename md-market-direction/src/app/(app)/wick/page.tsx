@@ -3,11 +3,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useApi } from "@/lib/hooks";
 import { symbolMatches } from "@/lib/symbols";
-import { PriceChart, type ChartMarker, type ChartZone } from "@/components/chart";
+import { PriceChart, type ChartLevel, type ChartMarker, type ChartZone } from "@/components/chart";
 import { EmptyState, ErrorState, Eyebrow, Panel, SectionHeading, Skeleton } from "@/components/primitives";
 import { SOS_TIMEFRAMES, TF_SPOKEN, WICK_TIMEFRAME } from "@/lib/config/wick";
 import type { HistoricalSetup, WickRule, WickSetup, ZoneState } from "@/lib/engine/wick";
-import type { Elbow, SosEvent } from "@/lib/engine/sos";
+import type { Elbow, SosEvent, StructureLine } from "@/lib/engine/sos";
 import { fmtPrice } from "@/lib/utils/format";
 import type { Timeframe } from "@/lib/types";
 
@@ -23,7 +23,7 @@ interface WickResponse {
   entryTimeframes: Timeframe[];
   sos: {
     timeframe: Timeframe;
-    line: { price: number; t: number; shift: "buy" | "sell" } | null;
+    line: StructureLine | null;
     latest: SosEvent | null;
     events: SosEvent[];
     elbows: Elbow[];
@@ -92,12 +92,31 @@ export default function WickPage() {
     return data.sos.latest?.shiftT ?? null;
   }, [data, view]);
 
+  /* THE STRUCTURE POINT IN FORCE.
+     One line, on the elbow the trend is standing on — an uptrend's higher low,
+     a downtrend's lower high — carried to the right edge, because what matters
+     about it is the close that has still to happen beyond it. */
+  const sosLevels = useMemo<ChartLevel[]>(() => {
+    // A broken level is not drawn: the mark on the bar that broke it says what
+    // happened, and a line price has already closed through is not a level.
+    if (view !== "sos" || !data?.sos.line || data.sos.line.broken) return [];
+    const l = data.sos.line;
+    return [{
+      price: l.price,
+      fromT: l.t,
+      toT: l.t,
+      extendRight: true,
+      color: l.label === "HL" ? "#4ade80" : "#f87171",
+      label: `${l.label} ${fmtPrice(l.price, data.precision)} · close ${l.shift === "sell" ? "below" : "above"} = shift`,
+    }];
+  }, [data, view]);
+
   /* Structure points only. Every elbow the detector found gets a mark, so the
      markup matches what would be drawn by hand; the shift / pullback /
      confirmation narrative stays in the panel rather than crowding price. */
   const sosMarkers = useMemo<ChartMarker[]>(() => {
     if (view !== "sos" || !data) return [];
-    return data.sos.elbows
+    const marks: ChartMarker[] = data.sos.elbows
       // The first high and the first low have nothing to be measured against,
       // so naming them would be guessing.
       .filter((e) => e.label !== null)
@@ -108,6 +127,21 @@ export default function WickPage() {
         color: e.kind === "high" ? "#f87171" : "#4ade80",
         side: e.kind === "high" ? ("above" as const) : ("below" as const),
       }));
+
+    // The most recent break, on the bar that closed through it. The line it
+    // broke is named, so the chart says WHAT gave way rather than just that
+    // something did.
+    const e = data.sos.latest;
+    if (e) {
+      marks.push({
+        t: e.shiftT,
+        price: e.shiftClose,
+        label: `${e.lineLabel} BROKEN`,
+        color: e.direction === "buy" ? "#4ade80" : "#f87171",
+        side: e.direction === "buy" ? "above" : "below",
+      });
+    }
+    return marks;
   }, [data, view]);
 
   const p = data?.precision ?? 5;
@@ -195,6 +229,7 @@ export default function WickPage() {
                 if (SOS_TIMEFRAMES.includes(tf)) setTimeframe(tf);
               }}
               zones={zones}
+              levels={sosLevels}
               markers={sosMarkers}
               focusT={sosFocus}
               symbolControl={<SymbolSearch value={symbol} onPick={setSymbol} compact />}
@@ -484,6 +519,25 @@ function ReadyBoard({
   );
 }
 
+/** What the structure line is, in a sentence — live, or already taken out. */
+function LineNote({ line }: { line: StructureLine }) {
+  const name = line.label === "HL" ? "higher low" : "lower high";
+  if (line.broken) {
+    return (
+      <>
+        The last structure point, the {name} at {line.price.toFixed(5)}, has already been closed
+        through. Nothing is drawn until the next one forms.
+      </>
+    );
+  }
+  return (
+    <>
+      The line sits on the most recent {name} at {line.price.toFixed(5)} and runs to the right edge
+      of the chart — a candle closing {line.shift === "sell" ? "below" : "above"} it is the shift.
+    </>
+  );
+}
+
 /**
  * The shift-of-structure sequence, in the order it has to happen. A step that
  * has not occurred is shown unfilled rather than hidden, so what the market is
@@ -494,10 +548,8 @@ function SosPanel({ sos, timeframe }: { sos: WickResponse["sos"]; timeframe: Tim
   if (!e) {
     return (
       <p className="mt-4 text-sm text-mute">
-        No structure shift on the {TF_SPOKEN[timeframe]}.
-        {sos.line
-          ? ` The line sits on the most recent ${sos.line.shift === "buy" ? "lower high" : "higher low"} at ${sos.line.price.toFixed(5)} — a body closing beyond it, on the correct side of the 50 EMA, would be the shift.`
-          : " No line: price is not making a clean sequence of higher lows or lower highs here, so there is no elbow to mark."}
+        No structure shift on the {TF_SPOKEN[timeframe]}.{" "}
+        {sos.line ? <LineNote line={sos.line} /> : "No structure point yet: no higher low or lower high has formed here."}
       </p>
     );
   }
@@ -506,7 +558,7 @@ function SosPanel({ sos, timeframe }: { sos: WickResponse["sos"]; timeframe: Tim
     {
       done: true,
       label: `Structure shifted ${up ? "up" : "down"}`,
-      detail: `A body closed ${up ? "above the last lower high" : "below the last higher low"} at ${e.line.toFixed(5)} — drawn on the body, not the wick — and on the ${up ? "bull" : "bear"} side of the 50 EMA.`,
+      detail: `A candle closed ${up ? "above the last lower high" : "below the last higher low"} at ${e.line.toFixed(5)} — the line is drawn on the body, and a wick through it would not have counted.`,
     },
     {
       done: e.pullbackT != null,
@@ -524,6 +576,11 @@ function SosPanel({ sos, timeframe }: { sos: WickResponse["sos"]; timeframe: Tim
 
   return (
     <div className="mt-4 space-y-2">
+      {sos.line ? (
+        <p className="text-sm text-mute">
+          <LineNote line={sos.line} />
+        </p>
+      ) : null}
       {steps.map((st) => (
         <div key={st.label} className="flex items-start gap-2.5 text-sm">
           <span className={`mt-0.5 text-xs ${st.done ? (up ? "text-bull" : "text-bear") : "text-faint"}`}>

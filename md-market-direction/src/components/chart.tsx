@@ -76,6 +76,12 @@ export interface ChartLevel {
   color: string;
   label?: string;
   dashed?: boolean;
+  /**
+   * Carry the line to the right edge of the plot. A structure point is a level
+   * price has still to break, so it runs forward into empty chart rather than
+   * stopping at the last bar.
+   */
+  extendRight?: boolean;
 }
 
 /** A labelled point on a bar — where a shift, pullback or confirmation landed. */
@@ -156,7 +162,10 @@ export function PriceChart({
     // at is a sliver. Tighten the window — but never widen one the user has
     // already zoomed in past.
     view.count = Math.min(view.count, 60);
-    view.start = idx - view.count / 2;
+    // Centred, but never scrolled off the end of the series: a bar near the live
+    // edge would otherwise leave half the plot empty.
+    const maxStart = Math.max(0, data.candles.length - view.count);
+    view.start = Math.max(0, Math.min(idx - view.count / 2, maxStart));
     view.priceAuto = true;
     repaint();
   }, [focusT, data, repaint]);
@@ -670,7 +679,9 @@ export function PriceChart({
                 return best;
               };
               const x0 = X(idx(lv.fromT)) - step / 2;
-              const x1 = Math.max(X(idx(lv.toT)) + step / 2, x0 + step);
+              const x1 = lv.extendRight
+                ? plotW
+                : Math.max(X(idx(lv.toT)) + step / 2, x0 + step);
               const y = Y(lv.price);
               return (
                 <g key={`lv${k}`} pointerEvents="none">
@@ -686,8 +697,13 @@ export function PriceChart({
                       // unclamped label is half-cut by the frame or lost under
                       // the price scale. The backing keeps it readable where it
                       // crosses candles, which is most of the time.
-                      const anchorEnd = x0 + 4 > plotW - 80;
-                      const lx = Math.min(Math.max(x0 + 4, 4), plotW - 4);
+                      // A line running to the right edge is labelled there,
+                      // next to the price it has to be broken at, the way a
+                      // hand-drawn level is annotated.
+                      const anchorEnd = lv.extendRight || x0 + 4 > plotW - 80;
+                      const lx = lv.extendRight
+                        ? plotW - 4
+                        : Math.min(Math.max(x0 + 4, 4), plotW - 4);
                       const w = lv.label.length * 5.4 + 8;
                       return (
                         <>
