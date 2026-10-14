@@ -135,9 +135,9 @@ export const SOS_TIMEFRAMES: Timeframe[] = ["5M", "15M", "30M", "1H", "4H", "1D"
 
 /** Human names for the ladder, so labels read the way a trader says them. */
 export const TF_SPOKEN: Record<Timeframe, string> = {
-  "5M": "M5",
-  "15M": "M15",
-  "30M": "M30",
+  "5M": "5M",
+  "15M": "15M",
+  "30M": "30M",
   "1H": "1H",
   "4H": "4H",
   "1D": "Daily",

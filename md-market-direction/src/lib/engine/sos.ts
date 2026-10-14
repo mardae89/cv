@@ -67,6 +67,12 @@ export interface Elbow {
   t: number;
   price: number;
   kind: "high" | "low";
+  /**
+   * How this elbow sits against the previous one of its own kind:
+   * HH higher high, LH lower high, HL higher low, LL lower low.
+   * Null for the first of each kind, which has nothing to compare against.
+   */
+  label: "HH" | "LH" | "HL" | "LL" | null;
 }
 
 /**
@@ -94,8 +100,22 @@ export function findElbows(candles: Candle[], k = 2): Elbow[] {
       if (j < i && bodyBottom(candles[j]) === bodyBottom(candles[i])) isLow = false;
       if (!isHigh && !isLow) break;
     }
-    if (isHigh) out.push({ index: i, t: candles[i].t, price: bodyTop(candles[i]), kind: "high" });
-    else if (isLow) out.push({ index: i, t: candles[i].t, price: bodyBottom(candles[i]), kind: "low" });
+    if (isHigh) out.push({ index: i, t: candles[i].t, price: bodyTop(candles[i]), kind: "high", label: null });
+    else if (isLow) out.push({ index: i, t: candles[i].t, price: bodyBottom(candles[i]), kind: "low", label: null });
+  }
+
+  // Each elbow is named against the previous one of its own kind, which is what
+  // makes it structure: a high is only a LOWER high relative to the high before.
+  let lastHigh: number | null = null;
+  let lastLow: number | null = null;
+  for (const e of out) {
+    if (e.kind === "high") {
+      if (lastHigh != null) e.label = e.price > lastHigh ? "HH" : "LH";
+      lastHigh = e.price;
+    } else {
+      if (lastLow != null) e.label = e.price > lastLow ? "HL" : "LL";
+      lastLow = e.price;
+    }
   }
   return out;
 }

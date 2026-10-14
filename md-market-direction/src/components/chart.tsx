@@ -64,6 +64,8 @@ export interface ChartZone {
   color: string;
   opacity: number;
   label?: string;
+  /** Run the band the full width of the plot, the way it is drawn by hand. */
+  fullWidth?: boolean;
 }
 
 /** A horizontal price level across a time span — the shift-of-structure line. */
@@ -571,8 +573,10 @@ export function PriceChart({
               const i0 = indexAt(z.fromT);
               const i1 = indexAt(z.toT);
               if (i0 == null || i1 == null) return null;
-              const x0 = X(i0) - step / 2;
-              const x1 = Math.max(X(i1) + step / 2, x0 + step);
+              // A price band is a level, not an event: drawn by hand it runs off
+              // both edges of the screen rather than stopping at one candle.
+              const x0 = z.fullWidth ? 0 : X(i0) - step / 2;
+              const x1 = z.fullWidth ? plotW : Math.max(X(i1) + step / 2, x0 + step);
               const yA = Y(z.priceA);
               const yB = Y(z.priceB);
               const top = Math.min(yA, yB);
