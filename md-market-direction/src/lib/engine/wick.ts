@@ -351,7 +351,7 @@ export function scanHistory(
   timeframe: Timeframe,
   settings: WickSettings,
   periodMs: number,
-  limit = 60,
+  limit = 400,
 ): HistoricalSetup[] {
   const out: HistoricalSetup[] = [];
   // Start late enough that ATR, the 50 EMA and ADX all have their windows.

@@ -40,9 +40,12 @@ export interface WickSettings {
 }
 
 export const WICK_DEFAULTS: WickSettings = {
-  bodyAtrMultiple: 0.8,
+  // 0.45 and 15 replace the original 0.8 and 20, set from reading real setups:
+  // a 0.49 x ATR body and an ADX of 17 were both being rejected on charts that
+  // read as clean strong moves by eye.
+  bodyAtrMultiple: 0.45,
   emaSlopeLookback: 10,
-  adxMin: 20,
+  adxMin: 15,
   momentumMin: 3,
   momentumWindow: 5,
   zoneStart: 0.382,
