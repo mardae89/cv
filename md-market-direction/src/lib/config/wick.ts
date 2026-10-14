@@ -29,6 +29,12 @@ export interface WickSettings {
   /** Retracement band drawn as the pullback zone. */
   zoneStart: number;
   zoneEnd: number;
+  /**
+   * How far price may run PAST the 0 level before the pullback is considered
+   * missed, in retracement units of the previous candle's range. 0.25 means a
+   * quarter of that range beyond the previous candle's extreme.
+   */
+  overrunLimit: number;
   /** Loose checks the next 1 lower timeframe; strict checks the next 2. */
   alignment: WickAlignment;
 }
@@ -41,6 +47,7 @@ export const WICK_DEFAULTS: WickSettings = {
   momentumWindow: 5,
   zoneStart: 0.382,
   zoneEnd: 0.75,
+  overrunLimit: 0.25,
   alignment: "loose",
 };
 
@@ -83,6 +90,11 @@ export const WICK_SETTING_LABELS: Record<
     label: "Zone end (retracement)",
     help: "Deep edge of the pullback zone. Beyond 1.0 the setup is invalidated.",
     min: 0.2, max: 0.99, step: 0.001,
+  },
+  overrunLimit: {
+    label: "Overrun allowance",
+    help: "How far price may run past the 0 level before the pullback counts as missed, as a share of the previous candle's range. 0 voids the setup the moment price trades beyond that candle's extreme.",
+    min: 0, max: 1.5, step: 0.05,
   },
 };
 

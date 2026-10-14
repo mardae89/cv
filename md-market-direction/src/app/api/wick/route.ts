@@ -27,6 +27,7 @@ function readSettings(params: URLSearchParams): WickSettings {
     momentumWindow: Math.round(num("momentumWindow", 2, 20)),
     zoneStart: num("zoneStart", 0.1, 0.9),
     zoneEnd: num("zoneEnd", 0.2, 0.99),
+    overrunLimit: num("overrunLimit", 0, 1.5),
     alignment: params.get("alignment") === "strict" ? "strict" : "loose",
   };
 }

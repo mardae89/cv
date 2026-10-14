@@ -93,6 +93,7 @@ export function PriceChart({
   const [loading, setLoading] = useState(true);
   const [showMa, setShowMa] = useState(true);
   const [hover, setHover] = useState<number | null>(null);
+  const [hoverY, setHoverY] = useState<number | null>(null);
   const [width, setWidth] = useState(720);
   const [chartH, setChartH] = useState(height);
   const [fullscreen, setFullscreen] = useState(false);
@@ -232,10 +233,11 @@ export function PriceChart({
   }
 
   const step = plotW / Math.max(1, n);
-  const bodyW = Math.max(1, Math.min(step * 0.62, 30));
+  const bodyW = Math.max(1, Math.min(step * 0.74, 34));
   /** i is an index into `slice`; it is offset back into absolute bar space. */
   const X = (i: number) => (first + i - v.start) * step + step / 2;
   const Y = (p: number) => PAD_T + ((top - p) / (top - bot || 1)) * priceH;
+  const priceAt = (y: number) => top - ((y - PAD_T) / (priceH || 1)) * (top - bot);
   const maxVol = Math.max(1, ...slice.map((c) => c.v));
   const volTop = PAD_T + priceH + GAP;
   const VY = (vol: number) => volTop + VOL_H - (vol / maxVol) * VOL_H;
@@ -313,7 +315,9 @@ export function PriceChart({
       const rect = svgRef.current!.getBoundingClientRect();
       const abs = Math.round(v.start + (e.clientX - rect.left - step / 2) / step);
       const i = abs - first;
+      const y = e.clientY - rect.top;
       setHover(i >= 0 && i < slice.length ? i : null);
+      setHoverY(y >= PAD_T && y <= PAD_T + priceH ? y : null);
       return;
     }
     const g = gesture.current;
@@ -399,6 +403,7 @@ export function PriceChart({
   const timeTicks = buildTimeTicks(slice, timeframe, plotW, step, X);
 
   const hovered = hover != null ? slice[hover] : null;
+  const legend = hovered ?? slice[slice.length - 1] ?? null;
 
   return (
     <div className={`panel ${fullscreen ? "chart-fs" : ""}`} ref={hostRef}>
@@ -456,7 +461,7 @@ export function PriceChart({
             onPointerMove={onPointerMove}
             onPointerUp={endPointer}
             onPointerCancel={endPointer}
-            onPointerLeave={() => setHover(null)}
+            onPointerLeave={() => { setHover(null); setHoverY(null); }}
             onWheel={onWheel}
             onDoubleClick={resetAll}
             role="img"
@@ -465,7 +470,7 @@ export function PriceChart({
             {/* price grid + right-hand scale */}
             {priceTicks.map((p) => (
               <g key={p}>
-                <line x1={0} x2={plotW} y1={Y(p)} y2={Y(p)} stroke="var(--color-hairline-soft)" strokeWidth={1} />
+                <line x1={0} x2={plotW} y1={Y(p)} y2={Y(p)} stroke="var(--color-hairline-soft)" strokeWidth={1} opacity={0.5} />
                 <text
                   x={plotW + 8}
                   y={Y(p) + 3.5}
@@ -481,7 +486,7 @@ export function PriceChart({
             {/* time grid + bottom scale */}
             {timeTicks.map((t) => (
               <g key={t.i}>
-                <line x1={X(t.i)} x2={X(t.i)} y1={PAD_T} y2={PAD_T + priceH} stroke="var(--color-hairline-soft)" strokeWidth={1} />
+                <line x1={X(t.i)} x2={X(t.i)} y1={PAD_T} y2={PAD_T + priceH} stroke="var(--color-hairline-soft)" strokeWidth={1} opacity={0.5} />
                 <text x={X(t.i)} y={H - 9} fill="var(--color-faint)" fontSize={10} textAnchor="middle" fontFamily="ui-monospace, monospace">
                   {t.label}
                 </text>
@@ -564,14 +569,20 @@ export function PriceChart({
               const yc = Y(c.c);
               return (
                 <g key={i}>
-                  <line x1={X(i)} x2={X(i)} y1={Y(c.h)} y2={Y(c.l)} stroke={color} strokeWidth={1} />
+                  <line
+                    x1={X(i)} x2={X(i)} y1={Y(c.h)} y2={Y(c.l)}
+                    stroke={color} strokeWidth={Math.min(1.4, Math.max(1, bodyW * 0.14))}
+                    shapeRendering="crispEdges"
+                  />
                   <rect
                     x={X(i) - bodyW / 2}
                     y={Math.min(yo, yc)}
                     width={bodyW}
                     height={Math.max(1, Math.abs(yc - yo))}
                     fill={color}
-                    opacity={0.92}
+                    stroke={color}
+                    strokeWidth={bodyW > 3 ? 1 : 0}
+                    shapeRendering="crispEdges"
                   />
                 </g>
               );
@@ -608,8 +619,41 @@ export function PriceChart({
               </g>
             ) : null}
 
+            {/* crosshair: both arms, each ending in a label on its own scale */}
             {hover != null && hovered ? (
-              <line x1={X(hover)} x2={X(hover)} y1={PAD_T} y2={volTop + VOL_H} stroke="var(--color-gold)" strokeWidth={1} opacity={0.55} />
+              <g pointerEvents="none">
+                <line
+                  x1={X(hover)} x2={X(hover)} y1={PAD_T} y2={volTop + VOL_H}
+                  stroke="var(--color-mute)" strokeWidth={1} strokeDasharray="3 3" opacity={0.7}
+                />
+                {hoverY != null ? (
+                  <>
+                    <line
+                      x1={0} x2={plotW} y1={hoverY} y2={hoverY}
+                      stroke="var(--color-mute)" strokeWidth={1} strokeDasharray="3 3" opacity={0.7}
+                    />
+                    <rect x={plotW + 1} y={hoverY - 8} width={PRICE_GUTTER - 2} height={16} fill="var(--color-mute)" />
+                    <text
+                      x={plotW + 5} y={hoverY + 4}
+                      fill="var(--color-void)" fontSize={10} fontWeight={600}
+                      fontFamily="ui-monospace, monospace"
+                    >
+                      {fmtPrice(priceAt(hoverY), data.precision)}
+                    </text>
+                  </>
+                ) : null}
+                <rect
+                  x={Math.max(0, Math.min(width - 96, X(hover) - 48))}
+                  y={H - TIME_STRIP + 3} width={96} height={16} fill="var(--color-mute)"
+                />
+                <text
+                  x={Math.max(48, Math.min(width - 48, X(hover)))} y={H - TIME_STRIP + 15}
+                  fill="var(--color-void)" fontSize={10} fontWeight={600} textAnchor="middle"
+                  fontFamily="ui-monospace, monospace"
+                >
+                  {crosshairTime(hovered.t, timeframe)}
+                </text>
+              </g>
             ) : null}
 
             {/* scale hit-zones, drawn last so they sit above the plot */}
@@ -619,16 +663,27 @@ export function PriceChart({
             <line x1={0} x2={width} y1={H - TIME_STRIP} y2={H - TIME_STRIP} stroke="var(--color-hairline)" strokeWidth={1} />
           </svg>
 
-          {hovered ? (
-            <div className="pointer-events-none absolute left-3 top-2 border border-hairline bg-ink/95 px-3 py-2 text-[11px]">
-              <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 tnum">
-                <span className="text-faint">O</span><span>{fmtPrice(hovered.o, data.precision)}</span>
-                <span className="text-faint">H</span><span>{fmtPrice(hovered.h, data.precision)}</span>
-                <span className="text-faint">L</span><span>{fmtPrice(hovered.l, data.precision)}</span>
-                <span className="text-faint">C</span>
-                <span className={hovered.c >= hovered.o ? "text-bull" : "text-bear"}>{fmtPrice(hovered.c, data.precision)}</span>
-              </div>
-              <div className="mt-1 text-faint">{new Date(hovered.t).toUTCString().slice(5, 22)} UTC</div>
+          {legend ? (
+            <div className="pointer-events-none absolute left-3 top-2 flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 text-[11px]">
+              <span className="display text-xs font-bold tracking-tight text-bone">{data.symbol}</span>
+              <span className="text-[10px] uppercase tracking-widest text-faint">{timeframe}</span>
+              <span className="tnum text-faint">
+                O<span className="ml-1 text-mute">{fmtPrice(legend.o, data.precision)}</span>
+              </span>
+              <span className="tnum text-faint">
+                H<span className="ml-1 text-mute">{fmtPrice(legend.h, data.precision)}</span>
+              </span>
+              <span className="tnum text-faint">
+                L<span className="ml-1 text-mute">{fmtPrice(legend.l, data.precision)}</span>
+              </span>
+              <span className="tnum text-faint">
+                C<span className={`ml-1 ${legend.c >= legend.o ? "text-bull" : "text-bear"}`}>
+                  {fmtPrice(legend.c, data.precision)}
+                </span>
+              </span>
+              <span className={`tnum ${legend.c >= legend.o ? "text-bull" : "text-bear"}`}>
+                {legend.o ? `${legend.c >= legend.o ? "+" : ""}${(((legend.c - legend.o) / legend.o) * 100).toFixed(2)}%` : ""}
+              </span>
             </div>
           ) : null}
 
@@ -694,6 +749,14 @@ function buildPriceTicks(bot: number, top: number, target: number): number[] {
   const out: number[] = [];
   for (let p = first; p <= top && out.length < 12; p += stepSize) out.push(p);
   return out;
+}
+
+/** The crosshair's time stamp, at the granularity the timeframe deserves. */
+function crosshairTime(t: number, tf: Timeframe): string {
+  const d = new Date(t);
+  const day = `${String(d.getUTCDate()).padStart(2, "0")} ${d.toLocaleString("en", { month: "short", timeZone: "UTC" })}`;
+  if (tf === "1D" || tf === "1W") return `${day} ${d.getUTCFullYear()}`;
+  return `${day} ${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
 }
 
 /** Date labels whose granularity follows the timeframe and the zoom level. */

@@ -37,7 +37,12 @@ export interface WickRule {
   detail: string;
 }
 
-export type ZoneState = "waiting" | "in-zone" | "invalidated" | "expired";
+/**
+ * `overrun` means price ran too far past the 0 level before ever pulling back
+ * into the zone — the entry never came, so the setup is void rather than
+ * invalidated. A different outcome from price breaking the other way.
+ */
+export type ZoneState = "waiting" | "in-zone" | "overrun" | "invalidated" | "expired";
 
 export interface WickZone {
   /** Retracement anchors taken from the previous candle. */
@@ -48,6 +53,10 @@ export interface WickZone {
   zoneFar: number;
   /** The 1.0 retracement — a close beyond this invalidates the setup. */
   invalidation: number;
+  /** The 0 level: the previous candle's extreme, where the move ended. */
+  origin: number;
+  /** Past this the pullback counts as missed. */
+  overrunLevel: number;
   /** The period the zone is live for: the current candle. */
   fromT: number;
   toT: number;
@@ -234,6 +243,9 @@ export function buildZone(
     zoneNear: level(settings.zoneStart),
     zoneFar: level(settings.zoneEnd),
     invalidation: level(1),
+    origin: level(0),
+    // A negative retracement: past the end of the move rather than back into it.
+    overrunLevel: level(-settings.overrunLimit),
     fromT: current.t,
     toT: current.t + periodMs,
     state: "waiting",
@@ -255,6 +267,20 @@ export function zoneState(zone: WickZone, current: Candle, direction: WickDirect
   if (invalidated) return { state: "invalidated", progress: 1 };
 
   const reached = up ? current.l <= zone.zoneNear : current.h >= zone.zoneNear;
+
+  // Ran past the end of the move without ever pulling back: the entry never
+  // came. Only checked when the zone was NOT reached — once price has traded
+  // into the zone the setup has already done what it was waiting for, and a
+  // later push beyond 0 is the move working, not a miss.
+  //
+  // A candle gives highs and lows but not their order, so "before the pullback"
+  // is read as "and the pullback never happened at all" — the strongest claim
+  // OHLC data can actually support.
+  if (!reached) {
+    const overran = up ? current.h > zone.overrunLevel : current.l < zone.overrunLevel;
+    if (overran) return { state: "overrun", progress: 0 };
+  }
+
   const span = Math.abs(zone.zoneFar - zone.zoneNear) || 1;
   const travelled = up
     ? (zone.zoneNear - Math.min(current.l, zone.zoneNear)) / span
@@ -306,7 +332,7 @@ export function detectWickSetup(
 
 export interface HistoricalSetup extends WickSetup {
   /** How the zone resolved over the candle it was live for. */
-  outcome: "reached" | "missed" | "invalidated";
+  outcome: "reached" | "missed" | "overrun" | "invalidated";
   /** Bars into the candle's own period — always 1; kept for a future replay. */
   resolvedT: number;
 }
@@ -349,7 +375,11 @@ export function scanHistory(
       alignment: null,
       pullbackLabel: pullbackLabel(timeframe),
       zoneProgress: progress,
-      outcome: state === "invalidated" ? "invalidated" : state === "in-zone" ? "reached" : "missed",
+      outcome:
+        state === "invalidated" ? "invalidated"
+          : state === "in-zone" ? "reached"
+            : state === "overrun" ? "overrun"
+              : "missed",
       resolvedT: candles[i].t + periodMs,
     });
   }

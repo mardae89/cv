@@ -1,10 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useApi } from "@/lib/hooks";
+import { useWickSettings, wickQuery } from "@/lib/useWickSettings";
+import { symbolMatches } from "@/lib/symbols";
+import { WICK_SETTING_LABELS } from "@/lib/config/wick";
+import type { WickSettings } from "@/lib/config/wick";
 import { PriceChart, type ChartZone } from "@/components/chart";
 import { EmptyState, ErrorState, Eyebrow, Panel, SectionHeading, Skeleton } from "@/components/primitives";
-import { WICK_DEFAULTS, WICK_TIMEFRAMES, TF_SPOKEN } from "@/lib/config/wick";
+import { WICK_TIMEFRAMES, TF_SPOKEN } from "@/lib/config/wick";
 import type { HistoricalSetup, WickRule, WickSetup, ZoneState } from "@/lib/engine/wick";
 import { fmtPrice } from "@/lib/utils/format";
 import type { Timeframe } from "@/lib/types";
@@ -22,12 +26,15 @@ interface WickResponse {
 
 /* Phase 4 replaces this with the saved colour. Until then one constant, in one
    place, so swapping it is a one-line change. */
+const PAGE_SIZE = 20;
+
 const ZONE_COLOR = "#d4a537";
 const ZONE_OPACITY = 0.18;
 
 const STATE_LABEL: Record<ZoneState, string> = {
   waiting: "Waiting",
   "in-zone": "In Zone",
+  overrun: "Missed — ran past 0",
   invalidated: "Invalidated",
   expired: "Expired",
 };
@@ -35,19 +42,27 @@ const STATE_LABEL: Record<ZoneState, string> = {
 const STATE_TONE: Record<ZoneState, string> = {
   waiting: "text-flat",
   "in-zone": "text-bull",
+  overrun: "text-faint",
   invalidated: "text-bear",
   expired: "text-faint",
 };
 
 export default function WickPage() {
   const [symbol, setSymbol] = useState("EUR/USD");
-  const [input, setInput] = useState("EUR/USD");
   const [timeframe, setTimeframe] = useState<Timeframe>("1D");
+  const [page, setPage] = useState(0);
+  const { settings, set, reset, isDefault } = useWickSettings();
+  // The dials move at the speed of a drag; the scan should not.
+  const query = useDebounced(wickQuery(settings), 350);
 
   const { data, loading, error, refresh } = useApi<WickResponse>(
-    `/api/wick?symbol=${encodeURIComponent(symbol)}&timeframe=${timeframe}`,
-    [symbol, timeframe],
+    `/api/wick?symbol=${encodeURIComponent(symbol)}&timeframe=${timeframe}&${query}`,
+    [symbol, timeframe, query],
   );
+
+  // A new market or timeframe is a new list; staying on page 4 of it would show
+  // an empty table.
+  useEffect(() => setPage(0), [symbol, timeframe, query]);
 
   /* Live zone plus the recent historical ones, so a setup can be checked against
      the chart it was found on rather than taken on trust. */
@@ -91,20 +106,7 @@ export default function WickPage() {
 
       <Panel className="p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              setSymbol(input.trim() || "EUR/USD");
-            }}
-            className="flex-1"
-          >
-            <input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Symbol — eurusd, gbpjpy, xauusd"
-              className="w-full px-3 py-2.5 text-sm sm:max-w-xs"
-            />
-          </form>
+          <SymbolSearch value={symbol} onPick={setSymbol} />
           <div className="flex border border-hairline">
             {WICK_TIMEFRAMES.map((tf) => (
               <button
@@ -118,6 +120,58 @@ export default function WickPage() {
               </button>
             ))}
           </div>
+        </div>
+      </Panel>
+
+      {/* ------------------------------ THRESHOLDS ---------------------------- */}
+      <Panel className="p-5 sm:p-6">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <Eyebrow>Rule thresholds</Eyebrow>
+          <button
+            onClick={() => reset()}
+            className="text-[10px] uppercase tracking-widest text-mute transition hover:text-gold"
+          >
+            Reset all
+          </button>
+        </div>
+        <p className="mb-4 mt-1 text-xs text-faint">
+          Every number the method depends on. Changes apply straight away — the rules, the chart and
+          the history below all re-read from these.
+        </p>
+        <div className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
+          {(Object.keys(WICK_SETTING_LABELS) as (keyof typeof WICK_SETTING_LABELS)[]).map((key) => {
+            const meta = WICK_SETTING_LABELS[key];
+            const value = settings[key] as number;
+            return (
+              <div key={key}>
+                <div className="flex items-baseline justify-between gap-2">
+                  <label className="text-xs text-bone">{meta.label}</label>
+                  <div className="flex items-baseline gap-2">
+                    <span className="ticker text-sm font-semibold text-gold">{value}</span>
+                    {!isDefault(key) ? (
+                      <button
+                        onClick={() => reset(key)}
+                        title="Reset to default"
+                        className="text-[10px] uppercase tracking-widest text-mute transition hover:text-gold"
+                      >
+                        Reset
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+                <input
+                  type="range"
+                  min={meta.min}
+                  max={meta.max}
+                  step={meta.step}
+                  value={value}
+                  onChange={(e) => set(key as keyof WickSettings, Number(e.target.value))}
+                  className="mt-1.5 w-full accent-[var(--color-gold)]"
+                />
+                <p className="mt-1 text-[10px] leading-relaxed text-faint">{meta.help}</p>
+              </div>
+            );
+          })}
         </div>
       </Panel>
 
@@ -206,7 +260,7 @@ export default function WickPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {data.history.map((h) => (
+                    {data.history.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE).map((h) => (
                       <tr key={h.candleT} className="border-b border-hairline-soft last:border-b-0">
                         <td className="px-2 py-2 tnum text-mute">
                           {new Date(h.candleT).toISOString().slice(0, 16).replace("T", " ")}
@@ -220,7 +274,13 @@ export default function WickPage() {
                         <td className={`px-2 py-2 ${
                           h.outcome === "reached" ? "text-bull" : h.outcome === "invalidated" ? "text-bear" : "text-faint"
                         }`}>
-                          {h.outcome === "reached" ? "Yes" : h.outcome === "invalidated" ? "Invalidated" : "No"}
+                          {h.outcome === "reached"
+                            ? "Yes"
+                            : h.outcome === "invalidated"
+                              ? "Invalidated"
+                              : h.outcome === "overrun"
+                                ? "Ran past 0"
+                                : "No"}
                         </td>
                       </tr>
                     ))}
@@ -228,6 +288,28 @@ export default function WickPage() {
                 </table>
               </div>
             )}
+
+            {data.history.length > PAGE_SIZE ? (
+              <div className="mt-4 flex items-center justify-between gap-3 text-xs">
+                <button
+                  onClick={() => setPage((p0) => Math.max(0, p0 - 1))}
+                  disabled={page === 0}
+                  className="border border-hairline px-3 py-1.5 uppercase tracking-widest text-mute transition enabled:hover:border-gold enabled:hover:text-gold disabled:opacity-30"
+                >
+                  ← Previous
+                </button>
+                <span className="tnum text-faint">
+                  {page * PAGE_SIZE + 1}–{Math.min(data.history.length, (page + 1) * PAGE_SIZE)} of {data.history.length}
+                </span>
+                <button
+                  onClick={() => setPage((p0) => (p0 + 1) * PAGE_SIZE < data.history.length ? p0 + 1 : p0)}
+                  disabled={(page + 1) * PAGE_SIZE >= data.history.length}
+                  className="border border-hairline px-3 py-1.5 uppercase tracking-widest text-mute transition enabled:hover:border-gold enabled:hover:text-gold disabled:opacity-30"
+                >
+                  Next →
+                </button>
+              </div>
+            ) : null}
           </Panel>
 
           <p className="pb-4 text-[11px] leading-relaxed text-faint">
@@ -247,4 +329,137 @@ function Stat({ label, value }: { label: string; value: string }) {
       <div className="ticker mt-0.5 text-base font-semibold">{value}</div>
     </div>
   );
+}
+
+interface AssetRow {
+  symbol: string;
+  name: string;
+  group: string;
+}
+
+/**
+ * Symbol search with live suggestions.
+ *
+ * Matching ignores separators, so "eurusd", "eur usd" and "EUR/USD" all find the
+ * same pair — nobody should have to reach for the slash key on a phone. The list
+ * is fetched once and filtered in the browser, so suggestions appear on the
+ * keystroke rather than after a round trip.
+ */
+function SymbolSearch({ value, onPick }: { value: string; onPick: (symbol: string) => void }) {
+  const [text, setText] = useState(value);
+  const [open, setOpen] = useState(false);
+  const [assets, setAssets] = useState<AssetRow[]>([]);
+  const [highlight, setHighlight] = useState(0);
+  const boxRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => setText(value), [value]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/assets")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (!cancelled && j?.assets) setAssets(j.assets as AssetRow[]);
+      })
+      .catch(() => {
+        /* suggestions are a convenience; typing a symbol still works without them */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const away = (e: MouseEvent) => {
+      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", away);
+    return () => document.removeEventListener("mousedown", away);
+  }, []);
+
+  const matches = useMemo(() => {
+    const q = text.trim();
+    if (!q) return [];
+    const scored = assets.filter((a) => symbolMatches(q, a.symbol, a.name));
+    // A symbol that starts with what was typed is what the user meant; rank it
+    // above a mid-string or name match.
+    const key = q.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    return scored
+      .sort((a, b) => {
+        const aStarts = a.symbol.replace(/[^A-Z0-9]/g, "").startsWith(key) ? 0 : 1;
+        const bStarts = b.symbol.replace(/[^A-Z0-9]/g, "").startsWith(key) ? 0 : 1;
+        return aStarts - bStarts || a.symbol.localeCompare(b.symbol);
+      })
+      .slice(0, 8);
+  }, [assets, text]);
+
+  const choose = (symbol: string) => {
+    onPick(symbol);
+    setText(symbol);
+    setOpen(false);
+  };
+
+  return (
+    <div ref={boxRef} className="relative flex-1 sm:max-w-xs">
+      <input
+        value={text}
+        onChange={(e) => {
+          setText(e.target.value);
+          setOpen(true);
+          setHighlight(0);
+        }}
+        onFocus={() => setOpen(true)}
+        onKeyDown={(e) => {
+          if (!open || matches.length === 0) {
+            if (e.key === "Enter" && text.trim()) choose(text.trim());
+            return;
+          }
+          if (e.key === "ArrowDown") {
+            e.preventDefault();
+            setHighlight((h) => (h + 1) % matches.length);
+          } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            setHighlight((h) => (h - 1 + matches.length) % matches.length);
+          } else if (e.key === "Enter") {
+            e.preventDefault();
+            choose(matches[highlight]?.symbol ?? text.trim());
+          } else if (e.key === "Escape") {
+            setOpen(false);
+          }
+        }}
+        placeholder="Search a market — eurusd, gbpjpy, xau"
+        className="w-full px-3 py-2.5 text-sm"
+        autoComplete="off"
+        spellCheck={false}
+      />
+      {open && matches.length > 0 ? (
+        <ul className="absolute left-0 right-0 top-full z-30 mt-1 max-h-72 overflow-y-auto border border-hairline bg-ink shadow-lg">
+          {matches.map((a, i) => (
+            <li key={a.symbol}>
+              <button
+                onMouseEnter={() => setHighlight(i)}
+                onClick={() => choose(a.symbol)}
+                className={`flex w-full items-baseline justify-between gap-3 px-3 py-2 text-left text-sm transition ${
+                  i === highlight ? "bg-gold/15 text-gold" : "text-bone hover:bg-flat/10"
+                }`}
+              >
+                <span className="font-semibold">{a.symbol}</span>
+                <span className="truncate text-[11px] text-faint">{a.name}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+/** Holds a value still until it has stopped changing for `ms`. */
+function useDebounced<T>(value: T, ms: number): T {
+  const [settled, setSettled] = useState(value);
+  useEffect(() => {
+    const id = setTimeout(() => setSettled(value), ms);
+    return () => clearTimeout(id);
+  }, [value, ms]);
+  return settled;
 }
