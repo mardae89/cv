@@ -3,7 +3,7 @@ import { useRef, useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Link } from "@/components/AppLink";
 import {
-  DoneBox, FilmingFocus, FORMAT_LABEL, FUNNEL_LABEL, FUNNEL_ORDER, IdeaChips, IdeaForm, IdeaTitle, Pager, productionDue, RowAction,
+  DoneBox, FilmingFocus, FORMAT_LABEL, FUNNEL_LABEL, FUNNEL_ORDER, hasProductionSchedule, IdeaChips, IdeaForm, IdeaTitle, Pager, productionFor, RowAction,
   ScheduleStrip, useContentActions, useContentDay, useReleasePlan, useTargets,
 } from "@/components/content";
 import { useSubmit } from "@/components/forms/body";
@@ -112,8 +112,8 @@ function TodayTab({ onAddOwn, onEdit, onBank }: { onAddOwn: () => void; onEdit: 
   const day = useContentDay();
   const act = useContentActions();
   const { busy, run } = useSubmit();
-  const focus = productionDue(data.powerItems, today);
-  const hasProduction = data.powerItems.some((i) => /^(film|edit)\b/i.test(i.name.trim()) && !(i.archived_on && i.archived_on <= today));
+  const focus = productionFor(data, today);
+  const hasProduction = hasProductionSchedule(data, today);
   const empty = !data.contentIdeas.length;
 
   return (
@@ -158,11 +158,11 @@ function TodayTab({ onAddOwn, onEdit, onBank }: { onAddOwn: () => void; onEdit: 
             <Eyebrow className="mb-1.5">{fmtLongDate(today)}</Eyebrow>
             <h2 className="text-[26px] leading-none">Filming focus</h2>
           </div>
-          <Link to="/power" className="inline-flex h-10 items-center text-[12.5px] text-mute hover:text-gold">Power List →</Link>
+          <Link to="/habits" className="inline-flex h-10 items-center text-[12.5px] text-mute hover:text-gold">Edit schedule →</Link>
         </div>
         {focus.length ? <FilmingFocus /> : (
           <p className="text-[13px] text-mute">
-            {hasProduction ? "No filming or editing scheduled today." : <>No filming or editing items on your Power List yet. <Link to="/power" className="link">Set up the Power List</Link></>}
+            {hasProduction ? "No filming or editing scheduled today." : <>No filming or editing on your schedule yet. <Link to="/habits" className="link">Add them to Daily execution</Link></>}
           </p>
         )}
         <div className="mt-5 border-t border-hair pt-4">

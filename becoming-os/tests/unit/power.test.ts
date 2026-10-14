@@ -3,9 +3,10 @@ import { SINGLE_DEFAULTS, validateSingle } from "../../src/data/schema";
 import { evaluate } from "../../src/lib/calc/milestones";
 import {
   analyse, contentTally, dayResult, dayStatus, DEFAULT_SETTINGS, greenStreak, indexPower, isDue, periodResult, periods, rating,
-  standardPowerList,
+  PRODUCTION_HABITS, standardPowerList,
 } from "../../src/lib/calc/power";
-import type { ContentIdea, PowerItem, PowerLog, UserData } from "../../src/lib/types";
+import type { ContentIdea, Habit, PowerItem, PowerLog, UserData } from "../../src/lib/types";
+import { describeStep, LEARN_NAME, planTidy } from "../../src/lib/tidy";
 import { id, makeData } from "./fixtures";
 
 // 2026-10-12 is a Monday.
@@ -34,14 +35,15 @@ describe("ratings", () => {
 
 describe("the standard list", () => {
   const list = items();
-  it("schedules filming and editing on the right days", () => {
+  it("holds only every-day items, with morning cardio; filming and editing are day-specific habits", () => {
     const due = (d: string) => list.filter((i) => isDue(i, d)).map((i) => i.name);
-    expect(due(MON)).toContain("Film short-form");
-    expect(due(MON)).not.toContain("Film long-form");
-    expect(due("2026-10-14")).toContain("Film long-form"); // Wednesday
-    expect(due("2026-10-17")).not.toContain("Edit for 90 minutes"); // Saturday
-    expect(due(MON)).toHaveLength(10);
-    expect(due("2026-10-17")).toHaveLength(8);
+    expect(list.every((i) => i.days.length === 7)).toBe(true);
+    expect(due(MON)).toHaveLength(9);
+    expect(due("2026-10-17")).toHaveLength(9);
+    expect(due(MON)).toContain("Morning cardio");
+    expect(due(MON).some((n) => /^(film|edit)\b/i.test(n))).toBe(false);
+    const days = Object.fromEntries(PRODUCTION_HABITS.map((p) => [p.name, p.schedule_days]));
+    expect(days).toEqual({ "Film short-form": [1, 2], "Film long-form": [3, 4, 5], "Edit for 90 minutes": [1, 2, 3, 4, 5] });
   });
   it("counts nothing before the list's start date", () => {
     expect(dayResult(list, "2026-10-11", indexPower(makeData())).due).toBe(0);
@@ -69,7 +71,7 @@ describe("day results", () => {
   });
   it("colours days: 90%+ bright green, 75%+ green, over 50% orange, 50% or under red", () => {
     const today = "2026-10-14";
-    // Monday: 10 due, 8 done = 80% → green. Tuesday: 10 due, 7 done = 70% → red.
+    // Monday: 9 due, 7 done = 78% → green. Tuesday: 9 due, 6 done = 67% → orange.
     const data = makeData({ powerLogs: [...complete(list, MON, ["Read", "In bed"]), ...complete(list, "2026-10-13", ["Read", "In bed", "No impulsive"])] });
     const idx = indexPower(data);
     expect(dayStatus(dayResult(list, MON, idx), today)).toBe("green");
@@ -93,16 +95,16 @@ describe("day results", () => {
 
 describe("weekly and monthly PCR", () => {
   const list = items();
-  // Full week Mon 12 – Sun 18: Mon–Sat perfect, Sunday nothing → 58 of 66 items.
+  // Full week Mon 12 – Sun 18: Mon–Sat perfect, Sunday nothing → 54 of 63 items.
   const logs = ["2026-10-12", "2026-10-13", "2026-10-14", "2026-10-15", "2026-10-16", "2026-10-17"].flatMap((d) => complete(list, d));
   const data = makeData({ powerLogs: logs });
   const idx = indexPower(data);
 
   it("is completed items over items due, for the whole week", () => {
     const w = periodResult(list, MON, "2026-10-18", idx, "2026-10-20");
-    expect(w.due).toBe(5 * 10 + 2 * 8);
-    expect(w.done).toBe(5 * 10 + 8);
-    expect(w.pct).toBeCloseTo((58 / 66) * 100, 5);
+    expect(w.due).toBe(7 * 9);
+    expect(w.done).toBe(6 * 9);
+    expect(w.pct).toBeCloseTo((54 / 63) * 100, 5);
     expect(rating(w.pct!).key).toBe("great");
     expect(w.greenDays).toBe(6);
     expect(w.redDays).toBe(1);
@@ -129,7 +131,7 @@ describe("weekly and monthly PCR", () => {
     expect(t.shortTarget).toBe(14);
     expect(t.longTarget).toBe(4);
     const a = analyse(w, null, t, "week");
-    expect(a.headline).toMatch(/^Great week: 88% PCR/);
+    expect(a.headline).toMatch(/^Great week: 86% PCR/);
     expect(a.points.join(" ")).toContain("6 green days, 0 orange, 1 red, 6 perfect");
   });
   it("counts the short-form target only on short-form release days", () => {
@@ -152,7 +154,7 @@ describe("power milestones and XP", () => {
     expect(got("power.first_perfect")).toBe(MON);
     expect(got("power.streak_3")).toBe("2026-10-14");
     expect(got("power.streak_7")).toBeNull();
-    expect(ev.xp.byCategory.habits).toBeGreaterThanOrEqual(3 * (10 * 5 + 25 + 50));
+    expect(ev.xp.byCategory.habits).toBeGreaterThanOrEqual(3 * (9 * 5 + 25 + 50));
   });
   it("scores a week only once it is over", () => {
     const list = items();
@@ -176,5 +178,35 @@ describe("power settings validation", () => {
     expect(() => validateSingle("powerSettings", { ...base, long_release_days: ["Mon"] })).toThrow(/Long-form release days/);
     expect(() => validateSingle("powerSettings", { ...base, strategy: { ...strategy, rules: ["  "] } })).toThrow(/rule/);
     expect(() => validateSingle("powerSettings", { ...base, strategy: { ...strategy, tone: 5 } })).toThrow(/Tone/);
+  });
+});
+
+describe("tidying the two lists", () => {
+  const habit = (name: string, extra: Partial<Habit> = {}): Habit => ({
+    id: id(), user_id: "u1", name, category: "mind", schedule_days: [0, 1, 2, 3, 4, 5, 6], skip_on_rest_days: false,
+    xp: 10, start_date: MON, archived_on: null, sort_order: 0, ...extra,
+  });
+  const oldList = (): PowerItem[] => [
+    ...items(),
+    { id: id(), user_id: "u1", name: "Film short-form", kind: "check", days: [1, 2], start_date: MON, archived_on: null, target: null, unit: null, auto: null, sort_order: 20 },
+  ];
+  it("proposes removing habits the Power List covers, renaming read, adding cardio and moving day-specific items", () => {
+    const power = oldList().filter((i) => i.name !== "Morning cardio");
+    const habits = [habit("Wake up on time"), habit("Lights out on time"), habit("Log nutrition"), habit("Read or learn (20 min)"), habit("Plan tomorrow")];
+    const steps = planTidy({ habits, powerItems: power }, "2026-10-14");
+    expect(steps.map(describeStep)).toEqual([
+      "Remove “Wake up on time” from Daily execution — the Power List has “Wake up by 5:45am”.",
+      "Remove “Lights out on time” from Daily execution — the Power List has “In bed by 10:30pm”.",
+      "Remove “Log nutrition” from Daily execution — the Power List has “Log food”.",
+      "Rename “Read or learn (20 min)” to “Learn for 20 minutes” — reading is on the Power List.",
+      "Add “Morning cardio” to the Power List, every day.",
+      "Move “Film short-form” to Daily execution — it's only due on certain days.",
+    ]);
+  });
+  it("proposes nothing once tidy, or without a Power List", () => {
+    expect(planTidy({ habits: [habit("Plan tomorrow"), habit(LEARN_NAME)], powerItems: items() }, "2026-10-14")).toEqual([]);
+    expect(planTidy({ habits: [habit("Wake up on time")], powerItems: [] }, "2026-10-14")).toEqual([]);
+    const archived = habit("Wake up on time", { archived_on: "2026-10-13" });
+    expect(planTidy({ habits: [archived], powerItems: items() }, "2026-10-14")).toEqual([]);
   });
 });

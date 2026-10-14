@@ -12,7 +12,9 @@ for (const vp of ["mobile", "desktop"] as const) {
       await page.getByRole("button", { name: "Use my standard list" }).first().click();
       const day = page.getByRole("region", { name: "Day checklist" }).or(page.locator('[aria-label="Day checklist"]')).first();
       await expect(day.getByRole("button", { name: "Wake up by 5:45am" })).toBeVisible();
-      expect((await rows(page, "powerItems")).length).toBe(11);
+      expect((await rows(page, "powerItems")).length).toBe(9);
+      // Filming and editing go to Daily execution, on their days.
+      await expect.poll(async () => (await rows(page, "habits")).map((h) => h.name).sort().join("|")).toBe("Edit for 90 minutes|Film long-form|Film short-form");
 
       // A check item.
       await day.getByRole("button", { name: "Wake up by 5:45am" }).click();
@@ -74,9 +76,9 @@ for (const vp of ["mobile", "desktop"] as const) {
       await page.getByRole("dialog").getByRole("button", { name: "Archive No impulsive purchases" }).click();
       await page.getByRole("dialog").last().getByRole("button", { name: /Archive/ }).last().click();
       await expect.poll(async () => (await rows(page, "powerItems")).find((r) => r.name === "No impulsive purchases")?.archived_on).toBeTruthy();
-      await page.getByRole("dialog").first().getByRole("button", { name: "Delete Film short-form" }).click();
+      await page.getByRole("dialog").first().getByRole("button", { name: "Delete Morning cardio" }).click();
       await page.getByRole("dialog").last().getByRole("button", { name: /^Delete/ }).last().click();
-      await expect.poll(async () => (await rows(page, "powerItems")).some((r) => r.name === "Film short-form")).toBe(false);
+      await expect.poll(async () => (await rows(page, "powerItems")).some((r) => r.name === "Morning cardio")).toBe(false);
       expect(errors).toEqual([]);
     });
 

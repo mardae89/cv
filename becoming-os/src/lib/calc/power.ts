@@ -52,23 +52,32 @@ export const settingsOf = (data: Pick<UserData, "powerSettings">): Omit<PowerSet
 const WEEKDAYS = [1, 2, 3, 4, 5];
 const EVERY_DAY = [0, 1, 2, 3, 4, 5, 6];
 
-/** Your standard Power List and filming schedule. Every item stays editable. */
+/**
+ * Your standard Power List: the things done every day, no matter what. Every
+ * item stays editable. Day-specific work (filming, editing) lives in Daily
+ * execution instead — see PRODUCTION_HABITS.
+ */
 export function standardPowerList(startDate: ISODate): Omit<PowerItem, "id" | "user_id">[] {
   const base = { start_date: startDate, archived_on: null, target: null, unit: null, auto: null } as const;
   return [
     { ...base, name: "Wake up by 5:45am", kind: "check", days: EVERY_DAY, sort_order: 0 },
-    { ...base, name: "Both exercise sessions", kind: "count", target: 2, unit: "sessions", auto: "workouts", days: EVERY_DAY, sort_order: 1 },
-    { ...base, name: "Log food", kind: "check", auto: "food", days: EVERY_DAY, sort_order: 2 },
-    { ...base, name: "Instagram stories", kind: "count", target: 6, unit: "stories", days: EVERY_DAY, sort_order: 3 },
-    { ...base, name: "Short-form videos posted", kind: "count", target: 2, unit: "shorts", auto: "shorts", days: EVERY_DAY, sort_order: 4 },
-    { ...base, name: "Read 5 pages", kind: "count", target: 5, unit: "pages", days: EVERY_DAY, sort_order: 5 },
-    { ...base, name: "No impulsive purchases", kind: "check", days: EVERY_DAY, sort_order: 6 },
-    { ...base, name: "In bed by 10:30pm", kind: "check", days: EVERY_DAY, sort_order: 7 },
-    { ...base, name: "Film short-form", kind: "check", days: [1, 2], sort_order: 8 },
-    { ...base, name: "Film long-form", kind: "check", days: [3, 4, 5], sort_order: 9 },
-    { ...base, name: "Edit for 90 minutes", kind: "count", target: 90, unit: "min", days: WEEKDAYS, sort_order: 10 },
+    { ...base, name: "Morning cardio", kind: "check", days: EVERY_DAY, sort_order: 1 },
+    { ...base, name: "Both exercise sessions", kind: "count", target: 2, unit: "sessions", auto: "workouts", days: EVERY_DAY, sort_order: 2 },
+    { ...base, name: "Log food", kind: "check", auto: "food", days: EVERY_DAY, sort_order: 3 },
+    { ...base, name: "Instagram stories", kind: "count", target: 6, unit: "stories", days: EVERY_DAY, sort_order: 4 },
+    { ...base, name: "Short-form videos posted", kind: "count", target: 2, unit: "shorts", auto: "shorts", days: EVERY_DAY, sort_order: 5 },
+    { ...base, name: "Read 5 pages", kind: "count", target: 5, unit: "pages", days: EVERY_DAY, sort_order: 6 },
+    { ...base, name: "No impulsive purchases", kind: "check", days: EVERY_DAY, sort_order: 7 },
+    { ...base, name: "In bed by 10:30pm", kind: "check", days: EVERY_DAY, sort_order: 8 },
   ];
 }
+
+/** Your filming and editing schedule, as Daily execution habits (they're due on set days, not every day). */
+export const PRODUCTION_HABITS: { name: string; schedule_days: number[]; xp: number }[] = [
+  { name: "Film short-form", schedule_days: [1, 2], xp: 15 },
+  { name: "Film long-form", schedule_days: [3, 4, 5], xp: 15 },
+  { name: "Edit for 90 minutes", schedule_days: WEEKDAYS, xp: 15 },
+];
 
 // ─────────────────────────────────────────────────────────────── index ──
 export interface PowerIndex {

@@ -1,9 +1,10 @@
-import { Award, Check, Dumbbell, NotebookPen, Plus, Receipt, Scale, Utensils, X } from "lucide-react";
+import { Award, Check, Dumbbell, NotebookPen, Pencil, Plus, Receipt, Scale, Utensils, X } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { Link } from "@/components/AppLink";
 import { AthleticCard, AudienceCard, BusinessCard, FitnessCard, PartnerFitnessCard, TrafficCard } from "@/components/cards";
 import { ContentTodayCard } from "@/components/content";
 import { PowerTodayCard, WhyBanner } from "@/components/power";
+import { TidyCard } from "@/components/TidyCard";
 import { useFeedback } from "@/components/feedback";
 import { Card, cx, Eyebrow, Meter, Notice, Ring } from "@/components/ui";
 import { useStore } from "@/data/store";
@@ -57,6 +58,8 @@ export function Today() {
       </section>
 
       <WhyBanner />
+
+      <TidyCard />
 
       {/* the daily standard: Power List, today's content, the daily ten */}
       <div className="grid gap-6 lg:grid-cols-2">
@@ -137,7 +140,12 @@ function TodayList() {
           <span className="text-[10px] text-mute">{score.completed}/{score.total}</span>
         </Ring>
         <div className="min-w-0 flex-1">
-          <Eyebrow className="mb-1">Daily execution</Eyebrow>
+          <div className="flex items-start justify-between gap-2">
+            <Eyebrow className="mb-1">Daily execution</Eyebrow>
+            <Link to="/habits" aria-label="Edit Daily execution" className="-mr-1 -mt-2 inline-flex h-10 items-center gap-1 rounded-lg px-2 text-[12.5px] text-mute hover:bg-raised hover:text-gold">
+              <Pencil className="h-3.5 w-3.5" />Edit
+            </Link>
+          </div>
           <h2 className="text-[28px] leading-none">Today</h2>
           <p className="mt-1.5 text-[12.5px] text-mute">
             {isRest ? "Rest day — training habits are paused." : score.total ? `${score.total - score.completed} left of ${score.total} scheduled` : "Nothing scheduled today."}

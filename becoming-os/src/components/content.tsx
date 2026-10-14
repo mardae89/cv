@@ -5,11 +5,12 @@ import { Check, ChevronLeft, ChevronRight, Library, Plus } from "lucide-react";
 import { useState } from "react";
 import { Link } from "@/components/AppLink";
 import { useStore } from "@/data/store";
+import { indexHabits, isDone as isHabitDone, isScheduled } from "@/lib/calc/habits";
 import { indexPower, isDue, itemState, settingsOf, weekOf } from "@/lib/calc/power";
 import { CONTENT_PACK } from "@/lib/contentPack";
 import { addDays, dow, fmtDays, fmtShort, fmtWeekday } from "@/lib/dates";
 import { errorMessage, plural } from "@/lib/format";
-import type { ContentFormat, ContentIdea, FunnelStage, ISODate, PowerItem, PowerSettings } from "@/lib/types";
+import type { ContentFormat, ContentIdea, FunnelStage, ISODate, PowerItem, PowerSettings, UserData } from "@/lib/types";
 import { useFeedback } from "./feedback";
 import { useSubmit } from "./forms/body";
 import { Button, Card, cx, Eyebrow, Field, Input, Meter, Pill, Segmented, Select, Textarea, Toggle } from "./ui";
@@ -27,11 +28,40 @@ const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
 
 // ───────────────────────────────────────────────────────── production ──
 /** A Power List item about filming or editing ("Film short-form", "Edit for 90 minutes"). */
-export const isProductionItem = (i: PowerItem) => /^(film|edit)\b/i.test(i.name.trim());
+const PRODUCTION_NAME = /^(film|edit)\b/i;
+export const isProductionItem = (i: PowerItem) => PRODUCTION_NAME.test(i.name.trim());
 
 /** Filming and editing items due on a date, in list order. */
 export function productionDue(items: PowerItem[], date: ISODate): PowerItem[] {
   return items.filter((i) => isProductionItem(i) && isDue(i, date)).sort((a, b) => a.sort_order - b.sort_order);
+}
+
+export interface ProductionItem {
+  id: string;
+  name: string;
+  done: boolean;
+}
+
+/**
+ * Filming and editing due on a date, from Daily execution (habits) and from any
+ * still on the Power List, with whether each is checked off. Habits come first.
+ */
+export function productionFor(data: UserData, date: ISODate, pidx = indexPower(data), hidx = indexHabits(data.completions, data.restDays)): ProductionItem[] {
+  const habits = data.habits
+    .filter((h) => PRODUCTION_NAME.test(h.name.trim()) && isScheduled(h, date, hidx.rest))
+    .sort((a, b) => a.sort_order - b.sort_order)
+    .map((h) => ({ id: h.id, name: h.name, done: isHabitDone(hidx, h.id, date) }));
+  const names = new Set(habits.map((h) => h.name.trim().toLowerCase()));
+  const power = productionDue(data.powerItems, date)
+    .filter((i) => !names.has(i.name.trim().toLowerCase()))
+    .map((i) => ({ id: i.id, name: i.name, done: itemState(i, date, pidx).done }));
+  return [...habits, ...power];
+}
+
+/** Whether any filming or editing is set up at all (in either list, not archived). */
+export function hasProductionSchedule(data: UserData, today: ISODate): boolean {
+  return data.powerItems.some((i) => isProductionItem(i) && !(i.archived_on && i.archived_on <= today))
+    || data.habits.some((h) => PRODUCTION_NAME.test(h.name.trim()) && !(h.archived_on && h.archived_on <= today));
 }
 
 /** Target line pieces: "2 short-form a day", "4 long-form a week", "6 stories a day" (stories only if on the Power List). */
@@ -318,16 +348,15 @@ export function IdeaForm({ initial, onDone }: { initial?: ContentIdea; onDone: (
 }
 
 // ─────────────────────────────────────────────────────── focus + week ──
-/** Today's filming and editing items from the Power List, with whether each is checked off there. */
+/** Today's filming and editing items (Daily execution or Power List), with whether each is checked off. */
 export function FilmingFocus({ compact }: { compact?: boolean }) {
   const { data, today } = useStore();
-  const due = productionDue(data.powerItems, today);
+  const due = productionFor(data, today);
   if (!due.length) return null;
-  const idx = indexPower(data);
   return (
     <ul className={cx("flex flex-wrap gap-2", compact && "gap-1.5")} aria-label="Filming focus today">
       {due.map((i) => {
-        const done = itemState(i, today, idx).done;
+        const done = i.done;
         return (
           <li key={i.id} className={cx("inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[12.5px] font-medium",
             done ? "border-gold/40 bg-gold-wash text-gold" : "border-line text-bone")}>
@@ -350,7 +379,7 @@ export function ScheduleStrip() {
   return (
     <ol className="grid gap-1.5 lg:grid-cols-7" aria-label="This week's production schedule">
       {days.map((d) => {
-        const items = productionDue(data.powerItems, d);
+        const items = productionFor(data, d);
         const s = settingsOf(data);
         const releaseLong = s.long_release_days.includes(dow(d));
         const releaseShort = s.short_release_days.includes(dow(d)) && s.shorts_per_day > 0;
@@ -401,7 +430,7 @@ export function ContentTodayCard() {
   const day = useContentDay();
   const act = useContentActions();
   const { busy, run } = useSubmit();
-  const focus = productionDue(data.powerItems, today);
+  const focus = productionFor(data, today);
   const empty = !data.contentIdeas.length;
   const rows = [...day.slate, ...day.carried];
 

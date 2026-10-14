@@ -3,9 +3,10 @@
 // Dec 15 so the dashboard reads as it would ten weeks in. None of these values
 // describe a real person or business.
 import { addDays, dateRange, dow, monthStart, weekStart } from "./dates";
-import { standardPowerList } from "./calc/power";
+import { PRODUCTION_HABITS, standardPowerList } from "./calc/power";
 import { CONTENT_PACK } from "./contentPack";
 import { BUSINESS_TEMPLATES, HABIT_TEMPLATES } from "./templates";
+import { LEARN_NAME } from "./tidy";
 
 export const DEMO_TODAY = "2026-12-15";
 const START = "2026-10-10";
@@ -92,11 +93,20 @@ export function buildDemo(uid: string): DemoPlan {
   }
 
   // ── habits
-  const chosen = HABIT_TEMPLATES.filter((t) => t.defaultOn);
-  const habits = chosen.map((t, i) => ({
-    id: uuid(), name: t.name, category: t.category, schedule_days: t.schedule_days,
-    skip_on_rest_days: t.skip_on_rest_days ?? false, xp: t.xp ?? 10, start_date: START, sort_order: i,
-  }));
+  // Daily execution holds what's scheduled for set days; the every-day items live on the Power List.
+  const onPowerList = /^(wake up on time|lights out on time|log nutrition)$/i;
+  const chosen = HABIT_TEMPLATES.filter((t) => t.defaultOn && !onPowerList.test(t.name))
+    .map((t) => (/^read or learn/i.test(t.name) ? { ...t, name: LEARN_NAME } : t));
+  const habits = [
+    ...chosen.map((t, i) => ({
+      id: uuid(), name: t.name, category: t.category, schedule_days: t.schedule_days,
+      skip_on_rest_days: t.skip_on_rest_days ?? false, xp: t.xp ?? 10, start_date: START, sort_order: i,
+    })),
+    ...PRODUCTION_HABITS.map((p, i) => ({
+      id: uuid(), name: p.name, category: "business" as const, schedule_days: p.schedule_days,
+      skip_on_rest_days: false, xp: p.xp, start_date: START, sort_order: chosen.length + i,
+    })),
+  ];
   const restDays = days.filter((d) => dow(d) === 0 && rand() < 0.6).map((d) => ({ rest_date: d, note: "Demo rest day" }));
   const restSet = new Set(restDays.map((r) => r.rest_date));
   const completions: Record<string, unknown>[] = [];

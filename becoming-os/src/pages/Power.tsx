@@ -13,7 +13,7 @@ import {
 } from "@/components/ui";
 import { useStore } from "@/data/store";
 import {
-  analyse, contentTally, dayResult, dayStatus, firstStart, GREEN_AT, greenStreak, monthOf, periodResult, periods, rating, settingsOf,
+  analyse, contentTally, dayResult, dayStatus, firstStart, GREEN_AT, greenStreak, monthOf, periodResult, periods, rating, settingsOf, PRODUCTION_HABITS,
   standardPowerList, weekOf, type PeriodResult, type PowerIndex,
 } from "@/lib/calc/power";
 import { addDays, DAY_LETTERS, dateRange, diffDays, fmtLongDate, fmtMonth, fmtShort, maxDate, minDate, monthStart } from "@/lib/dates";
@@ -56,7 +56,13 @@ export default function Power() {
     setAdding(true);
     try {
       await insert("powerItems", standardPowerList(today) as unknown as Record<string, unknown>[]);
-      toast("Standard Power List added. It counts from today.");
+      // Filming and editing are due on set days, so they go to Daily execution.
+      const have = new Set(data.habits.filter((h) => !(h.archived_on && h.archived_on <= today)).map((h) => h.name.trim().toLowerCase()));
+      const order = data.habits.reduce((m, h) => Math.max(m, h.sort_order), 0);
+      const add = PRODUCTION_HABITS.filter((p) => !have.has(p.name.toLowerCase()))
+        .map((p, i) => ({ name: p.name, category: "business", schedule_days: p.schedule_days, skip_on_rest_days: false, xp: p.xp, start_date: today, sort_order: order + 1 + i }));
+      if (add.length) await insert("habits", add);
+      toast(add.length ? "Standard Power List added, and your filming schedule is in Daily execution. Both count from today." : "Standard Power List added. It counts from today.");
     } catch (e) {
       toast(errorMessage(e), "error");
     } finally {
