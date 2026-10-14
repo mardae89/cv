@@ -23,8 +23,6 @@ interface WickResponse {
 
 /* Phase 4 replaces this with the saved colour. Until then one constant, in one
    place, so swapping it is a one-line change. */
-const PAGE_SIZE = 20;
-
 const ZONE_COLOR = "#d4a537";
 const ZONE_OPACITY = 0.18;
 
@@ -47,41 +45,29 @@ const STATE_TONE: Record<ZoneState, string> = {
 export default function WickPage() {
   const [symbol, setSymbol] = useState("EUR/USD");
   const [timeframe, setTimeframe] = useState<Timeframe>("1D");
-  const [page, setPage] = useState(0);
   const { data, loading, error, refresh } = useApi<WickResponse>(
     `/api/wick?symbol=${encodeURIComponent(symbol)}&timeframe=${timeframe}`,
     [symbol, timeframe],
   );
 
-  // A new market or timeframe is a new list; staying on page 4 of it would show
-  // an empty table.
-  useEffect(() => {
-    setPage(0);
-    setInspect(null);
-  }, [symbol, timeframe]);
 
-  /* The chart carries ONE zone: the live one, anchored on the previous candle.
-     Drawing the recent history as well put several zones on screen at once,
-     which read as several zones on the same trade. A past setup is inspected by
-     picking its row below — one at a time, on the candle it belongs to. */
-  const [inspect, setInspect] = useState<number | null>(null);
 
+  /* ONE zone on the chart: the live one, anchored on the previous candle and
+     drawn over the current one. */
   const zones = useMemo<ChartZone[]>(() => {
-    if (!data) return [];
-    const picked = inspect != null ? data.history.find((h) => h.candleT === inspect) : null;
-    const showing = picked ?? data.live.setup;
-    if (!showing) return [];
+    const setup = data?.live.setup;
+    if (!setup) return [];
     return [{
-      fromT: showing.zone.fromT,
-      toT: showing.zone.toT,
-      priceA: showing.zone.zoneNear,
-      priceB: showing.zone.zoneFar,
-      invalidation: showing.zone.invalidation,
+      fromT: setup.zone.fromT,
+      toT: setup.zone.toT,
+      priceA: setup.zone.zoneNear,
+      priceB: setup.zone.zoneFar,
+      invalidation: setup.zone.invalidation,
       color: ZONE_COLOR,
       opacity: ZONE_OPACITY,
-      label: showing.direction.toUpperCase(),
+      label: setup.direction.toUpperCase(),
     }];
-  }, [data, inspect]);
+  }, [data]);
 
   const p = data?.precision ?? 5;
 
@@ -93,8 +79,8 @@ export default function WickPage() {
       />
 
       <Panel className="p-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <SymbolSearch value={symbol} onPick={setSymbol} />
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-[10px] uppercase tracking-widest text-faint">Timeframe</span>
           <div className="flex border border-hairline">
             {WICK_TIMEFRAMES.map((tf) => (
               <button
@@ -172,89 +158,12 @@ export default function WickPage() {
                 if (WICK_TIMEFRAMES.includes(tf)) setTimeframe(tf);
               }}
               zones={zones}
-              focusT={inspect}
+              symbolControl={<SymbolSearch value={symbol} onPick={setSymbol} compact />}
             />
           </div>
 
-          {/* ------------------------------- HISTORY ------------------------------ */}
-          <Panel className="p-5 sm:p-6">
-            <Eyebrow className="mb-1">Past setups on this timeframe</Eyebrow>
-            <p className="mb-4 text-xs text-faint">
-              Replayed candle by candle using only the data that existed at the time, so each row is
-              a setup the live detector would have produced on that bar — not one found with hindsight.
-              Pick a row to put that zone on the chart; pick it again to clear it.
-            </p>
-
-            {data.history.length === 0 ? (
-              <EmptyState title="No setups yet" message="No candles in the available history matched all five rules on this timeframe." />
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[640px] text-sm">
-                  <thead>
-                    <tr className="border-b border-hairline text-[10px] uppercase tracking-widest text-faint">
-                      {["Candle", "Side", "0.382", "0.75", "Invalidation (1.0)", "Reached zone"].map((h) => (
-                        <th key={h} className="px-2 py-2 text-left font-normal">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.history.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE).map((h) => (
-                      <tr
-                        key={h.candleT}
-                        onClick={() => setInspect((cur) => (cur === h.candleT ? null : h.candleT))}
-                        className={`cursor-pointer border-b border-hairline-soft transition last:border-b-0 ${
-                          inspect === h.candleT ? "bg-gold/10" : "hover:bg-flat/10"
-                        }`}
-                      >
-                        <td className="px-2 py-2 tnum text-mute">
-                          {new Date(h.candleT).toISOString().slice(0, 16).replace("T", " ")}
-                        </td>
-                        <td className={`px-2 py-2 font-semibold ${h.direction === "buy" ? "text-bull" : "text-bear"}`}>
-                          {h.direction === "buy" ? "Buy" : "Sell"}
-                        </td>
-                        <td className="px-2 py-2 tnum">{fmtPrice(h.zone.zoneNear, p)}</td>
-                        <td className="px-2 py-2 tnum">{fmtPrice(h.zone.zoneFar, p)}</td>
-                        <td className="px-2 py-2 tnum text-mute">{fmtPrice(h.zone.invalidation, p)}</td>
-                        <td className={`px-2 py-2 ${
-                          h.outcome === "reached" ? "text-bull" : h.outcome === "invalidated" ? "text-bear" : "text-faint"
-                        }`}>
-                          {h.outcome === "reached"
-                            ? "Yes"
-                            : h.outcome === "invalidated"
-                              ? "Invalidated"
-                              : h.outcome === "overrun"
-                                ? "Ran past 0"
-                                : "No"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {data.history.length > PAGE_SIZE ? (
-              <div className="mt-4 flex items-center justify-between gap-3 text-xs">
-                <button
-                  onClick={() => setPage((p0) => Math.max(0, p0 - 1))}
-                  disabled={page === 0}
-                  className="border border-hairline px-3 py-1.5 uppercase tracking-widest text-mute transition enabled:hover:border-gold enabled:hover:text-gold disabled:opacity-30"
-                >
-                  ← Previous
-                </button>
-                <span className="tnum text-faint">
-                  {page * PAGE_SIZE + 1}–{Math.min(data.history.length, (page + 1) * PAGE_SIZE)} of {data.history.length}
-                </span>
-                <button
-                  onClick={() => setPage((p0) => (p0 + 1) * PAGE_SIZE < data.history.length ? p0 + 1 : p0)}
-                  disabled={(page + 1) * PAGE_SIZE >= data.history.length}
-                  className="border border-hairline px-3 py-1.5 uppercase tracking-widest text-mute transition enabled:hover:border-gold enabled:hover:text-gold disabled:opacity-30"
-                >
-                  Next →
-                </button>
-              </div>
-            ) : null}
-          </Panel>
+          {/* ------------------------------ READY NOW ----------------------------- */}
+          <ReadyBoard timeframe={timeframe} current={symbol} onPick={setSymbol} />
 
           <p className="pb-4 text-[11px] leading-relaxed text-faint">
             Educational tool. These are setups matching the Wick Catching method, not buy or sell
@@ -289,7 +198,16 @@ interface AssetRow {
  * is fetched once and filtered in the browser, so suggestions appear on the
  * keystroke rather than after a round trip.
  */
-function SymbolSearch({ value, onPick }: { value: string; onPick: (symbol: string) => void }) {
+function SymbolSearch({
+  value,
+  onPick,
+  compact = false,
+}: {
+  value: string;
+  onPick: (symbol: string) => void;
+  /** Sized to sit inside the chart's toolbar rather than lead the page. */
+  compact?: boolean;
+}) {
   const [text, setText] = useState(value);
   const [open, setOpen] = useState(false);
   const [assets, setAssets] = useState<AssetRow[]>([]);
@@ -344,7 +262,7 @@ function SymbolSearch({ value, onPick }: { value: string; onPick: (symbol: strin
   };
 
   return (
-    <div ref={boxRef} className="relative flex-1 sm:max-w-xs">
+    <div ref={boxRef} className={compact ? "relative w-full" : "relative flex-1 sm:max-w-xs"}>
       <input
         value={text}
         onChange={(e) => {
@@ -371,8 +289,8 @@ function SymbolSearch({ value, onPick }: { value: string; onPick: (symbol: strin
             setOpen(false);
           }
         }}
-        placeholder="Search a market — eurusd, gbpjpy, xau"
-        className="w-full px-3 py-2.5 text-sm"
+        placeholder={compact ? "Change symbol…" : "Search a market — eurusd, gbpjpy, xau"}
+        className={compact ? "w-full px-2 py-1 text-xs" : "w-full px-3 py-2.5 text-sm"}
         autoComplete="off"
         spellCheck={false}
       />
@@ -395,5 +313,103 @@ function SymbolSearch({ value, onPick }: { value: string; onPick: (symbol: strin
         </ul>
       ) : null}
     </div>
+  );
+}
+
+interface ScanRow {
+  symbol: string;
+  name: string;
+  precision: number;
+  direction: "buy" | "sell";
+  state: ZoneState;
+  zoneNear: number;
+  zoneFar: number;
+  invalidation: number;
+  progress: number;
+}
+
+/**
+ * Every market with a live setup on this timeframe, ready first.
+ *
+ * Only setups that can still be taken appear: price already past the 0 level,
+ * or closed through invalidation, is a finished setup and padding the board
+ * with those would bury the ones that matter.
+ */
+function ReadyBoard({
+  timeframe,
+  current,
+  onPick,
+}: {
+  timeframe: Timeframe;
+  current: string;
+  onPick: (symbol: string) => void;
+}) {
+  const { data, loading, error, refresh } = useApi<{
+    timeframe: Timeframe;
+    scanned: number;
+    rows: ScanRow[];
+  }>(`/api/wick/scan?timeframe=${timeframe}`, [timeframe]);
+
+  const inZone = data?.rows.filter((r) => r.state === "in-zone").length ?? 0;
+
+  return (
+    <Panel className="p-5 sm:p-6">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <Eyebrow>Setups ready on the {TF_SPOKEN[timeframe]}</Eyebrow>
+        {data ? (
+          <span className="text-[10px] uppercase tracking-widest text-faint">
+            {data.rows.length} of {data.scanned} markets{inZone ? ` · ${inZone} in zone` : ""}
+          </span>
+        ) : null}
+      </div>
+      <p className="mb-4 mt-1 text-xs text-faint">
+        Markets whose previous {TF_SPOKEN[timeframe]} candle matches the method and whose zone is
+        still live. Pick one to load it on the chart.
+      </p>
+
+      {error ? <ErrorState message={error} onRetry={refresh} /> : null}
+      {loading && !data ? <Skeleton className="h-40 w-full" /> : null}
+
+      {data && data.rows.length === 0 ? (
+        <EmptyState
+          title="Nothing ready"
+          message={`No market currently has a live ${TF_SPOKEN[timeframe]} setup. Try another timeframe.`}
+        />
+      ) : null}
+
+      {data && data.rows.length > 0 ? (
+        <ul className="divide-y divide-hairline-soft border-y border-hairline-soft">
+          {data.rows.map((r) => (
+            <li key={r.symbol}>
+              <button
+                onClick={() => onPick(r.symbol)}
+                className={`flex w-full items-center gap-3 px-1 py-2.5 text-left transition ${
+                  r.symbol === current ? "bg-gold/10" : "hover:bg-flat/10"
+                }`}
+              >
+                <span
+                  className={`display w-14 shrink-0 text-[11px] font-bold uppercase tracking-widest ${
+                    r.direction === "buy" ? "text-bull" : "text-bear"
+                  }`}
+                >
+                  {r.direction}
+                </span>
+                <span className="w-24 shrink-0 text-sm font-semibold text-bone">{r.symbol}</span>
+                <span className="ticker hidden flex-1 text-xs text-mute sm:block">
+                  {fmtPrice(r.zoneNear, r.precision)} – {fmtPrice(r.zoneFar, r.precision)}
+                </span>
+                <span
+                  className={`ml-auto shrink-0 text-[10px] uppercase tracking-widest ${
+                    r.state === "in-zone" ? "text-bull" : "text-flat"
+                  }`}
+                >
+                  {STATE_LABEL[r.state]}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </Panel>
   );
 }

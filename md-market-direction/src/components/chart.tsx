@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { Candle, Timeframe, TimeframeStructure } from "@/lib/types";
 import { ALL_TIMEFRAMES } from "@/lib/config/scoring";
 import { fmtPrice } from "@/lib/utils/format";
@@ -72,6 +72,7 @@ export function PriceChart({
   height = 420,
   zones,
   focusT,
+  symbolControl,
   timeframe: controlledTimeframe,
   onTimeframeChange,
 }: {
@@ -81,6 +82,9 @@ export function PriceChart({
   zones?: ChartZone[];
   /** Scroll so this bar time is centred. Changing it moves the view once. */
   focusT?: number | null;
+  /** Rendered in the chart's own toolbar — a symbol picker, so the market can
+      be changed without leaving the chart. */
+  symbolControl?: ReactNode;
   /** Drive the timeframe from outside; the chart stays self-driving when omitted. */
   timeframe?: Timeframe;
   onTimeframeChange?: (tf: Timeframe) => void;
@@ -445,6 +449,7 @@ export function PriceChart({
           ))}
         </div>
         <div className="flex flex-wrap items-center gap-3 text-[10px] uppercase tracking-widest">
+          {symbolControl ? <div className="min-w-[9rem] flex-1 normal-case tracking-normal sm:flex-none">{symbolControl}</div> : null}
           <Toggle label="50 EMA" on={showMa} onChange={setShowMa} swatch="bg-gold" />
           {!v.priceAuto ? (
             <button onClick={resetPrice} className="border border-gold/50 px-2 py-0.5 text-gold">
