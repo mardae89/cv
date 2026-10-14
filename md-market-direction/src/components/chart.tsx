@@ -95,6 +95,7 @@ export function PriceChart({
   markers,
   focusT,
   symbolControl,
+  viewControl,
   timeframe: controlledTimeframe,
   onTimeframeChange,
 }: {
@@ -109,6 +110,9 @@ export function PriceChart({
   /** Rendered in the chart's own toolbar — a symbol picker, so the market can
       be changed without leaving the chart. */
   symbolControl?: ReactNode;
+  /** Also in the toolbar, beside the overlay toggles: what the chart is
+      drawing, so the view can be switched from the chart itself. */
+  viewControl?: ReactNode;
   /** Drive the timeframe from outside; the chart stays self-driving when omitted. */
   timeframe?: Timeframe;
   onTimeframeChange?: (tf: Timeframe) => void;
@@ -481,6 +485,7 @@ export function PriceChart({
         <div className="flex flex-wrap items-center gap-3 text-[10px] uppercase tracking-widest">
           {symbolControl ? <div className="min-w-[9rem] flex-1 normal-case tracking-normal sm:flex-none">{symbolControl}</div> : null}
           <Toggle label="50 EMA" on={showMa} onChange={setShowMa} swatch="bg-gold" />
+          {viewControl}
           {!v.priceAuto ? (
             <button onClick={resetPrice} className="border border-gold/50 px-2 py-0.5 text-gold">
               Auto price
@@ -642,10 +647,16 @@ export function PriceChart({
               const x = X(best);
               const y = Y(m.price);
               const up = m.side === "above";
-              const ty = up ? y - 10 : y + 18;
+              // Markers in a sequence land on nearby bars; without a stagger the
+              // labels sit on top of each other and none of them can be read.
+              const tier = k * 13;
+              const ty = up ? y - 10 - tier : y + 18 + tier;
               return (
                 <g key={`mk${k}`} pointerEvents="none">
                   <circle cx={x} cy={y} r={3} fill={m.color} />
+                  {tier > 0 ? (
+                    <line x1={x} x2={x} y1={y} y2={up ? ty + 3 : ty - 9} stroke={m.color} strokeWidth={1} opacity={0.45} />
+                  ) : null}
                   <text x={x} y={ty} fill={m.color} fontSize={9} textAnchor="middle" fontFamily="ui-monospace, monospace">
                     {m.label}
                   </text>

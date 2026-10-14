@@ -94,6 +94,12 @@ export default function WickPage() {
     }];
   }, [data, view]);
 
+  const sosFocus = useMemo<number | null>(() => {
+    if (view !== "sos" || !data) return null;
+    const e = data.sos.buy ?? data.sos.sell;
+    return e ? e.shiftT : null;
+  }, [data, view]);
+
   const sosMarkers = useMemo<ChartMarker[]>(() => {
     if (view !== "sos" || !data) return [];
     const e = data.sos.buy ?? data.sos.sell;
@@ -135,15 +141,6 @@ export default function WickPage() {
               </button>
             ))}
           </div>
-          <Segmented
-            label="View"
-            value={view}
-            onChange={(v) => setView(v as WickView)}
-            options={[
-              { value: "zones", label: "Fib zones" },
-              { value: "sos", label: "SOS" },
-            ]}
-          />
           <Segmented
             label="Alignment"
             value={alignment}
@@ -249,7 +246,31 @@ export default function WickPage() {
               zones={zones}
               levels={sosLine}
               markers={sosMarkers}
+              focusT={sosFocus}
               symbolControl={<SymbolSearch value={symbol} onPick={setSymbol} compact />}
+              viewControl={
+                <div className="flex border border-hairline">
+                  {([
+                    ["zones", "Fib zones"],
+                    ["sos", "Shift of structure"],
+                  ] as const).map(([v, label]) => (
+                    <button
+                      key={v}
+                      onClick={() => setView(v)}
+                      title={
+                        v === "zones"
+                          ? "Draw the Fibonacci pullback zone"
+                          : "Draw the structure line and the shift sequence"
+                      }
+                      className={`px-2 py-0.5 font-display text-[10px] font-semibold uppercase tracking-widest transition ${
+                        v === view ? "bg-gold text-void" : "text-mute hover:text-gold"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              }
             />
           </div>
 
