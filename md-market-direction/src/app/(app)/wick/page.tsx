@@ -55,38 +55,33 @@ export default function WickPage() {
 
   // A new market or timeframe is a new list; staying on page 4 of it would show
   // an empty table.
-  useEffect(() => setPage(0), [symbol, timeframe]);
+  useEffect(() => {
+    setPage(0);
+    setInspect(null);
+  }, [symbol, timeframe]);
 
-  /* Live zone plus the recent historical ones, so a setup can be checked against
-     the chart it was found on rather than taken on trust. */
+  /* The chart carries ONE zone: the live one, anchored on the previous candle.
+     Drawing the recent history as well put several zones on screen at once,
+     which read as several zones on the same trade. A past setup is inspected by
+     picking its row below — one at a time, on the candle it belongs to. */
+  const [inspect, setInspect] = useState<number | null>(null);
+
   const zones = useMemo<ChartZone[]>(() => {
     if (!data) return [];
-    const out: ChartZone[] = [];
-    for (const h of data.history.slice(0, 25)) {
-      out.push({
-        fromT: h.zone.fromT,
-        toT: h.zone.toT,
-        priceA: h.zone.zoneNear,
-        priceB: h.zone.zoneFar,
-        invalidation: h.zone.invalidation,
-        color: ZONE_COLOR,
-        opacity: ZONE_OPACITY,
-      });
-    }
-    if (data.live.setup) {
-      out.push({
-        fromT: data.live.setup.zone.fromT,
-        toT: data.live.setup.zone.toT,
-        priceA: data.live.setup.zone.zoneNear,
-        priceB: data.live.setup.zone.zoneFar,
-        invalidation: data.live.setup.zone.invalidation,
-        color: ZONE_COLOR,
-        opacity: ZONE_OPACITY + 0.12,
-        label: data.live.setup.direction.toUpperCase(),
-      });
-    }
-    return out;
-  }, [data]);
+    const picked = inspect != null ? data.history.find((h) => h.candleT === inspect) : null;
+    const showing = picked ?? data.live.setup;
+    if (!showing) return [];
+    return [{
+      fromT: showing.zone.fromT,
+      toT: showing.zone.toT,
+      priceA: showing.zone.zoneNear,
+      priceB: showing.zone.zoneFar,
+      invalidation: showing.zone.invalidation,
+      color: ZONE_COLOR,
+      opacity: ZONE_OPACITY,
+      label: showing.direction.toUpperCase(),
+    }];
+  }, [data, inspect]);
 
   const p = data?.precision ?? 5;
 
@@ -177,6 +172,7 @@ export default function WickPage() {
                 if (WICK_TIMEFRAMES.includes(tf)) setTimeframe(tf);
               }}
               zones={zones}
+              focusT={inspect}
             />
           </div>
 
@@ -186,6 +182,7 @@ export default function WickPage() {
             <p className="mb-4 text-xs text-faint">
               Replayed candle by candle using only the data that existed at the time, so each row is
               a setup the live detector would have produced on that bar — not one found with hindsight.
+              Pick a row to put that zone on the chart; pick it again to clear it.
             </p>
 
             {data.history.length === 0 ? (
@@ -202,7 +199,13 @@ export default function WickPage() {
                   </thead>
                   <tbody>
                     {data.history.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE).map((h) => (
-                      <tr key={h.candleT} className="border-b border-hairline-soft last:border-b-0">
+                      <tr
+                        key={h.candleT}
+                        onClick={() => setInspect((cur) => (cur === h.candleT ? null : h.candleT))}
+                        className={`cursor-pointer border-b border-hairline-soft transition last:border-b-0 ${
+                          inspect === h.candleT ? "bg-gold/10" : "hover:bg-flat/10"
+                        }`}
+                      >
                         <td className="px-2 py-2 tnum text-mute">
                           {new Date(h.candleT).toISOString().slice(0, 16).replace("T", " ")}
                         </td>

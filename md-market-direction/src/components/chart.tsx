@@ -71,6 +71,7 @@ export function PriceChart({
   initialTimeframe = "1D",
   height = 420,
   zones,
+  focusT,
   timeframe: controlledTimeframe,
   onTimeframeChange,
 }: {
@@ -78,6 +79,8 @@ export function PriceChart({
   initialTimeframe?: Timeframe;
   height?: number;
   zones?: ChartZone[];
+  /** Scroll so this bar time is centred. Changing it moves the view once. */
+  focusT?: number | null;
   /** Drive the timeframe from outside; the chart stays self-driving when omitted. */
   timeframe?: Timeframe;
   onTimeframeChange?: (tf: Timeframe) => void;
@@ -103,6 +106,26 @@ export function PriceChart({
   const viewRef = useRef<View>({ start: 0, count: 160, priceAuto: true, center: 0, span: 1 });
   const [, bump] = useState(0);
   const repaint = useCallback(() => bump((n) => n + 1), []);
+
+  /* Centre the view on a requested bar. Without this, picking a setup from a
+     list would highlight a zone the user cannot see — the chart keeps whatever
+     window it was last dragged to. */
+  const focusedRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (focusT == null || !data?.candles.length) return;
+    if (focusedRef.current === focusT) return;
+    focusedRef.current = focusT;
+    const idx = data.candles.findIndex((c) => c.t >= focusT);
+    if (idx < 0) return;
+    const view = viewRef.current;
+    // Centring alone is not enough: at a few hundred bars the zone being pointed
+    // at is a sliver. Tighten the window — but never widen one the user has
+    // already zoomed in past.
+    view.count = Math.min(view.count, 60);
+    view.start = idx - view.count / 2;
+    view.priceAuto = true;
+    repaint();
+  }, [focusT, data, repaint]);
 
   /* Real pixel size, so the viewBox is 1:1 with CSS pixels and the chart fills
      whatever space it has — including a rotated phone and true fullscreen. */
