@@ -20,7 +20,12 @@ interface WickResponse {
   live: { setup: WickSetup | null; rules: WickRule[]; direction: "buy" | "sell" | null };
   history: HistoricalSetup[];
   entryTimeframes: Timeframe[];
-  sos: { timeframe: Timeframe; buy: SosEvent | null; sell: SosEvent | null; events: SosEvent[] };
+  sos: {
+    timeframe: Timeframe;
+    line: { price: number; t: number; shift: "buy" | "sell" } | null;
+    latest: SosEvent | null;
+    events: SosEvent[];
+  };
   generatedAt: number;
 }
 
@@ -81,28 +86,43 @@ export default function WickPage() {
      bars where each step of the sequence landed. */
   const sosLine = useMemo<ChartLevel[]>(() => {
     if (view !== "sos" || !data) return [];
-    const e = data.sos.buy ?? data.sos.sell;
-    if (!e) return [];
-    const colour = e.direction === "buy" ? "#4ade80" : "#f87171";
-    return [{
-      price: e.line,
-      fromT: e.lineT,
-      toT: e.confirmT ?? e.pullbackT ?? e.shiftT,
-      color: colour,
-      dashed: true,
-      label: e.direction === "buy" ? "lower high" : "higher low",
-    }];
+    const out: ChartLevel[] = [];
+    const e = data.sos.latest;
+    if (e) {
+      out.push({
+        price: e.line,
+        fromT: e.lineT,
+        toT: e.confirmT ?? e.pullbackT ?? e.shiftT,
+        color: e.direction === "buy" ? "#4ade80" : "#f87171",
+        dashed: true,
+        // The line is drawn on whichever elbow the trend was making; breaking it
+        // shifts structure the other way.
+        label: e.direction === "buy" ? "lower high" : "higher low",
+      });
+    }
+    // The line price is standing on now, carried to the right edge.
+    const live = data.sos.line;
+    if (live && (!e || live.t !== e.lineT)) {
+      out.push({
+        price: live.price,
+        fromT: live.t,
+        toT: data.sos.events.length ? Date.now() + 1 : live.t,
+        color: "#9ca3af",
+        dashed: true,
+        label: live.shift === "buy" ? "lower high (live)" : "higher low (live)",
+      });
+    }
+    return out;
   }, [data, view]);
 
   const sosFocus = useMemo<number | null>(() => {
     if (view !== "sos" || !data) return null;
-    const e = data.sos.buy ?? data.sos.sell;
-    return e ? e.shiftT : null;
+    return data.sos.latest?.shiftT ?? null;
   }, [data, view]);
 
   const sosMarkers = useMemo<ChartMarker[]>(() => {
     if (view !== "sos" || !data) return [];
-    const e = data.sos.buy ?? data.sos.sell;
+    const e = data.sos.latest;
     if (!e) return [];
     const up = e.direction === "buy";
     const colour = up ? "#4ade80" : "#f87171";
@@ -577,13 +597,14 @@ function Segmented({
  * still waiting for is as visible as what it has already done.
  */
 function SosPanel({ sos, timeframe }: { sos: WickResponse["sos"]; timeframe: Timeframe }) {
-  const e = sos.buy ?? sos.sell;
+  const e = sos.latest;
   if (!e) {
     return (
       <p className="mt-4 text-sm text-mute">
-        No structure shift on the {TF_SPOKEN[timeframe]}. A shift needs a candle body to close beyond
-        the most recent {sos.buy === null && sos.sell === null ? "lower high (buys) or higher low (sells)" : "structure line"} and
-        on the correct side of the 50 EMA.
+        No structure shift on the {TF_SPOKEN[timeframe]}.
+        {sos.line
+          ? ` The line sits on the most recent ${sos.line.shift === "buy" ? "lower high" : "higher low"} at ${sos.line.price.toFixed(5)} — a body closing beyond it, on the correct side of the 50 EMA, would be the shift.`
+          : " Not enough structure yet to place a line."}
       </p>
     );
   }
@@ -592,7 +613,7 @@ function SosPanel({ sos, timeframe }: { sos: WickResponse["sos"]; timeframe: Tim
     {
       done: true,
       label: `Structure shifted ${up ? "up" : "down"}`,
-      detail: `A body closed ${up ? "above the last lower high" : "below the last higher low"} at ${e.line.toFixed(5)}, and on the ${up ? "bull" : "bear"} side of the 50 EMA.`,
+      detail: `A body closed ${up ? "above the last lower high" : "below the last higher low"} at ${e.line.toFixed(5)} — drawn on the body, not the wick — and on the ${up ? "bull" : "bear"} side of the 50 EMA.`,
     },
     {
       done: e.pullbackT != null,

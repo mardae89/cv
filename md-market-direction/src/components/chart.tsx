@@ -611,59 +611,6 @@ export function PriceChart({
               );
             })}
 
-            {/* structure levels and sequence markers */}
-            {(levels ?? []).map((lv, k) => {
-              const idx = (t: number) => {
-                if (!slice.length) return 0;
-                if (t <= slice[0].t) return 0;
-                if (t >= slice[slice.length - 1].t) return slice.length - 1;
-                let best = 0;
-                for (let i = 0; i < slice.length; i++) if (slice[i].t <= t) best = i;
-                return best;
-              };
-              const x0 = X(idx(lv.fromT)) - step / 2;
-              const x1 = Math.max(X(idx(lv.toT)) + step / 2, x0 + step);
-              const y = Y(lv.price);
-              return (
-                <g key={`lv${k}`} pointerEvents="none">
-                  <line
-                    x1={x0} x2={x1} y1={y} y2={y}
-                    stroke={lv.color} strokeWidth={1.4}
-                    strokeDasharray={lv.dashed ? "5 4" : undefined}
-                  />
-                  {lv.label ? (
-                    <text x={x0 + 4} y={y - 5} fill={lv.color} fontSize={9} fontFamily="ui-monospace, monospace">
-                      {lv.label}
-                    </text>
-                  ) : null}
-                </g>
-              );
-            })}
-
-            {(markers ?? []).map((m, k) => {
-              let best = -1;
-              for (let i = 0; i < slice.length; i++) if (slice[i].t <= m.t) best = i;
-              if (best < 0) return null;
-              const x = X(best);
-              const y = Y(m.price);
-              const up = m.side === "above";
-              // Markers in a sequence land on nearby bars; without a stagger the
-              // labels sit on top of each other and none of them can be read.
-              const tier = k * 13;
-              const ty = up ? y - 10 - tier : y + 18 + tier;
-              return (
-                <g key={`mk${k}`} pointerEvents="none">
-                  <circle cx={x} cy={y} r={3} fill={m.color} />
-                  {tier > 0 ? (
-                    <line x1={x} x2={x} y1={y} y2={up ? ty + 3 : ty - 9} stroke={m.color} strokeWidth={1} opacity={0.45} />
-                  ) : null}
-                  <text x={x} y={ty} fill={m.color} fontSize={9} textAnchor="middle" fontFamily="ui-monospace, monospace">
-                    {m.label}
-                  </text>
-                </g>
-              );
-            })}
-
             {/* volume */}
             {slice.map((c, i) => (
               <rect
@@ -707,6 +654,96 @@ export function PriceChart({
             {showMa ? (
               <path d={linePath(ma50, X, Y)} fill="none" stroke="var(--color-gold)" strokeWidth={1.6} />
             ) : null}
+
+            {/* structure levels and sequence markers */}
+            {(levels ?? []).map((lv, k) => {
+              const idx = (t: number) => {
+                if (!slice.length) return 0;
+                if (t <= slice[0].t) return 0;
+                if (t >= slice[slice.length - 1].t) return slice.length - 1;
+                let best = 0;
+                for (let i = 0; i < slice.length; i++) if (slice[i].t <= t) best = i;
+                return best;
+              };
+              const x0 = X(idx(lv.fromT)) - step / 2;
+              const x1 = Math.max(X(idx(lv.toT)) + step / 2, x0 + step);
+              const y = Y(lv.price);
+              return (
+                <g key={`lv${k}`} pointerEvents="none">
+                  <line
+                    x1={x0} x2={x1} y1={y} y2={y}
+                    stroke={lv.color} strokeWidth={1.4}
+                    strokeDasharray={lv.dashed ? "5 4" : undefined}
+                  />
+                  {lv.label ? (
+                    (() => {
+                      // Kept inside the plot: a level can start before the
+                      // visible window or run to the right edge, and an
+                      // unclamped label is half-cut by the frame or lost under
+                      // the price scale. The backing keeps it readable where it
+                      // crosses candles, which is most of the time.
+                      const anchorEnd = x0 + 4 > plotW - 80;
+                      const lx = Math.min(Math.max(x0 + 4, 4), plotW - 4);
+                      const w = lv.label.length * 5.4 + 8;
+                      return (
+                        <>
+                          <rect
+                            x={anchorEnd ? lx - w + 4 : lx - 4}
+                            y={y - 14}
+                            width={w}
+                            height={12}
+                            fill="var(--color-void)"
+                            opacity={0.78}
+                          />
+                          <text
+                            x={lx}
+                            y={y - 5}
+                            fill={lv.color}
+                            fontSize={9}
+                            fontFamily="ui-monospace, monospace"
+                            textAnchor={anchorEnd ? "end" : "start"}
+                          >
+                            {lv.label}
+                          </text>
+                        </>
+                      );
+                    })()
+                  ) : null}
+                </g>
+              );
+            })}
+
+            {(markers ?? []).map((m, k) => {
+              let best = -1;
+              for (let i = 0; i < slice.length; i++) if (slice[i].t <= m.t) best = i;
+              if (best < 0) return null;
+              const x = X(best);
+              const y = Y(m.price);
+              const up = m.side === "above";
+              // Markers in a sequence land on nearby bars; without a stagger the
+              // labels sit on top of each other and none of them can be read.
+              const tier = k * 13;
+              const ty = up ? y - 10 - tier : y + 18 + tier;
+              return (
+                <g key={`mk${k}`} pointerEvents="none">
+                  <circle cx={x} cy={y} r={3} fill={m.color} />
+                  {tier > 0 ? (
+                    <line x1={x} x2={x} y1={y} y2={up ? ty + 3 : ty - 9} stroke={m.color} strokeWidth={1} opacity={0.45} />
+                  ) : null}
+                  <text
+                    x={Math.min(Math.max(x, 28), plotW - 28)}
+                    y={ty}
+                    fill={m.color}
+                    fontSize={9}
+                    textAnchor="middle"
+                    fontFamily="ui-monospace, monospace"
+                  >
+                    {m.label}
+                  </text>
+                </g>
+              );
+            })}
+
 
             {/* last price marker on the scale */}
             {slice.length ? (

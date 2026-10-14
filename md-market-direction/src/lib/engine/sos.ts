@@ -57,25 +57,87 @@ function isEngulfing(prev: Candle, c: Candle, up: boolean): boolean {
   return directional && cLo <= pLo && cHi >= pHi;
 }
 
+/* Structure is read from BODIES, not wicks. A line is drawn at the edge of the
+   body at each elbow, and a wick poking past an elbow does not make a new one. */
+const bodyTop = (c: Candle) => Math.max(c.o, c.c);
+const bodyBottom = (c: Candle) => Math.min(c.o, c.c);
+
+interface Elbow {
+  index: number;
+  t: number;
+  price: number;
+  kind: "high" | "low";
+}
+
 /**
- * The most recent lower high (buy) or higher low (sell) at or before `index`.
+ * Elbows: the turning points of the structure, measured on body edges.
  *
- * "Lower" and "higher" are judged against the previous swing of the same kind,
- * which is what makes it structure rather than just the last swing.
+ * Same symmetric fractal rule the rest of the app uses — a bar is an elbow when
+ * its body edge is the most extreme of the k bars either side — but reading the
+ * body rather than the wick, which is where the line actually gets drawn.
  */
-function structureLine(
+function findElbows(candles: Candle[], k = 3): Elbow[] {
+  const out: Elbow[] = [];
+  for (let i = k; i < candles.length - k; i++) {
+    let isHigh = true;
+    let isLow = true;
+    for (let j = i - k; j <= i + k; j++) {
+      if (j === i) continue;
+      // Ties are the normal case on bodies: a candle opens where the last one
+      // closed, so the turn bar and the one after it share a body edge exactly.
+      // Rejecting both on equality finds no elbows at all. Only a STRICTLY more
+      // extreme neighbour disqualifies; equality to the left does, so a plateau
+      // yields one elbow at its start rather than one per bar.
+      if (bodyTop(candles[j]) > bodyTop(candles[i])) isHigh = false;
+      if (j < i && bodyTop(candles[j]) === bodyTop(candles[i])) isHigh = false;
+      if (bodyBottom(candles[j]) < bodyBottom(candles[i])) isLow = false;
+      if (j < i && bodyBottom(candles[j]) === bodyBottom(candles[i])) isLow = false;
+      if (!isHigh && !isLow) break;
+    }
+    if (isHigh) out.push({ index: i, t: candles[i].t, price: bodyTop(candles[i]), kind: "high" });
+    else if (isLow) out.push({ index: i, t: candles[i].t, price: bodyBottom(candles[i]), kind: "low" });
+  }
+  return out;
+}
+
+/**
+ * THE LINE.
+ *
+ * One line, on the most recent elbow of whichever kind the trend is making. An
+ * uptrend makes higher lows, so the line sits on the latest higher low and
+ * ratchets up as new ones form; a downtrend makes lower highs and the line
+ * ratchets down. Breaking it IS the shift, and the shift runs AGAINST the trend
+ * that drew it — break an uptrend's higher low and the structure has turned
+ * down, break a downtrend's lower high and it has turned up.
+ */
+function currentLine(
   candles: Candle[],
   index: number,
-  up: boolean,
-): { price: number; t: number; index: number } | null {
-  const swings = findSwings(candles.slice(0, index + 1), 3);
-  const kind = up ? "high" : "low";
-  const same = swings.filter((s) => s.kind === kind);
-  for (let i = same.length - 1; i >= 1; i--) {
-    const cur = same[i];
-    const prev = same[i - 1];
-    const qualifies = up ? cur.price < prev.price : cur.price > prev.price;
-    if (qualifies) return { price: cur.price, t: cur.t, index: cur.index };
+): { price: number; t: number; shift: WickDirection } | null {
+  const elbows = findElbows(candles.slice(0, index + 1), 3);
+  const lows = elbows.filter((e) => e.kind === "low");
+  const highs = elbows.filter((e) => e.kind === "high");
+  if (lows.length < 2 && highs.length < 2) return null;
+
+  const risingLows = lows.length >= 2 && lows[lows.length - 1].price > lows[lows.length - 2].price;
+  const fallingHighs = highs.length >= 2 && highs[highs.length - 1].price < highs[highs.length - 2].price;
+
+  // When both read the same way the newer elbow decides, so the line follows the
+  // structure that is actually in front of price.
+  if (risingLows && !fallingHighs) {
+    const e = lows[lows.length - 1];
+    return { price: e.price, t: e.t, shift: "sell" };
+  }
+  if (fallingHighs && !risingLows) {
+    const e = highs[highs.length - 1];
+    return { price: e.price, t: e.t, shift: "buy" };
+  }
+  if (risingLows && fallingHighs) {
+    const lo = lows[lows.length - 1];
+    const hi = highs[highs.length - 1];
+    return lo.index >= hi.index
+      ? { price: lo.price, t: lo.t, shift: "sell" }
+      : { price: hi.price, t: hi.t, shift: "buy" };
   }
   return null;
 }
@@ -88,25 +150,22 @@ function structureLine(
  */
 export function findSosEvents(
   candles: Candle[],
-  direction: WickDirection,
   settings: SosSettings,
   limit = 40,
 ): SosEvent[] {
-  const up = direction === "buy";
   const closes = candles.map((c) => c.c);
   const emaSeries = ema(closes, 50);
   const atrSeries = atr(candles, 14);
   const out: SosEvent[] = [];
 
   let i = 60;
-  // A structure line is broken once. Without this, every bar that stays past the
-  // line re-qualifies and the series fills with duplicate "shifts" of the same
-  // break — the next one has to wait for a NEW lower high (or higher low) to
-  // form above it.
+  // A line is broken once. Without this, every bar that stays past it
+  // re-qualifies and the series fills with duplicates of the same break — the
+  // next shift waits for a new elbow to form.
   let lastLineT = -1;
 
   while (i < candles.length) {
-    const line = structureLine(candles, i - 1, up);
+    const line = currentLine(candles, i - 1);
     const e = emaSeries[i];
     if (!line || e == null) {
       i++;
@@ -117,12 +176,11 @@ export function findSosEvents(
       continue;
     }
 
+    const up = line.shift === "buy";
     const c = candles[i];
-    const bodyTop = Math.max(c.o, c.c);
-    const bodyBottom = Math.min(c.o, c.c);
     // The BODY must clear the line, and the close must be the right side of the
     // EMA. Either failing means the structure has not shifted and the line stands.
-    const clearedLine = up ? bodyTop > line.price && c.c > line.price : bodyBottom < line.price && c.c < line.price;
+    const clearedLine = up ? bodyBottom(c) > line.price && c.c > line.price : bodyTop(c) < line.price && c.c < line.price;
     const clearedEma = up ? c.c > e : c.c < e;
     if (!clearedLine || !clearedEma) {
       i++;
@@ -130,7 +188,7 @@ export function findSosEvents(
     }
 
     const event: SosEvent = {
-      direction,
+      direction: line.shift,
       line: line.price,
       lineT: line.t,
       shiftT: c.t,
@@ -143,9 +201,8 @@ export function findSosEvents(
     };
 
     /* 2. the pullback */
-    let j = i + 1;
     let pullbackAt = -1;
-    for (; j < candles.length && j <= i + settings.confirmWithin; j++) {
+    for (let j = i + 1; j < candles.length && j <= i + settings.confirmWithin; j++) {
       const k = candles[j];
       const hit =
         settings.pullback === "candle"
@@ -183,7 +240,6 @@ export function findSosEvents(
         event.confirmKind = engulf ? "engulfing" : "body";
         event.confirmClose = cand.c;
         event.state = "confirmed";
-        i = k;
         break;
       }
     }
@@ -196,18 +252,26 @@ export function findSosEvents(
   return out.slice(-limit).reverse();
 }
 
-/** The live sequence on each side, if one is running. */
+/**
+ * The live read: the line price is standing on right now, and the most recent
+ * shift sequence it produced.
+ */
 export function sosSnapshot(
   candles: Candle[],
   timeframe: Timeframe,
   settings: SosSettings,
-): { timeframe: Timeframe; buy: SosEvent | null; sell: SosEvent | null; events: SosEvent[] } {
-  const buys = findSosEvents(candles, "buy", settings);
-  const sells = findSosEvents(candles, "sell", settings);
+): {
+  timeframe: Timeframe;
+  /** The elbow line in force now, and which way a break of it would shift. */
+  line: { price: number; t: number; shift: WickDirection } | null;
+  latest: SosEvent | null;
+  events: SosEvent[];
+} {
+  const events = findSosEvents(candles, settings);
   return {
     timeframe,
-    buy: buys[0] ?? null,
-    sell: sells[0] ?? null,
-    events: [...buys, ...sells].sort((a, b) => b.shiftT - a.shiftT),
+    line: currentLine(candles, candles.length - 1),
+    latest: events[0] ?? null,
+    events,
   };
 }

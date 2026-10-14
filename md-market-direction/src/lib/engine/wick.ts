@@ -51,8 +51,15 @@ export interface WickZone {
   /** Price at the shallow and deep edges of the zone. */
   zoneNear: number;
   zoneFar: number;
-  /** The 1.0 retracement — a close beyond this invalidates the setup. */
+  /**
+   * A CLOSE beyond this kills the setup. It is the far edge of the zone — the
+   * 0.75 — not the 1.0: price that closes through the whole zone has gone
+   * further than the pullback the method is waiting for. A wick through it is
+   * fine; only a body close counts.
+   */
   invalidation: number;
+  /** The 1.0 retracement — the previous candle's own extreme, kept for reference. */
+  fullRetracement: number;
   /** The 0 level: the previous candle's extreme, where the move ended. */
   origin: number;
   /** Past this the pullback counts as missed. */
@@ -242,7 +249,8 @@ export function buildZone(
     anchorLow: low,
     zoneNear: level(settings.zoneStart),
     zoneFar: level(settings.zoneEnd),
-    invalidation: level(1),
+    invalidation: level(settings.zoneEnd),
+    fullRetracement: level(1),
     origin: level(0),
     // A negative retracement: past the end of the move rather than back into it.
     overrunLevel: level(-settings.overrunLimit),
@@ -263,6 +271,7 @@ export function zoneState(zone: WickZone, current: Candle, direction: WickDirect
   progress: number;
 } {
   const up = direction === "buy";
+  // A close beyond the far edge of the zone, not a wick through it.
   const invalidated = up ? current.c < zone.invalidation : current.c > zone.invalidation;
   if (invalidated) return { state: "invalidated", progress: 1 };
 
