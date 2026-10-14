@@ -554,9 +554,10 @@ for (const vp of SIZES) {
       const daily = list.filter({ hasText: "Nothing logged today yet" });
       await expect(daily).toBeVisible();
       const notes = () => rows(page, "notifications");
-      await poll(async () => (await notes()).length).toBeGreaterThan(1);
+      // How many other reminders are due depends on the date; the daily one is always there.
+      await poll(async () => (await notes()).length).toBeGreaterThan(0);
       const total = await list.count();
-      expect(total).toBeGreaterThan(1);
+      expect(total).toBeGreaterThan(0);
       const unreadLabel = (n: number) => vp === "mobile"
         ? page.getByRole("link", { name: n ? `Notifications, ${n} unread` : "Notifications", exact: true })
         : page.locator("aside").getByRole("link", { name: n ? `Notifications ${n}` : "Notifications", exact: true });
@@ -585,8 +586,8 @@ for (const vp of SIZES) {
       await poll(async () => (await notes()).find((n) => n.dedupe_key?.toString().startsWith("daily:"))?.read_at).toBeTruthy();
       await nav(page, "/notifications", page.getByRole("heading", { name: "Reminders" }));
 
-      // Mark all read.
-      await press(markAll);
+      // Mark all read (when anything is still unread after opening the daily one).
+      if (await markAll.isEnabled()) await press(markAll);
       await expect(markAll).toBeDisabled();
       await expect(page.getByRole("main").getByRole("button", { name: /^Mark read/ })).toHaveCount(0);
       await expect(unreadLabel(0)).toBeVisible();
