@@ -84,6 +84,10 @@ export interface ChartLevel {
   extendRight?: boolean;
   /** Drawn back: a rung behind the one that matters now. */
   faint?: boolean;
+  /** Identifies the level to the owner when it is dragged. */
+  id?: string;
+  /** Lets the level be dragged up and down to a price of the reader's choosing. */
+  draggable?: boolean;
 }
 
 /** A point on a bar — a structure point, or where a shift landed. */
@@ -106,6 +110,7 @@ export function PriceChart({
   zones,
   levels,
   markers,
+  onLevelMove,
   focusT,
   symbolControl,
   viewControl,
@@ -118,6 +123,8 @@ export function PriceChart({
   zones?: ChartZone[];
   levels?: ChartLevel[];
   markers?: ChartMarker[];
+  /** Called while a draggable level is being dragged, with its new price. */
+  onLevelMove?: (id: string, price: number) => void;
   /** Scroll so this bar time is centred. Changing it moves the view once. */
   focusT?: number | null;
   /** Rendered in the chart's own toolbar — a symbol picker, so the market can
@@ -322,6 +329,10 @@ export function PriceChart({
 
   /* ── gestures ──────────────────────────────────────────────────────────── */
   const pointers = useRef(new Map<number, { x: number; y: number }>());
+  /* A level being dragged. While one is held the chart does not pan: the
+     gesture belongs to the line, not to the view. */
+  const dragLevel = useRef<string | null>(null);
+  const [overLevel, setOverLevel] = useState(false);
   const gesture = useRef<{
     zone: Zone;
     startX: number;
@@ -366,8 +377,29 @@ export function PriceChart({
     v.span = clamp(base.span * factor, Math.abs(v.center) * 1e-5 || 1e-6, Math.abs(v.center) * 20 || 1e9);
   };
 
+  /** The draggable level under a pointer, if any. */
+  const levelAt = (clientX: number, clientY: number): string | null => {
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (!rect || !onLevelMove) return null;
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    if (x > plotW) return null;
+    for (const lv of levels ?? []) {
+      if (!lv.draggable || !lv.id) continue;
+      // Generous enough to catch with a thumb, tight enough that an ordinary
+      // pan near the line still pans.
+      if (Math.abs(Y(lv.price) - y) <= 10) return lv.id;
+    }
+    return null;
+  };
+
   const onPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
     svgRef.current?.setPointerCapture(e.pointerId);
+    const held = levelAt(e.clientX, e.clientY);
+    if (held && pointers.current.size === 0) {
+      dragLevel.current = held;
+      return;
+    }
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     const pts = Array.from(pointers.current.values());
     const rect = svgRef.current!.getBoundingClientRect();
@@ -386,6 +418,12 @@ export function PriceChart({
   };
 
   const onPointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (dragLevel.current) {
+      const rect = svgRef.current!.getBoundingClientRect();
+      const y = clamp(e.clientY - rect.top, PAD_T, PAD_T + priceH);
+      onLevelMove?.(dragLevel.current, priceAt(y));
+      return;
+    }
     if (pointers.current.has(e.pointerId)) {
       pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     } else if (!gesture.current) {
@@ -396,6 +434,7 @@ export function PriceChart({
       const y = e.clientY - rect.top;
       setHover(i >= 0 && i < slice.length ? i : null);
       setHoverY(y >= PAD_T && y <= PAD_T + priceH ? y : null);
+      setOverLevel(levelAt(e.clientX, e.clientY) != null);
       return;
     }
     const g = gesture.current;
@@ -445,6 +484,7 @@ export function PriceChart({
   };
 
   const endPointer = (e: React.PointerEvent<SVGSVGElement>) => {
+    dragLevel.current = null;
     pointers.current.delete(e.pointerId);
     if (pointers.current.size === 0) gesture.current = null;
     else {
@@ -536,7 +576,12 @@ export function PriceChart({
             width={width}
             height={H}
             viewBox={`0 0 ${width} ${H}`}
-            style={{ display: "block", touchAction: "none", userSelect: "none", cursor: "crosshair" }}
+            style={{
+              display: "block",
+              touchAction: "none",
+              userSelect: "none",
+              cursor: overLevel ? "ns-resize" : "crosshair",
+            }}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={endPointer}
@@ -697,6 +742,16 @@ export function PriceChart({
               const y = Y(lv.price);
               return (
                 <g key={`lv${k}`} pointerEvents="none">
+                  {lv.draggable ? (
+                    // Something to take hold of, and a wider band of line to
+                    // grab: the level is meant to be put where the reader wants
+                    // it, so it has to look like it can be moved.
+                    <>
+                      <line x1={x0} x2={x1} y1={y} y2={y} stroke={lv.color} strokeWidth={9} opacity={0.12} />
+                      <circle cx={Math.max(x0, 10)} cy={y} r={4} fill={lv.color} />
+                      <circle cx={Math.max(x0, 10)} cy={y} r={7} fill="none" stroke={lv.color} strokeWidth={1} opacity={0.5} />
+                    </>
+                  ) : null}
                   <line
                     x1={x0} x2={x1} y1={y} y2={y}
                     stroke={lv.color} strokeWidth={lv.faint ? 1 : 1.4}
