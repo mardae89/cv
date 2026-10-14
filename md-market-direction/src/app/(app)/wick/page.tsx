@@ -85,30 +85,41 @@ export default function WickPage() {
     }];
   }, [data, view]);
 
-  /* The shift-of-structure view: the line a body had to close beyond, and the
+  /* The shift-of-structure view: the line a candle had to close beyond, and the
      bars where each step of the sequence landed. */
   const sosFocus = useMemo<number | null>(() => {
     if (view !== "sos" || !data) return null;
     return data.sos.latest?.shiftT ?? null;
   }, [data, view]);
 
-  /* THE STRUCTURE POINT IN FORCE.
-     One line, on the elbow the trend is standing on — an uptrend's higher low,
-     a downtrend's lower high — carried to the right edge, because what matters
-     about it is the close that has still to happen beyond it. */
+  /* THE STRUCTURE POINTS, DRAWN.
+     Up to two lines, both carried to the right edge. The one in force — the most
+     recent higher low or lower high — and the one the last shift broke, which
+     stays on the chart after it breaks: that level is what price pulls back
+     towards for the confirmation candle, so taking it away at the moment it
+     starts to matter would be backwards. */
   const sosLevels = useMemo<ChartLevel[]>(() => {
-    // A broken level is not drawn: the mark on the bar that broke it says what
-    // happened, and a line price has already closed through is not a level.
-    if (view !== "sos" || !data?.sos.line || data.sos.line.broken) return [];
+    if (view !== "sos" || !data) return [];
+    const out: ChartLevel[] = [];
+    const add = (price: number, t: number, label: "HL" | "LH", shift: "buy" | "sell", broken: boolean) => {
+      if (out.some((l) => Math.abs(l.price - price) < 1e-9)) return;
+      out.push({
+        price,
+        fromT: t,
+        toT: t,
+        extendRight: true,
+        dashed: broken,
+        color: label === "HL" ? "#4ade80" : "#f87171",
+        label: broken
+          ? `${label} ${fmtPrice(price, data.precision)} · broken`
+          : `${label} ${fmtPrice(price, data.precision)} · close ${shift === "sell" ? "below" : "above"} = shift`,
+      });
+    };
     const l = data.sos.line;
-    return [{
-      price: l.price,
-      fromT: l.t,
-      toT: l.t,
-      extendRight: true,
-      color: l.label === "HL" ? "#4ade80" : "#f87171",
-      label: `${l.label} ${fmtPrice(l.price, data.precision)} · close ${l.shift === "sell" ? "below" : "above"} = shift`,
-    }];
+    if (l) add(l.price, l.t, l.label, l.shift, l.broken);
+    const e = data.sos.latest;
+    if (e) add(e.line, e.lineT, e.lineLabel, e.direction, true);
+    return out;
   }, [data, view]);
 
   /* Structure points only. Every elbow the detector found gets a mark, so the
@@ -525,8 +536,9 @@ function LineNote({ line }: { line: StructureLine }) {
   if (line.broken) {
     return (
       <>
-        The last structure point, the {name} at {line.price.toFixed(5)}, has already been closed
-        through. Nothing is drawn until the next one forms.
+        The {name} at {line.price.toFixed(5)} has been closed through — it stays on the chart as a
+        dashed line, because that is roughly where price pulls back to before the confirmation
+        candle.
       </>
     );
   }
@@ -558,7 +570,7 @@ function SosPanel({ sos, timeframe }: { sos: WickResponse["sos"]; timeframe: Tim
     {
       done: true,
       label: `Structure shifted ${up ? "up" : "down"}`,
-      detail: `A candle closed ${up ? "above the last lower high" : "below the last higher low"} at ${e.line.toFixed(5)} — the line is drawn on the body, and a wick through it would not have counted.`,
+      detail: `A candle closed ${up ? "above the last lower high" : "below the last higher low"} at ${e.line.toFixed(5)} — the line is drawn at the close of the candle that made the elbow, and a wick through it would not have counted.`,
     },
     {
       done: e.pullbackT != null,

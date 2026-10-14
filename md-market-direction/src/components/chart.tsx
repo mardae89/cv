@@ -669,7 +669,13 @@ export function PriceChart({
             ) : null}
 
             {/* structure levels and sequence markers */}
-            {(levels ?? []).map((lv, k) => {
+            {(() => {
+            // Two levels can sit a few pixels apart — the line in force and the
+            // one the last shift broke. Labels then print on top of each other,
+            // or across the other line, so each one is placed clear of both.
+            const usedLabelY: number[] = [];
+            const lineYs = (levels ?? []).map((lv) => Y(lv.price));
+            return (levels ?? []).map((lv, k) => {
               const idx = (t: number) => {
                 if (!slice.length) return 0;
                 if (t <= slice[0].t) return 0;
@@ -705,11 +711,20 @@ export function PriceChart({
                         ? plotW - 4
                         : Math.min(Math.max(x0 + 4, 4), plotW - 4);
                       const w = lv.label.length * 5.4 + 8;
+                      // Above its own line by default; below it when another
+                      // line runs through where the text would sit.
+                      const clashes = (c: number) =>
+                        lineYs.some((ly, j) => j !== k && ly > c - 11 && ly < c + 3) ||
+                        usedLabelY.some((u) => Math.abs(u - c) < 12);
+                      let ty = y - 5;
+                      if (clashes(ty)) ty = y + 13;
+                      while (clashes(ty)) ty += 12;
+                      usedLabelY.push(ty);
                       return (
                         <>
                           <rect
                             x={anchorEnd ? lx - w + 4 : lx - 4}
-                            y={y - 14}
+                            y={ty - 9}
                             width={w}
                             height={12}
                             fill="var(--color-void)"
@@ -717,7 +732,7 @@ export function PriceChart({
                           />
                           <text
                             x={lx}
-                            y={y - 5}
+                            y={ty}
                             fill={lv.color}
                             fontSize={9}
                             fontFamily="ui-monospace, monospace"
@@ -731,7 +746,8 @@ export function PriceChart({
                   ) : null}
                 </g>
               );
-            })}
+            });
+            })()}
 
             {(() => {
               // Stagger only what actually collides. A sequence of three markers

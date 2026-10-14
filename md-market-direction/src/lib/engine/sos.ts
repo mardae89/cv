@@ -54,10 +54,14 @@ function isEngulfing(prev: Candle, c: Candle, up: boolean): boolean {
   return directional && cLo <= pLo && cHi >= pHi;
 }
 
-/* Structure is read from BODIES, not wicks. A line is drawn at the edge of the
-   body at each elbow, and a wick poking past an elbow does not make a new one. */
-const bodyTop = (c: Candle) => Math.max(c.o, c.c);
-const bodyBottom = (c: Candle) => Math.min(c.o, c.c);
+/* Structure is read from CLOSES. A structure point is where a candle body closed,
+   not how far a wick reached — a wick poking past an elbow does not make a new
+   one, and neither does an open. Where a run of candles chops around a level, the
+   point lands on the most extreme CLOSE among them, which is the level a line
+   gets drawn through by hand.
+
+   Engulfing still measures whole bodies, which is what engulfing means. */
+const close = (c: Candle) => c.c;
 
 export interface Elbow {
   index: number;
@@ -79,13 +83,13 @@ export interface Elbow {
 }
 
 /**
- * Elbows: the turning points of the structure, measured on body edges.
+ * Elbows: the turning points of the structure, measured on closes.
  *
  * Price makes a high, turns, makes a low, turns again — so the points alternate,
- * and that is what this walks. It follows the running extreme in the direction
+ * and that is what this walks. It follows the most extreme CLOSE in the direction
  * price is going and only calls the turn once price has come back off it by more
- * than `minSwingAtr` x ATR(14); the extreme it came off becomes the elbow, and
- * the walk reverses.
+ * than `minSwingAtr` x ATR(14); the close it came off becomes the elbow, and the
+ * walk reverses.
  *
  * The fractal rule this replaces — most extreme of the k bars either side —
  * silently dropped turns where one neighbouring body ran past the turn bar, so a
@@ -112,7 +116,7 @@ export function findElbows(candles: Candle[], minSwingAtr = 0.5): Elbow[] {
     out.push({
       index,
       t: candles[index].t,
-      price: kind === "high" ? bodyTop(candles[index]) : bodyBottom(candles[index]),
+      price: close(candles[index]),
       kind,
       label: null,
       confirmedIndex,
@@ -124,19 +128,18 @@ export function findElbows(candles: Candle[], minSwingAtr = 0.5): Elbow[] {
 
   for (let i = 1; i < candles.length; i++) {
     const th = threshold(i);
-    const top = bodyTop(candles[i]);
-    const bot = bodyBottom(candles[i]);
+    const price = close(candles[i]);
 
     if (dir === null) {
       // Until price has moved far enough either way, both extremes are still
       // candidates and whichever is left behind first becomes the first elbow.
-      if (top > bodyTop(candles[hiIdx])) hiIdx = i;
-      if (bot < bodyBottom(candles[loIdx])) loIdx = i;
-      if (hiIdx < i && bodyTop(candles[hiIdx]) - bot > th) {
+      if (price > close(candles[hiIdx])) hiIdx = i;
+      if (price < close(candles[loIdx])) loIdx = i;
+      if (hiIdx < i && close(candles[hiIdx]) - price > th) {
         push(hiIdx, "high", i);
         dir = "down";
         loIdx = i;
-      } else if (loIdx < i && top - bodyBottom(candles[loIdx]) > th) {
+      } else if (loIdx < i && price - close(candles[loIdx]) > th) {
         push(loIdx, "low", i);
         dir = "up";
         hiIdx = i;
@@ -144,21 +147,19 @@ export function findElbows(candles: Candle[], minSwingAtr = 0.5): Elbow[] {
       continue;
     }
 
-    // STRICTLY higher carries the leg on. Matching the running extreme does not:
-    // one candle opens where the last one closed, so a red bar inside a rally
-    // ties the high it is pulling back from, and treating that tie as a new high
-    // swallowed the turn — which is exactly why rallies showed their higher
-    // highs and none of the higher lows between them.
+    // STRICTLY higher carries the leg on; matching the running extreme does not.
+    // A run of candles closing at the same level is a cluster, not a new high
+    // every bar, and the point belongs at the start of it.
     if (dir === "up") {
-      if (top > bodyTop(candles[hiIdx])) hiIdx = i;
-      else if (bodyTop(candles[hiIdx]) - bot > th) {
+      if (price > close(candles[hiIdx])) hiIdx = i;
+      else if (close(candles[hiIdx]) - price > th) {
         push(hiIdx, "high", i);
         dir = "down";
         loIdx = i;
       }
     } else {
-      if (bot < bodyBottom(candles[loIdx])) loIdx = i;
-      else if (top - bodyBottom(candles[loIdx]) > th) {
+      if (price < close(candles[loIdx])) loIdx = i;
+      else if (price - close(candles[loIdx]) > th) {
         push(loIdx, "low", i);
         dir = "up";
         hiIdx = i;
