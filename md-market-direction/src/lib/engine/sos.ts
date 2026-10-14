@@ -184,15 +184,20 @@ export function findElbows(candles: Candle[], minSwingAtr = 0.5): Elbow[] {
 }
 
 /**
- * THE LINE.
+ * THE LINES.
  *
- * The structure point in force: the most recent higher low or lower high,
- * whichever came last. That is the elbow price is working away from, and the one
- * a close beyond turns the structure — break an uptrend's higher low and it has
- * turned down, break a downtrend's lower high and it has turned up.
+ * Which side of the 50 EMA price is closing on says which structure is being
+ * made. Above it, the market is making higher lows: every one of them gets a
+ * line, and that run of lines lasts until a close goes back under the EMA.
+ * Below it, the same for lower highs. A close through the EMA ends the run and
+ * starts the other one.
  *
- * Highs and lows that are not HL or LH carry no line. A lower low is where a
- * downtrend already went, not a level it has still to break.
+ * Only HL and LH carry a line. A lower low is where a downtrend already went,
+ * not a level it has still to break.
+ *
+ * The newest line is the structure point in force — the one a close beyond
+ * shifts the structure. The ones behind it are the rest of the staircase, kept
+ * on screen because price pulls back to them.
  *
  * Reads only elbows already confirmed at `atIndex`, so replaying the series bar
  * by bar never uses a turn that had not happened yet.
@@ -204,35 +209,71 @@ export interface StructureLine {
   shift: WickDirection;
   /** The elbow the line sits on, named: an uptrend's HL, a downtrend's LH. */
   label: "HL" | "LH";
-  /**
-   * True once a close has already gone beyond it. A broken level is history, not
-   * a level to watch, so it is reported rather than drawn across the chart.
-   */
+  /** True once a close has gone beyond it. Broken lines stay on the chart. */
   broken: boolean;
+  /** The newest line of the run: the one price has still to break. */
+  current: boolean;
 }
 
-function currentLine(
-  elbows: Elbow[],
-  atIndex: number,
+/**
+ * Every structure point of the run price is in, oldest first.
+ *
+ * `atIndex` is the bar being read; everything is computed as it stood then.
+ */
+export function structureLines(
   candles: Candle[],
-): StructureLine | null {
-  let found: Elbow | null = null;
-  for (const e of elbows) {
-    if (e.confirmedIndex > atIndex) break;
-    if (e.label === "HL" || e.label === "LH") found = e;
-  }
-  if (!found) return null;
+  elbows: Elbow[],
+  emaSeries: (number | null)[],
+  atIndex: number,
+): StructureLine[] {
+  const e = emaSeries[atIndex];
+  if (e == null || atIndex < 0 || atIndex >= candles.length) return [];
+  const up = candles[atIndex].c > e;
 
-  const shift: WickDirection = found.label === "HL" ? "sell" : "buy";
-  let broken = false;
-  for (let i = found.index + 1; i <= atIndex && i < candles.length; i++) {
-    const beyond = shift === "sell" ? candles[i].c < found.price : candles[i].c > found.price;
-    if (beyond) {
-      broken = true;
+  // The run starts on the first bar after the last close on the other side of
+  // the EMA. Anything older belongs to the structure before this one.
+  let runStart = 0;
+  for (let i = atIndex; i >= 0; i--) {
+    const m = emaSeries[i];
+    if (m == null) {
+      runStart = i + 1;
+      break;
+    }
+    const onSide = up ? candles[i].c > m : candles[i].c < m;
+    if (!onSide) {
+      runStart = i + 1;
       break;
     }
   }
-  return { price: found.price, t: found.t, shift, label: found.label as "HL" | "LH", broken };
+
+  const want: "HL" | "LH" = up ? "HL" : "LH";
+  const shift: WickDirection = up ? "sell" : "buy";
+  const out: StructureLine[] = [];
+  for (const el of elbows) {
+    if (el.confirmedIndex > atIndex) break;
+    if (el.label !== want || el.index < runStart) continue;
+    let broken = false;
+    for (let i = el.index + 1; i <= atIndex; i++) {
+      if (shift === "sell" ? candles[i].c < el.price : candles[i].c > el.price) {
+        broken = true;
+        break;
+      }
+    }
+    out.push({ price: el.price, t: el.t, shift, label: want, broken, current: false });
+  }
+  if (out.length) out[out.length - 1].current = true;
+  return out;
+}
+
+/** The structure point in force: the newest line of the run. */
+function currentLine(
+  candles: Candle[],
+  elbows: Elbow[],
+  emaSeries: (number | null)[],
+  atIndex: number,
+): StructureLine | null {
+  const lines = structureLines(candles, elbows, emaSeries, atIndex);
+  return lines.length ? lines[lines.length - 1] : null;
 }
 
 /**
@@ -259,7 +300,7 @@ export function findSosEvents(
   let lastLineT = -1;
 
   while (i < candles.length) {
-    const line = currentLine(elbows, i - 1, candles);
+    const line = currentLine(candles, elbows, emaSeries, i - 1);
     if (!line || line.broken) {
       i++;
       continue;
@@ -357,16 +398,20 @@ export function sosSnapshot(
   timeframe: Timeframe;
   /** The elbow line in force now, and which way a break of it would shift. */
   line: StructureLine | null;
+  /** Every structure point of the run, oldest first — the whole staircase. */
+  lines: StructureLine[];
   latest: SosEvent | null;
   events: SosEvent[];
   /** Every structure point on the series, for marking up the chart. */
   elbows: Elbow[];
 } {
   const elbows = findElbows(candles, settings.swingAtr);
+  const emaSeries = ema(candles.map((c) => c.c), 50);
   const events = findSosEvents(candles, settings);
   return {
     timeframe,
-    line: currentLine(elbows, candles.length - 1, candles),
+    line: currentLine(candles, elbows, emaSeries, candles.length - 1),
+    lines: structureLines(candles, elbows, emaSeries, candles.length - 1),
     latest: events[0] ?? null,
     events,
     // Trimmed to what a chart can show without becoming a wall of dots.

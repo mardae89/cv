@@ -24,6 +24,7 @@ interface WickResponse {
   sos: {
     timeframe: Timeframe;
     line: StructureLine | null;
+    lines: StructureLine[];
     latest: SosEvent | null;
     events: SosEvent[];
     elbows: Elbow[];
@@ -93,32 +94,54 @@ export default function WickPage() {
   }, [data, view]);
 
   /* THE STRUCTURE POINTS, DRAWN.
-     Up to two lines, both carried to the right edge. The one in force — the most
-     recent higher low or lower high — and the one the last shift broke, which
-     stays on the chart after it breaks: that level is what price pulls back
-     towards for the confirmation candle, so taking it away at the moment it
-     starts to matter would be backwards. */
+     While price keeps closing above the 50 EMA the market is making higher
+     lows, so every one of them gets a line and they stay until a close goes
+     back under the EMA; below the EMA it is every lower high. The newest line
+     is the one a close beyond shifts the structure and carries the full label;
+     the rest are the staircase behind it, which is where price pulls back to.
+     The level the last shift broke is kept too — that is the one price retests
+     before the confirmation candle. */
   const sosLevels = useMemo<ChartLevel[]>(() => {
     if (view !== "sos" || !data) return [];
     const out: ChartLevel[] = [];
-    const add = (price: number, t: number, label: "HL" | "LH", shift: "buy" | "sell", broken: boolean) => {
+    const add = (
+      price: number,
+      t: number,
+      label: "HL" | "LH",
+      shift: "buy" | "sell",
+      opts: { current?: boolean; broken?: boolean; last?: boolean },
+    ) => {
       if (out.some((l) => Math.abs(l.price - price) < 1e-9)) return;
+      const price_ = fmtPrice(price, data.precision);
       out.push({
         price,
         fromT: t,
         toT: t,
         extendRight: true,
-        dashed: broken,
+        dashed: true,
         color: label === "HL" ? "#4ade80" : "#f87171",
-        label: broken
-          ? `${label} ${fmtPrice(price, data.precision)} · broken`
-          : `${label} ${fmtPrice(price, data.precision)} · close ${shift === "sell" ? "below" : "above"} = shift`,
+        // Only the two lines that mean something carry text: the one in force,
+        // and the one the last shift broke. The rungs behind them are already
+        // named where they start, by the HL or LH mark on the elbow itself, and
+        // labelling every one of them crowds the right edge into a stack.
+        label: opts.current
+          ? `${label} ${price_} · close ${shift === "sell" ? "below" : "above"} = shift`
+          : opts.last
+            ? `${label} ${price_} · broken`
+            : undefined,
+        // Older rungs of the staircase sit back; the line in force leads.
+        faint: !opts.current,
       });
     };
-    const l = data.sos.line;
-    if (l) add(l.price, l.t, l.label, l.shift, l.broken);
+    // Newest first, so the line in force wins the label slot nearest its own
+    // price when several sit close together. A long trend can hold forty rungs,
+    // and the oldest of them are nowhere near price — the nearest dozen is what
+    // a chart can show and what price could plausibly come back to.
+    for (const l of data.sos.lines.slice(-12).reverse()) {
+      add(l.price, l.t, l.label, l.shift, { current: l.current, broken: l.broken });
+    }
     const e = data.sos.latest;
-    if (e) add(e.line, e.lineT, e.lineLabel, e.direction, true);
+    if (e) add(e.line, e.lineT, e.lineLabel, e.direction, { broken: true, last: true });
     return out;
   }, [data, view]);
 
@@ -530,22 +553,27 @@ function ReadyBoard({
   );
 }
 
-/** What the structure line is, in a sentence — live, or already taken out. */
-function LineNote({ line }: { line: StructureLine }) {
+/** What the lines on the chart are, in a sentence. */
+function LineNote({ line, count }: { line: StructureLine; count: number }) {
   const name = line.label === "HL" ? "higher low" : "lower high";
+  const plural = line.label === "HL" ? "higher lows" : "lower highs";
+  const rest =
+    count > 1
+      ? ` The ${plural} behind it are drawn too — the run lasts until a close goes back through the 50 EMA.`
+      : "";
   if (line.broken) {
     return (
       <>
-        The {name} at {line.price.toFixed(5)} has been closed through — it stays on the chart as a
-        dashed line, because that is roughly where price pulls back to before the confirmation
-        candle.
+        The newest {name}, at {line.price.toFixed(5)}, has been closed through — it stays on the
+        chart, because that is roughly where price pulls back to before the confirmation candle.
+        {rest}
       </>
     );
   }
   return (
     <>
-      The line sits on the most recent {name} at {line.price.toFixed(5)} and runs to the right edge
-      of the chart — a candle closing {line.shift === "sell" ? "below" : "above"} it is the shift.
+      The line in force sits on the newest {name} at {line.price.toFixed(5)} and runs to the right
+      edge — a candle closing {line.shift === "sell" ? "below" : "above"} it is the shift.{rest}
     </>
   );
 }
@@ -561,7 +589,7 @@ function SosPanel({ sos, timeframe }: { sos: WickResponse["sos"]; timeframe: Tim
     return (
       <p className="mt-4 text-sm text-mute">
         No structure shift on the {TF_SPOKEN[timeframe]}.{" "}
-        {sos.line ? <LineNote line={sos.line} /> : "No structure point yet: no higher low or lower high has formed here."}
+        {sos.line ? <LineNote line={sos.line} count={sos.lines.length} /> : "No structure point yet: nothing has formed since price last closed through the 50 EMA."}
       </p>
     );
   }
@@ -590,7 +618,7 @@ function SosPanel({ sos, timeframe }: { sos: WickResponse["sos"]; timeframe: Tim
     <div className="mt-4 space-y-2">
       {sos.line ? (
         <p className="text-sm text-mute">
-          <LineNote line={sos.line} />
+          <LineNote line={sos.line} count={sos.lines.length} />
         </p>
       ) : null}
       {steps.map((st) => (

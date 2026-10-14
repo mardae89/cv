@@ -82,6 +82,8 @@ export interface ChartLevel {
    * stopping at the last bar.
    */
   extendRight?: boolean;
+  /** Drawn back: a rung behind the one that matters now. */
+  faint?: boolean;
 }
 
 /** A labelled point on a bar — where a shift, pullback or confirmation landed. */
@@ -693,7 +695,8 @@ export function PriceChart({
                 <g key={`lv${k}`} pointerEvents="none">
                   <line
                     x1={x0} x2={x1} y1={y} y2={y}
-                    stroke={lv.color} strokeWidth={1.4}
+                    stroke={lv.color} strokeWidth={lv.faint ? 1 : 1.4}
+                    opacity={lv.faint ? 0.5 : 1}
                     strokeDasharray={lv.dashed ? "5 4" : undefined}
                   />
                   {lv.label ? (
@@ -714,8 +717,8 @@ export function PriceChart({
                       // Above its own line by default; below it when another
                       // line runs through where the text would sit.
                       const clashes = (c: number) =>
-                        lineYs.some((ly, j) => j !== k && ly > c - 11 && ly < c + 3) ||
-                        usedLabelY.some((u) => Math.abs(u - c) < 12);
+                        lineYs.some((ly, j) => j !== k && ly > c - 13 && ly < c + 5) ||
+                        usedLabelY.some((u) => Math.abs(u - c) < 13);
                       let ty = y - 5;
                       if (clashes(ty)) ty = y + 13;
                       while (clashes(ty)) ty += 12;
@@ -734,6 +737,7 @@ export function PriceChart({
                             x={lx}
                             y={ty}
                             fill={lv.color}
+                            opacity={lv.faint ? 0.65 : 1}
                             fontSize={9}
                             fontFamily="ui-monospace, monospace"
                             textAnchor={anchorEnd ? "end" : "start"}
