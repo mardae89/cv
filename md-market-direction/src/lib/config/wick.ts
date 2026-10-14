@@ -196,6 +196,11 @@ export interface SosSettings {
    * turn counts as a structure point. Lower marks more of them.
    */
   swingAtr: number;
+  /**
+   * Candles a structure point must stand clear of the one before it. A turn that
+   * comes and goes inside a candle or two is a hiccup, not structure.
+   */
+  minLegBars: number;
   /** Confirmation candle body, as a multiple of ATR(14). */
   confirmBodyAtr: number;
   /** How the pullback between shift and confirmation is recognised. */
@@ -208,6 +213,7 @@ export interface SosSettings {
 
 export const SOS_DEFAULTS: SosSettings = {
   swingAtr: 0.1,
+  minLegBars: 3,
   confirmBodyAtr: 0.3,
   pullback: "candle",
   retestAtr: 0.5,

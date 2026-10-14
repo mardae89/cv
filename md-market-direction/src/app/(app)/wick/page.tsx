@@ -39,6 +39,16 @@ type WickView = "zones" | "sos";
 const ZONE_COLOR = "#d4a537";
 const ZONE_OPACITY = 0.18;
 
+/* Structure dots. Deep for the point a trend has already made — the higher high,
+   the lower low — and bright for the one it is building on and that a close
+   beyond would break: the higher low, the lower high. */
+const STRUCTURE_DOT = {
+  HH: "#16a34a",
+  HL: "#39ff14",
+  LL: "#c62828",
+  LH: "#ff3b3b",
+} as const;
+
 const STATE_LABEL: Record<ZoneState, string> = {
   waiting: "Waiting",
   "in-zone": "In Zone",
@@ -145,9 +155,11 @@ export default function WickPage() {
     return out;
   }, [data, view]);
 
-  /* Structure points only. Every elbow the detector found gets a mark, so the
-     markup matches what would be drawn by hand; the shift / pullback /
-     confirmation narrative stays in the panel rather than crowding price. */
+  /* Structure points, as dots only. The letters and the leader lines pointing
+     at them were taller than the swings they named, so the colour carries the
+     meaning instead: bright for the point the trend is building on — the higher
+     low in an uptrend, the lower high in a downtrend — and dark for the point it
+     has already made. */
   const sosMarkers = useMemo<ChartMarker[]>(() => {
     if (view !== "sos" || !data) return [];
     const marks: ChartMarker[] = data.sos.elbows
@@ -157,14 +169,14 @@ export default function WickPage() {
       .map((e) => ({
         t: e.t,
         price: e.price,
-        label: e.label as string,
-        color: e.kind === "high" ? "#f87171" : "#4ade80",
+        color: STRUCTURE_DOT[e.label as keyof typeof STRUCTURE_DOT],
         side: e.kind === "high" ? ("above" as const) : ("below" as const),
+        radius: 4,
       }));
 
-    // The most recent break, on the bar that closed through it. The line it
-    // broke is named, so the chart says WHAT gave way rather than just that
-    // something did.
+    // The most recent break keeps its words: it is one mark, and it is the one
+    // thing on the chart that says something happened rather than what a point
+    // is called.
     const e = data.sos.latest;
     if (e) {
       marks.push({

@@ -97,7 +97,7 @@ export interface Elbow {
  * between them. An alternating walk cannot miss one: every high has a low after
  * it. The ATR threshold is what keeps noise out, rather than a bar count.
  */
-export function findElbows(candles: Candle[], minSwingAtr = 0.5): Elbow[] {
+export function findElbows(candles: Candle[], minSwingAtr = 0.5, minLegBars = 3): Elbow[] {
   if (candles.length < 3) return [];
   const atrSeries = atr(candles, 14);
   // ATR has no value until it has enough bars; the first one it does produce is
@@ -167,11 +167,13 @@ export function findElbows(candles: Candle[], minSwingAtr = 0.5): Elbow[] {
     }
   }
 
+  const kept = mergeShortLegs(out, minLegBars);
+
   // Each elbow is named against the previous one of its own kind, which is what
   // makes it structure: a high is only a LOWER high relative to the high before.
   let lastHigh: number | null = null;
   let lastLow: number | null = null;
-  for (const e of out) {
+  for (const e of kept) {
     if (e.kind === "high") {
       if (lastHigh != null) e.label = e.price > lastHigh ? "HH" : "LH";
       lastHigh = e.price;
@@ -180,7 +182,50 @@ export function findElbows(candles: Candle[], minSwingAtr = 0.5): Elbow[] {
       lastLow = e.price;
     }
   }
-  return out;
+  return kept;
+}
+
+/**
+ * A turn that comes and goes inside a candle or two is a hiccup, not structure.
+ *
+ * Any two points closer together than `minBars` are one move: the newer of the
+ * pair is dropped, and the two points either side of it — now neighbours of the
+ * same kind — collapse into whichever is the more extreme. Repeating that until
+ * nothing is left too close leaves points that each took several candles to
+ * make, still strictly alternating high, low, high, low.
+ */
+function mergeShortLegs(pivots: Elbow[], minBars: number): Elbow[] {
+  if (minBars <= 1) return pivots;
+  let list = pivots;
+
+  const collapse = (xs: Elbow[]): Elbow[] => {
+    const out: Elbow[] = [];
+    for (const e of xs) {
+      const prev = out[out.length - 1];
+      if (prev && prev.kind === e.kind) {
+        const newer = e.kind === "high" ? e.price > prev.price : e.price < prev.price;
+        // Whichever is the more extreme survives, but the pair is only known to
+        // be one point once the later of them was confirmed.
+        const confirmedIndex = Math.max(prev.confirmedIndex, e.confirmedIndex);
+        out[out.length - 1] = { ...(newer ? e : prev), confirmedIndex };
+        continue;
+      }
+      out.push(e);
+    }
+    return out;
+  };
+
+  for (;;) {
+    const i = list.findIndex((e, k) => k > 0 && e.index - list[k - 1].index < minBars);
+    if (i < 0) return list;
+    const dropped = list[i];
+    const next = list.slice(0, i).concat(list.slice(i + 1));
+    // The point that outlived the drop inherits its confirmation, so a replay
+    // never shows a point earlier than the bar that settled it.
+    const prev = next[i - 1];
+    if (prev) next[i - 1] = { ...prev, confirmedIndex: Math.max(prev.confirmedIndex, dropped.confirmedIndex) };
+    list = collapse(next);
+  }
 }
 
 /**
@@ -290,7 +335,7 @@ export function findSosEvents(
   const closes = candles.map((c) => c.c);
   const emaSeries = ema(closes, 50);
   const atrSeries = atr(candles, 14);
-  const elbows = findElbows(candles, settings.swingAtr);
+  const elbows = findElbows(candles, settings.swingAtr, settings.minLegBars);
   const out: SosEvent[] = [];
 
   let i = 60;
@@ -405,7 +450,7 @@ export function sosSnapshot(
   /** Every structure point on the series, for marking up the chart. */
   elbows: Elbow[];
 } {
-  const elbows = findElbows(candles, settings.swingAtr);
+  const elbows = findElbows(candles, settings.swingAtr, settings.minLegBars);
   const emaSeries = ema(candles.map((c) => c.c), 50);
   const events = findSosEvents(candles, settings);
   return {

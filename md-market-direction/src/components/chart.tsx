@@ -86,14 +86,17 @@ export interface ChartLevel {
   faint?: boolean;
 }
 
-/** A labelled point on a bar — where a shift, pullback or confirmation landed. */
+/** A point on a bar — a structure point, or where a shift landed. */
 export interface ChartMarker {
   t: number;
   price: number;
-  label: string;
+  /** Text beside the dot. Left out, the dot stands on its own. */
+  label?: string;
   color: string;
-  /** Above the bar, or below it. */
+  /** Which side of the bar the text sits on. Ignored without a label. */
   side: "above" | "below";
+  /** Dot radius; the default suits a marker that carries text. */
+  radius?: number;
 }
 
 export function PriceChart({
@@ -164,10 +167,11 @@ export function PriceChart({
     // at is a sliver. Tighten the window — but never widen one the user has
     // already zoomed in past.
     view.count = Math.min(view.count, 60);
-    // Centred, but never scrolled off the end of the series: a bar near the live
-    // edge would otherwise leave half the plot empty.
     const maxStart = Math.max(0, data.candles.length - view.count);
-    view.start = Math.max(0, Math.min(idx - view.count / 2, maxStart));
+    // A bar that is already within a window sitting at the live edge needs no
+    // scrolling: centring on it there would push the newest bars off screen,
+    // and where price is now is half of what the mark is being read against.
+    view.start = idx >= maxStart ? maxStart : Math.max(0, Math.min(idx - view.count / 2, maxStart));
     view.priceAuto = true;
     repaint();
   }, [focusT, data, repaint]);
@@ -762,9 +766,31 @@ export function PriceChart({
               return (markers ?? []).map((m, k) => {
                 let best = -1;
                 for (let i = 0; i < slice.length; i++) if (slice[i].t <= m.t) best = i;
-                if (best < 0) return null;
+                // Off the window either way, the mark is not drawn. Clamping it
+                // to the last visible bar stacked marks from bars off to the
+                // right onto the edge, at prices that bar never traded.
+                if (best < 0 || m.t > slice[slice.length - 1].t) return null;
                 const x = X(best);
                 const y = Y(m.price);
+                const r = m.radius ?? 3;
+                // A dot on its own needs no room made for it, and no leader
+                // line: it sits on the price it marks.
+                if (!m.label) {
+                  // A thin dark ring keeps a green dot readable on a green
+                  // candle, and a red one on red.
+                  return (
+                    <circle
+                      key={`mk${k}`}
+                      cx={x}
+                      cy={y}
+                      r={r}
+                      fill={m.color}
+                      stroke="var(--color-void)"
+                      strokeWidth={1}
+                      pointerEvents="none"
+                    />
+                  );
+                }
                 const up = m.side === "above";
                 const near = placed.filter((q) => Math.abs(q.x - x) < 44).length;
                 placed.push({ x, tier: near });
@@ -772,7 +798,7 @@ export function PriceChart({
                 const ty = up ? y - 10 - tier : y + 18 + tier;
               return (
                 <g key={`mk${k}`} pointerEvents="none">
-                  <circle cx={x} cy={y} r={3} fill={m.color} />
+                  <circle cx={x} cy={y} r={r} fill={m.color} />
                   {tier > 0 ? (
                     <line x1={x} x2={x} y1={y} y2={up ? ty + 3 : ty - 9} stroke={m.color} strokeWidth={1} opacity={0.45} />
                   ) : null}
