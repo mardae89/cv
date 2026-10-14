@@ -142,3 +142,88 @@ export function squash(value: number, scale: number): number {
   if (!Number.isFinite(value) || scale === 0) return 0;
   return Math.tanh(value / scale);
 }
+
+export interface AdxSeries {
+  adx: (number | null)[];
+  plusDi: (number | null)[];
+  minusDi: (number | null)[];
+}
+
+/**
+ * Wilder's Average Directional Index.
+ *
+ * ADX measures how strongly a market is trending WITHOUT saying which way — it
+ * is the standard answer to "is this trending or ranging", which is exactly the
+ * question a pullback setup has to answer before it means anything.
+ *
+ * Built the way Wilder defined it: directional movement smoothed with his
+ * running average (not a simple one), +DI and -DI from the smoothed values, DX
+ * from their spread, and ADX as the smoothed DX. Returns nulls until each stage
+ * has filled its window rather than seeding from a short sample.
+ */
+export function adx(candles: Candle[], period = 14): AdxSeries {
+  const n = candles.length;
+  const out: AdxSeries = {
+    adx: new Array(n).fill(null),
+    plusDi: new Array(n).fill(null),
+    minusDi: new Array(n).fill(null),
+  };
+  if (n <= period * 2) return out;
+
+  const plusDm: number[] = new Array(n).fill(0);
+  const minusDm: number[] = new Array(n).fill(0);
+  const tr: number[] = new Array(n).fill(0);
+
+  for (let i = 1; i < n; i++) {
+    const up = candles[i].h - candles[i - 1].h;
+    const down = candles[i - 1].l - candles[i].l;
+    plusDm[i] = up > down && up > 0 ? up : 0;
+    minusDm[i] = down > up && down > 0 ? down : 0;
+    tr[i] = Math.max(
+      candles[i].h - candles[i].l,
+      Math.abs(candles[i].h - candles[i - 1].c),
+      Math.abs(candles[i].l - candles[i - 1].c),
+    );
+  }
+
+  // Wilder's smoothing: seed with a sum over the first window, then
+  // prev - prev/period + current.
+  let smPlus = 0;
+  let smMinus = 0;
+  let smTr = 0;
+  for (let i = 1; i <= period; i++) {
+    smPlus += plusDm[i];
+    smMinus += minusDm[i];
+    smTr += tr[i];
+  }
+
+  const dx: (number | null)[] = new Array(n).fill(null);
+  for (let i = period; i < n; i++) {
+    if (i > period) {
+      smPlus = smPlus - smPlus / period + plusDm[i];
+      smMinus = smMinus - smMinus / period + minusDm[i];
+      smTr = smTr - smTr / period + tr[i];
+    }
+    if (smTr === 0) continue;
+    const pdi = (100 * smPlus) / smTr;
+    const mdi = (100 * smMinus) / smTr;
+    out.plusDi[i] = pdi;
+    out.minusDi[i] = mdi;
+    const sum = pdi + mdi;
+    dx[i] = sum === 0 ? 0 : (100 * Math.abs(pdi - mdi)) / sum;
+  }
+
+  // ADX is the smoothed DX, which needs a second full window of its own.
+  const firstDx = period;
+  const adxStart = firstDx + period - 1;
+  if (adxStart >= n) return out;
+  let sum = 0;
+  for (let i = firstDx; i <= adxStart; i++) sum += dx[i] ?? 0;
+  let prev = sum / period;
+  out.adx[adxStart] = prev;
+  for (let i = adxStart + 1; i < n; i++) {
+    prev = (prev * (period - 1) + (dx[i] ?? 0)) / period;
+    out.adx[i] = prev;
+  }
+  return out;
+}
