@@ -54,3 +54,46 @@ for (const vp of ["mobile", "desktop"] as const) {
     expect(errors).toEqual([]);
   });
 }
+
+for (const vp of ["mobile", "desktop"] as const) {
+  test(`release today: format, funnel stage and sort dropdowns above the ideas (${vp})`, async ({ browser }) => {
+    const { page, errors } = await openFresh(browser, vp, "skip");
+    await go(page, "/content");
+    await page.getByRole("button", { name: /Load my content ideas/ }).first().click();
+    await expect.poll(async () => (await rows(page, "contentIdeas")).length).toBe(129);
+    const ideas = await rows(page, "contentIdeas");
+    const controls = page.getByRole("group", { name: "Sort and filter ideas" });
+    const listOf = (f: string) => page.getByRole("list", { name: `${f} ideas` }).getByRole("checkbox");
+    const shown = async (f: string) => {
+      const titles = await listOf(f).evaluateAll((els) => els.map((e) => e.getAttribute("aria-label")));
+      return titles.map((t) => ideas.find((i) => i.title === t)!);
+    };
+
+    await controls.getByLabel("Format").selectOption("long");
+    await expect(page.getByRole("group", { name: "Choose a format" }).getByRole("button", { name: /^Long form/ })).toHaveAttribute("aria-pressed", "true");
+    await expect(listOf("Long form")).toHaveCount(10);
+    expect((await shown("Long form")).every((i) => i.format === "long")).toBe(true);
+
+    await controls.getByLabel("Funnel stage").selectOption("bottom");
+    let list = await shown("Long form");
+    expect(list.length).toBeGreaterThan(0);
+    expect(list.every((i) => i.funnel === "bottom" && i.format === "long")).toBe(true);
+
+    await controls.getByLabel("Format").selectOption("short");
+    await controls.getByLabel("Funnel stage").selectOption("all");
+    await controls.getByLabel("Sort by").selectOption("top-first");
+    list = await shown("Short form");
+    expect(list.every((i) => i.funnel === "top" && i.format === "short")).toBe(true);
+    await controls.getByLabel("Sort by").selectOption("bottom-first");
+    list = await shown("Short form");
+    expect(list.every((i) => i.funnel === "bottom")).toBe(true);
+    await controls.getByLabel("Sort by").selectOption("cta-first");
+    list = await shown("Short form");
+    // Calls to action lead; anything after the first non-CTA idea is also non-CTA.
+    expect(list[0].cta).toBe(true);
+    const firstPlain = list.findIndex((i) => !i.cta);
+    expect(firstPlain === -1 || list.slice(firstPlain).every((i) => !i.cta)).toBe(true);
+    await expectNoHorizontalScroll(page);
+    expect(errors).toEqual([]);
+  });
+}

@@ -43,6 +43,15 @@ const DEFAULT_FILTERS: Filters = { format: "all", funnel: "all", cta: false, sec
 /** Priority sections first, then list order: the order ideas are picked in. */
 const byPick = (a: ContentIdea, b: ContentIdea) => Number(b.priority) - Number(a.priority) || a.num - b.num;
 
+type PickSort = "priority" | "top-first" | "bottom-first" | "cta-first" | "list";
+const PICK_SORTS: { value: PickSort; label: string; cmp: (a: ContentIdea, b: ContentIdea) => number }[] = [
+  { value: "priority", label: "Priority first", cmp: byPick },
+  { value: "top-first", label: "Top of funnel first", cmp: (a, b) => FUNNEL_ORDER[a.funnel] - FUNNEL_ORDER[b.funnel] || byPick(a, b) },
+  { value: "bottom-first", label: "Bottom of funnel first", cmp: (a, b) => FUNNEL_ORDER[b.funnel] - FUNNEL_ORDER[a.funnel] || byPick(a, b) },
+  { value: "cta-first", label: "Calls to action first", cmp: (a, b) => Number(b.cta) - Number(a.cta) || byPick(a, b) },
+  { value: "list", label: "List order", cmp: (a, b) => a.num - b.num },
+];
+
 /** Scrolls an element into view, respecting reduced motion. */
 const scrollTo = (el: HTMLElement | null) =>
   el?.scrollIntoView({ block: "start", behavior: window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
@@ -188,14 +197,29 @@ function ReleaseToday({ onEdit, onBank }: { onEdit: (c: ContentIdea) => void; on
   const [page, setPage] = useState(1);
   // Ideas checked off here stay in view, crossed out, until the format changes.
   const [keep, setKeep] = useState<Set<string>>(() => new Set());
+  const [funnel, setFunnelState] = useState<"all" | FunnelStage>("all");
+  const [order, setOrderState] = useState<PickSort>("priority");
   const listTop = useRef<HTMLDivElement>(null);
-  const setFormat = (f: ContentFormat) => {
-    setFormatState(f);
+  const reset = () => {
     setPage(1);
     setKeep(new Set());
   };
+  const setFormat = (f: ContentFormat) => {
+    setFormatState(f);
+    reset();
+  };
+  const setFunnel = (f: "all" | FunnelStage) => {
+    setFunnelState(f);
+    reset();
+  };
+  const setOrder = (o: PickSort) => {
+    setOrderState(o);
+    reset();
+  };
 
-  const pool = data.contentIdeas.filter((c) => c.format === format && (c.status === "open" || keep.has(c.id))).sort(byPick);
+  const pool = data.contentIdeas
+    .filter((c) => c.format === format && (funnel === "all" || c.funnel === funnel) && (c.status === "open" || keep.has(c.id)))
+    .sort(PICK_SORTS.find((s) => s.value === order)!.cmp);
   const pages = Math.max(1, Math.ceil(pool.length / PAGE_SIZE));
   const p = Math.min(page, pages);
   const shown = pool.slice((p - 1) * PAGE_SIZE, p * PAGE_SIZE);
@@ -252,8 +276,29 @@ function ReleaseToday({ onEdit, onBank }: { onEdit: (c: ContentIdea) => void; on
       <div ref={listTop} className="mt-5 flex scroll-mt-24 flex-wrap items-baseline justify-between gap-2 border-t border-hair pt-4">
         <h3 className="text-[20px] leading-none">{FORMAT_LABEL[format]} ideas</h3>
         <span className="num text-[12px] text-mute" aria-live="polite">
-          {pool.length ? `${(p - 1) * PAGE_SIZE + 1}–${Math.min(p * PAGE_SIZE, pool.length)} of ${pool.length} · priority first` : "None open"}
+          {pool.length ? `${(p - 1) * PAGE_SIZE + 1}–${Math.min(p * PAGE_SIZE, pool.length)} of ${pool.length}` : "None open"}
         </span>
+      </div>
+      <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3" role="group" aria-label="Sort and filter ideas">
+        <Field label="Format">
+          <Select value={format} onChange={(e) => setFormat(e.target.value as ContentFormat)}>
+            <option value="short">Short form</option>
+            <option value="long">Long form</option>
+          </Select>
+        </Field>
+        <Field label="Funnel stage">
+          <Select value={funnel} onChange={(e) => setFunnel(e.target.value as "all" | FunnelStage)}>
+            <option value="all">All stages</option>
+            <option value="top">Top of funnel</option>
+            <option value="middle">Middle of funnel</option>
+            <option value="bottom">Bottom of funnel</option>
+          </Select>
+        </Field>
+        <Field label="Sort by">
+          <Select value={order} onChange={(e) => setOrder(e.target.value as PickSort)}>
+            {PICK_SORTS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+          </Select>
+        </Field>
       </div>
       {shown.length ? (
         <ul className="mt-1 divide-y divide-hair" aria-label={`${FORMAT_LABEL[format]} ideas`}>
@@ -264,7 +309,9 @@ function ReleaseToday({ onEdit, onBank }: { onEdit: (c: ContentIdea) => void; on
           ))}
         </ul>
       ) : (
-        <p className="py-6 text-center text-[13px] text-mute">Every {format}-form idea is done. Add new ones with “Add idea”.</p>
+        <p className="py-6 text-center text-[13px] text-mute">
+          {funnel === "all" ? <>Every {format}-form idea is done. Add new ones with “Add idea”.</> : <>No open {format}-form ideas at the {funnel} of the funnel.</>}
+        </p>
       )}
       <Pager page={p} pages={pages} label={`${FORMAT_LABEL[format]} pages`} onPage={(n) => { setPage(n); scrollTo(listTop.current); }} />
       <button type="button" onClick={() => onBank(format)} className="link mt-3 inline-flex h-10 items-center text-[12.5px]">

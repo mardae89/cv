@@ -22,9 +22,9 @@ for (const vp of ["mobile", "desktop"] as const) {
       await expect(shorts).toHaveCount(10);
       const firstShort = await shorts.first().getAttribute("aria-label");
       expect(PRIORITY).toContain(ideas.find((i) => i.title === firstShort)?.section);
-      await expect(page.getByText("1–10 of 79 · priority first")).toBeVisible();
+      await expect(page.getByText("1–10 of 79")).toBeVisible();
       await page.getByRole("navigation", { name: "Short form pages" }).getByRole("button", { name: /Next/ }).click();
-      await expect(page.getByText("11–20 of 79 · priority first")).toBeVisible();
+      await expect(page.getByText("11–20 of 79")).toBeVisible();
       await expect(shorts).toHaveCount(10);
 
       // Long form: ten long-form ideas only.
@@ -35,7 +35,7 @@ for (const vp of ["mobile", "desktop"] as const) {
       for (const t of await longs.evaluateAll((els) => els.map((e) => e.getAttribute("aria-label")))) {
         expect(ideas.find((i) => i.title === t)?.format).toBe("long");
       }
-      await expect(page.getByText("1–10 of 50 · priority first")).toBeVisible();
+      await expect(page.getByText("1–10 of 50")).toBeVisible();
 
       // Check one off: it stays in view, crossed out, and is stored as done.
       const title = (await longs.first().getAttribute("aria-label"))!;
