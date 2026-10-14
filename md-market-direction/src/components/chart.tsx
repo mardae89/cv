@@ -713,17 +713,23 @@ export function PriceChart({
               );
             })}
 
-            {(markers ?? []).map((m, k) => {
-              let best = -1;
-              for (let i = 0; i < slice.length; i++) if (slice[i].t <= m.t) best = i;
-              if (best < 0) return null;
-              const x = X(best);
-              const y = Y(m.price);
-              const up = m.side === "above";
-              // Markers in a sequence land on nearby bars; without a stagger the
-              // labels sit on top of each other and none of them can be read.
-              const tier = k * 13;
-              const ty = up ? y - 10 - tier : y + 18 + tier;
+            {(() => {
+              // Stagger only what actually collides. A sequence of three markers
+              // lands on neighbouring bars and needs separating; eighty structure
+              // points spread across the chart do not, and tiering them by index
+              // drew leader lines the height of the plot.
+              const placed: { x: number; tier: number }[] = [];
+              return (markers ?? []).map((m, k) => {
+                let best = -1;
+                for (let i = 0; i < slice.length; i++) if (slice[i].t <= m.t) best = i;
+                if (best < 0) return null;
+                const x = X(best);
+                const y = Y(m.price);
+                const up = m.side === "above";
+                const near = placed.filter((q) => Math.abs(q.x - x) < 44).length;
+                placed.push({ x, tier: near });
+                const tier = near * 13;
+                const ty = up ? y - 10 - tier : y + 18 + tier;
               return (
                 <g key={`mk${k}`} pointerEvents="none">
                   <circle cx={x} cy={y} r={3} fill={m.color} />
@@ -741,8 +747,9 @@ export function PriceChart({
                     {m.label}
                   </text>
                 </g>
-              );
-            })}
+                );
+              });
+            })()}
 
 
             {/* last price marker on the scale */}

@@ -120,8 +120,18 @@ export const WICK_LADDER: Partial<Record<Timeframe, Timeframe>> = {
   "15M": "5M",
 };
 
-/** Timeframes a wick setup can be scanned on: the rungs that have a rung below. */
-export const WICK_TIMEFRAMES: Timeframe[] = Object.keys(WICK_LADDER) as Timeframe[];
+/**
+ * Wick setups are caught on the WEEKLY only.
+ *
+ * Everything below the weekly is for reading structure, not for catching wicks,
+ * so the zone has one source and one meaning. The ladder below still maps the
+ * weekly to its pullback timeframe, and the entry timeframes below that.
+ */
+export const WICK_TIMEFRAME: Timeframe = "1W";
+export const WICK_TIMEFRAMES: Timeframe[] = [WICK_TIMEFRAME];
+
+/** Timeframes the structure view can be read on — everything the app carries. */
+export const SOS_TIMEFRAMES: Timeframe[] = ["5M", "15M", "30M", "1H", "4H", "1D", "1W"];
 
 /** Human names for the ladder, so labels read the way a trader says them. */
 export const TF_SPOKEN: Record<Timeframe, string> = {
@@ -181,6 +191,11 @@ export function entryTimeframes(tf: Timeframe): Timeframe[] {
 export type SosPullback = "candle" | "retest";
 
 export interface SosSettings {
+  /**
+   * Bars either side of an elbow. Lower finds more structure points; 3 was
+   * missing turns that matter on the lower timeframes.
+   */
+  swingK: number;
   /** Confirmation candle body, as a multiple of ATR(14). */
   confirmBodyAtr: number;
   /** How the pullback between shift and confirmation is recognised. */
@@ -192,6 +207,7 @@ export interface SosSettings {
 }
 
 export const SOS_DEFAULTS: SosSettings = {
+  swingK: 2,
   confirmBodyAtr: 0.3,
   pullback: "candle",
   retestAtr: 0.5,

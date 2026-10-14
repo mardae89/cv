@@ -9,8 +9,9 @@ import {
   lowerRungs,
   rungsFor,
   SOS_DEFAULTS,
+  SOS_TIMEFRAMES,
   WICK_DEFAULTS,
-  WICK_TIMEFRAMES,
+  WICK_TIMEFRAME,
   type WickSettings,
 } from "@/lib/config/wick";
 import { CACHE_SHORT, fail, ok } from "@/lib/api";
@@ -51,28 +52,33 @@ function readSettings(params: URLSearchParams): WickSettings {
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const symbol = searchParams.get("symbol");
+  // The chart timeframe. The wick setup is ALWAYS weekly; this only decides
+  // which series the structure read runs on.
   const tf = (searchParams.get("timeframe") ?? "1D") as Timeframe;
   if (!symbol) return fail("symbol is required");
-  if (!WICK_TIMEFRAMES.includes(tf)) {
-    return fail(`Wick setups are scanned on ${WICK_TIMEFRAMES.join(", ")}.`);
-  }
+  if (!SOS_TIMEFRAMES.includes(tf)) return fail(`Unknown timeframe ${tf}.`);
 
   const asset = resolveAsset(symbol);
   if (!asset) return fail("Unknown symbol", 404);
 
   const settings = readSettings(searchParams);
   const ctx = await buildContext();
-  const candles = await ctx.candles(asset.symbol, tf);
-  if (candles.length < 60) return fail("Not enough history on that timeframe.", 503);
 
-  const periodMs = TF_MS[tf];
-  const live = detectWickSetup(asset.symbol, candles, tf, settings, periodMs);
-  const history = scanHistory(asset.symbol, candles, tf, settings, periodMs);
+  /* The setup: weekly, always. Wicks are caught on the weekly and nowhere else,
+     so the zone has one source whatever chart it is being read against. */
+  const weekly = await ctx.candles(asset.symbol, WICK_TIMEFRAME);
+  if (weekly.length < 60) return fail("Not enough weekly history.", 503);
+  const periodMs = TF_MS[WICK_TIMEFRAME];
+  const live = detectWickSetup(asset.symbol, weekly, WICK_TIMEFRAME, settings, periodMs);
+  const history = scanHistory(asset.symbol, weekly, WICK_TIMEFRAME, settings, periodMs);
+
+  /* The structure read runs on whatever the chart is showing. */
+  const candles = tf === WICK_TIMEFRAME ? weekly : await ctx.candles(asset.symbol, tf);
 
   /* Alignment needs the rungs below this one. Fetched only when there is a
      setup to check — no setup, no reason to pull more series. */
   if (live.setup && live.direction) {
-    const needed = lowerRungs(tf, rungsFor(settings.alignment));
+    const needed = lowerRungs(WICK_TIMEFRAME, rungsFor(settings.alignment));
     const series: Partial<Record<Timeframe, Candle[]>> = {};
     for (const lower of needed) series[lower] = await ctx.candles(asset.symbol, lower);
     live.setup.alignment = checkAlignment(tf, live.direction, series, settings);
@@ -88,7 +94,10 @@ export async function GET(req: Request) {
       symbol: asset.symbol,
       name: asset.name,
       precision: asset.precision,
+      /** The chart timeframe, which the structure read follows. */
       timeframe: tf,
+      /** The setup timeframe, which is always the weekly. */
+      setupTimeframe: WICK_TIMEFRAME,
       demo: ctx.demo,
       settings,
       live: {
@@ -96,7 +105,7 @@ export async function GET(req: Request) {
         rules: live.rules,
         direction: live.direction,
       },
-      entryTimeframes: entryTimeframes(tf),
+      entryTimeframes: entryTimeframes(WICK_TIMEFRAME),
       sos,
       history,
       // Returned so the chart can draw the same 50 EMA the rules were read from.

@@ -5,9 +5,9 @@ import { useApi } from "@/lib/hooks";
 import { symbolMatches } from "@/lib/symbols";
 import { PriceChart, type ChartLevel, type ChartMarker, type ChartZone } from "@/components/chart";
 import { EmptyState, ErrorState, Eyebrow, Panel, SectionHeading, Skeleton } from "@/components/primitives";
-import { WICK_TIMEFRAMES, TF_SPOKEN, type WickAlignment } from "@/lib/config/wick";
+import { SOS_TIMEFRAMES, TF_SPOKEN, WICK_TIMEFRAME, type WickAlignment } from "@/lib/config/wick";
 import type { HistoricalSetup, WickRule, WickSetup, ZoneState } from "@/lib/engine/wick";
-import type { SosEvent } from "@/lib/engine/sos";
+import type { Elbow, SosEvent } from "@/lib/engine/sos";
 import { fmtPrice } from "@/lib/utils/format";
 import type { Timeframe } from "@/lib/types";
 
@@ -16,6 +16,7 @@ interface WickResponse {
   name: string;
   precision: number;
   timeframe: Timeframe;
+  setupTimeframe: Timeframe;
   demo: boolean;
   live: { setup: WickSetup | null; rules: WickRule[]; direction: "buy" | "sell" | null };
   history: HistoricalSetup[];
@@ -25,6 +26,7 @@ interface WickResponse {
     line: { price: number; t: number; shift: "buy" | "sell" } | null;
     latest: SosEvent | null;
     events: SosEvent[];
+    elbows: Elbow[];
   };
   generatedAt: number;
 }
@@ -54,7 +56,7 @@ const STATE_TONE: Record<ZoneState, string> = {
 
 export default function WickPage() {
   const [symbol, setSymbol] = useState("EUR/USD");
-  const [timeframe, setTimeframe] = useState<Timeframe>("1D");
+  const [timeframe, setTimeframe] = useState<Timeframe>("1W");
   const [alignment, setAlignment] = useState<WickAlignment>("loose");
   const [view, setView] = useState<WickView>("zones");
   const { data, loading, error, refresh } = useApi<WickResponse>(
@@ -64,8 +66,9 @@ export default function WickPage() {
 
 
 
-  /* ONE zone on the chart: the live one, anchored on the previous candle and
-     drawn over the current one. */
+  /* ONE zone: the weekly one, anchored on last week's candle and drawn over
+     this week's. It stays on screen whatever timeframe the chart is showing —
+     that is the point of it, since the entry is timed further down. */
   const zones = useMemo<ChartZone[]>(() => {
     if (view !== "zones") return [];
     const setup = data?.live.setup;
@@ -120,20 +123,18 @@ export default function WickPage() {
     return data.sos.latest?.shiftT ?? null;
   }, [data, view]);
 
+  /* Structure points only. Every elbow the detector found gets a mark, so the
+     markup matches what would be drawn by hand; the shift / pullback /
+     confirmation narrative stays in the panel rather than crowding price. */
   const sosMarkers = useMemo<ChartMarker[]>(() => {
     if (view !== "sos" || !data) return [];
-    const e = data.sos.latest;
-    if (!e) return [];
-    const up = e.direction === "buy";
-    const colour = up ? "#4ade80" : "#f87171";
-    const out: ChartMarker[] = [
-      { t: e.shiftT, price: e.shiftClose, label: "SHIFT", color: colour, side: up ? "above" : "below" },
-    ];
-    if (e.pullbackT) out.push({ t: e.pullbackT, price: e.line, label: "PULLBACK", color: "#9ca3af", side: up ? "below" : "above" });
-    if (e.confirmT && e.confirmClose != null) {
-      out.push({ t: e.confirmT, price: e.confirmClose, label: e.confirmKind === "engulfing" ? "ENGULF" : "CONFIRM", color: colour, side: up ? "above" : "below" });
-    }
-    return out;
+    return data.sos.elbows.map((e) => ({
+      t: e.t,
+      price: e.price,
+      label: e.kind === "high" ? "H" : "L",
+      color: e.kind === "high" ? "#f87171" : "#4ade80",
+      side: e.kind === "high" ? ("above" as const) : ("below" as const),
+    }));
   }, [data, view]);
 
   const p = data?.precision ?? 5;
@@ -147,20 +148,9 @@ export default function WickPage() {
 
       <Panel className="p-4">
         <div className="flex flex-wrap items-center gap-3">
-          <span className="text-[10px] uppercase tracking-widest text-faint">Timeframe</span>
-          <div className="flex border border-hairline">
-            {WICK_TIMEFRAMES.map((tf) => (
-              <button
-                key={tf}
-                onClick={() => setTimeframe(tf)}
-                className={`px-3 py-1.5 font-display text-[11px] font-semibold uppercase tracking-widest transition ${
-                  tf === timeframe ? "bg-gold text-void" : "text-mute hover:text-gold"
-                }`}
-              >
-                {TF_SPOKEN[tf]}
-              </button>
-            ))}
-          </div>
+          <span className="text-[10px] uppercase tracking-widest text-faint">
+            Wicks are caught on the Weekly
+          </span>
           <Segmented
             label="Alignment"
             value={alignment}
@@ -181,7 +171,7 @@ export default function WickPage() {
           {/* ------------------------------ LIVE READ ----------------------------- */}
           <Panel className="p-5 sm:p-6">
             <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <Eyebrow>Current candle · {data.symbol} · {TF_SPOKEN[data.timeframe]}</Eyebrow>
+              <Eyebrow>Current weekly candle · {data.symbol}</Eyebrow>
               {data.live.setup ? (
                 <span className={`display text-xs font-bold uppercase tracking-widest ${STATE_TONE[data.live.setup.zone.state]}`}>
                   {STATE_LABEL[data.live.setup.zone.state]}
@@ -206,7 +196,7 @@ export default function WickPage() {
                     <p className="mt-1 text-sm text-bone">
                       Drop to the{" "}
                       {data.entryTimeframes.map((t) => TF_SPOKEN[t]).join(" or the ")} to time an entry.
-                      The {TF_SPOKEN[timeframe]} zone is where to look; it is not an entry level.
+                      The Weekly zone is where to look; it is not an entry level.
                     </p>
                   </div>
                 ) : null}
@@ -261,7 +251,7 @@ export default function WickPage() {
               symbol={data.symbol}
               timeframe={timeframe}
               onTimeframeChange={(tf) => {
-                if (WICK_TIMEFRAMES.includes(tf)) setTimeframe(tf);
+                if (SOS_TIMEFRAMES.includes(tf)) setTimeframe(tf);
               }}
               zones={zones}
               levels={sosLine}
@@ -295,7 +285,7 @@ export default function WickPage() {
           </div>
 
           {/* ------------------------------ READY NOW ----------------------------- */}
-          <ReadyBoard timeframe={timeframe} alignment={alignment} current={symbol} onPick={setSymbol} />
+          <ReadyBoard alignment={alignment} current={symbol} onPick={setSymbol} />
 
           <p className="pb-4 text-[11px] leading-relaxed text-faint">
             Educational tool. These are setups matching the Wick Catching method, not buy or sell
@@ -469,23 +459,22 @@ interface ScanRow {
  * with those would bury the ones that matter.
  */
 function ReadyBoard({
-  timeframe,
   alignment,
   current,
   onPick,
 }: {
-  timeframe: Timeframe;
   alignment: WickAlignment;
   current: string;
   onPick: (symbol: string) => void;
 }) {
+  const timeframe = WICK_TIMEFRAME;
   const { data, loading, error, refresh } = useApi<{
     timeframe: Timeframe;
     scanned: number;
     rejectedByAlignment: number;
     entryTimeframes: Timeframe[];
     rows: ScanRow[];
-  }>(`/api/wick/scan?timeframe=${timeframe}&alignment=${alignment}`, [timeframe, alignment]);
+  }>(`/api/wick/scan?alignment=${alignment}`, [alignment]);
 
   const inZone = data?.rows.filter((r) => r.state === "in-zone").length ?? 0;
 

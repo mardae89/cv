@@ -62,7 +62,7 @@ function isEngulfing(prev: Candle, c: Candle, up: boolean): boolean {
 const bodyTop = (c: Candle) => Math.max(c.o, c.c);
 const bodyBottom = (c: Candle) => Math.min(c.o, c.c);
 
-interface Elbow {
+export interface Elbow {
   index: number;
   t: number;
   price: number;
@@ -76,7 +76,7 @@ interface Elbow {
  * its body edge is the most extreme of the k bars either side — but reading the
  * body rather than the wick, which is where the line actually gets drawn.
  */
-function findElbows(candles: Candle[], k = 3): Elbow[] {
+export function findElbows(candles: Candle[], k = 2): Elbow[] {
   const out: Elbow[] = [];
   for (let i = k; i < candles.length - k; i++) {
     let isHigh = true;
@@ -113,8 +113,9 @@ function findElbows(candles: Candle[], k = 3): Elbow[] {
 function currentLine(
   candles: Candle[],
   index: number,
+  k: number,
 ): { price: number; t: number; shift: WickDirection } | null {
-  const elbows = findElbows(candles.slice(0, index + 1), 3);
+  const elbows = findElbows(candles.slice(0, index + 1), k);
   const lows = elbows.filter((e) => e.kind === "low");
   const highs = elbows.filter((e) => e.kind === "high");
   if (lows.length < 2 && highs.length < 2) return null;
@@ -165,7 +166,7 @@ export function findSosEvents(
   let lastLineT = -1;
 
   while (i < candles.length) {
-    const line = currentLine(candles, i - 1);
+    const line = currentLine(candles, i - 1, settings.swingK);
     const e = emaSeries[i];
     if (!line || e == null) {
       i++;
@@ -266,12 +267,16 @@ export function sosSnapshot(
   line: { price: number; t: number; shift: WickDirection } | null;
   latest: SosEvent | null;
   events: SosEvent[];
+  /** Every structure point on the series, for marking up the chart. */
+  elbows: Elbow[];
 } {
   const events = findSosEvents(candles, settings);
   return {
     timeframe,
-    line: currentLine(candles, candles.length - 1),
+    line: currentLine(candles, candles.length - 1, settings.swingK),
     latest: events[0] ?? null,
     events,
+    // Trimmed to what a chart can show without becoming a wall of dots.
+    elbows: findElbows(candles, settings.swingK).slice(-80),
   };
 }

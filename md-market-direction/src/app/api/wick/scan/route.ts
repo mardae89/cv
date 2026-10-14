@@ -7,7 +7,7 @@ import {
   lowerRungs,
   rungsFor,
   WICK_DEFAULTS,
-  WICK_TIMEFRAMES,
+  WICK_TIMEFRAME,
   type WickAlignment,
 } from "@/lib/config/wick";
 import { CACHE_SHORT, fail, ok } from "@/lib/api";
@@ -45,11 +45,9 @@ export interface WickScanRow {
  */
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
-  const tf = (searchParams.get("timeframe") ?? "1W") as Timeframe;
+  // Weekly only. The board exists to answer "which weekly wicks are live".
+  const tf = WICK_TIMEFRAME;
   const alignment: WickAlignment = searchParams.get("alignment") === "strict" ? "strict" : "loose";
-  if (!WICK_TIMEFRAMES.includes(tf)) {
-    return fail(`Wick setups are scanned on ${WICK_TIMEFRAMES.join(", ")}.`);
-  }
 
   const ctx = await buildContext();
   const periodMs = TF_MS[tf];
