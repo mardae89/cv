@@ -604,7 +604,7 @@ function SosPanel({ sos, timeframe }: { sos: WickResponse["sos"]; timeframe: Tim
         No structure shift on the {TF_SPOKEN[timeframe]}.
         {sos.line
           ? ` The line sits on the most recent ${sos.line.shift === "buy" ? "lower high" : "higher low"} at ${sos.line.price.toFixed(5)} — a body closing beyond it, on the correct side of the 50 EMA, would be the shift.`
-          : " Not enough structure yet to place a line."}
+          : " No line: price is not making a clean sequence of higher lows or lower highs here, so there is no elbow to mark."}
       </p>
     );
   }
