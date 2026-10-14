@@ -1,5 +1,5 @@
-import { Award, Download, Share2 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Award, Download, Share2, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "@/data/store";
 import { longestRun } from "@/lib/calc/athletic";
 import { fmtCount, summarize } from "@/lib/calc/audience";
@@ -170,10 +170,22 @@ export function CelebrationHost() {
   const { data, ev, today, update, milestoneByKey } = useStore();
   const { toast } = useFeedback();
   const [closing, setClosing] = useState(false);
+  // Escape closes the dialog (and anything queued behind it).
+  const closeAll = useRef<() => void>(() => undefined);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeAll.current();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const pending = data.achievements
     .filter((a) => !a.celebrated_at)
     .sort((a, b) => (a.tier === b.tier ? (a.achieved_on < b.achieved_on ? 1 : -1) : a.tier === "major" ? -1 : 1));
-  if (!pending.length) return null;
+  if (!pending.length) {
+    closeAll.current = () => undefined;
+    return null;
+  }
 
   const batch = pending.length > 3;
   const a = pending[0];
@@ -183,15 +195,18 @@ export function CelebrationHost() {
   const major = a.tier === "major" || batch;
   const line = progressLine(a, data, ev, today);
 
-  const done = async () => {
+  const done = async (all = false) => {
     setClosing(true);
-    const ids = batch ? pending.map((p) => p.id) : [a.id];
+    const ids = batch || all ? pending.map((p) => p.id) : [a.id];
     const at = new Date().toISOString();
     // Each update shows at once; this waits only for storage to confirm.
     const results = await Promise.allSettled(ids.map((id) => update("achievements", id, { celebrated_at: at })));
     const failed = results.find((r) => r.status === "rejected") as PromiseRejectedResult | undefined;
     if (failed) toast(errorMessage(failed.reason), "error");
     setClosing(false);
+  };
+  closeAll.current = () => {
+    if (!closing) void done(true);
   };
 
   return (
@@ -201,6 +216,13 @@ export function CelebrationHost() {
       {/* Scrolls on short screens so Continue is always reachable. */}
       <div className="relative flex min-h-full items-center justify-center p-4 py-[max(1rem,env(safe-area-inset-top,0px))]">
       <div className={cx("relative w-full animate-rise text-center", major ? "max-w-xl" : "max-w-md rounded-3xl border border-gold/30 bg-panel p-8")}>
+        {/* Closes this and any others waiting; they all stay on the milestone timeline. */}
+        <button type="button" onClick={() => done(true)} disabled={closing}
+          aria-label="Close" title={pending.length > 1 ? `Close all ${pending.length}` : "Close"}
+          className={cx("absolute flex h-10 w-10 items-center justify-center rounded-full text-mute transition hover:bg-raised hover:text-bone",
+            major ? "-right-1 -top-2" : "right-3 top-3")}>
+          <X className="h-5 w-5" />
+        </button>
         <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full border border-gold/50 text-gold">
           <Award className="h-7 w-7" />
         </div>
@@ -221,22 +243,28 @@ export function CelebrationHost() {
             ))}
           </ul>
         ) : (
-          <div className="mx-auto mt-6 grid max-w-sm grid-cols-2 gap-3 text-left text-[12px]">
-            <div className="rounded-xl border border-hair p-3">
-              <div className="eyebrow mb-1">Previous</div>
-              <div className="text-bone">{prev?.title ?? "—"}</div>
+          (prev || next) && (
+            <div className={cx("mx-auto mt-6 grid max-w-sm gap-3 text-left text-[12px]", prev && next && "grid-cols-2")}>
+              {prev && (
+                <div className="rounded-xl border border-hair p-3">
+                  <div className="eyebrow mb-1">Previous</div>
+                  <div className="text-bone">{prev.title}</div>
+                </div>
+              )}
+              {next && (
+                <div className="rounded-xl border border-gold/30 p-3">
+                  <div className="eyebrow mb-1 text-gold">Next</div>
+                  <div className="text-bone">{next.title}</div>
+                  <div className="mt-1 text-faint">{next.requirement}</div>
+                </div>
+              )}
             </div>
-            <div className="rounded-xl border border-gold/30 p-3">
-              <div className="eyebrow mb-1 text-gold">Next</div>
-              <div className="text-bone">{next ? next.title : "—"}</div>
-              {next && <div className="mt-1 text-faint">{next.requirement}</div>}
-            </div>
-          </div>
+          )
         )}
 
         <div className="mt-7 flex flex-col items-center gap-3">
           {!batch && <CardActions a={a} line={line} />}
-          <Button size="lg" busy={closing} onClick={done} className="min-w-[200px]">
+          <Button size="lg" busy={closing} onClick={() => done()} className="min-w-[200px]">
             {pending.length > 1 && !batch ? "Next" : "Continue"}
           </Button>
           <p className="text-[11px] text-faint">Saved permanently to your milestone timeline.</p>
