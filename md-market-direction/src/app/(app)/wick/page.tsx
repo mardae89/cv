@@ -2,10 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useApi } from "@/lib/hooks";
-import { useWickSettings, wickQuery } from "@/lib/useWickSettings";
 import { symbolMatches } from "@/lib/symbols";
-import { WICK_SETTING_LABELS } from "@/lib/config/wick";
-import type { WickSettings } from "@/lib/config/wick";
 import { PriceChart, type ChartZone } from "@/components/chart";
 import { EmptyState, ErrorState, Eyebrow, Panel, SectionHeading, Skeleton } from "@/components/primitives";
 import { WICK_TIMEFRAMES, TF_SPOKEN } from "@/lib/config/wick";
@@ -51,18 +48,14 @@ export default function WickPage() {
   const [symbol, setSymbol] = useState("EUR/USD");
   const [timeframe, setTimeframe] = useState<Timeframe>("1D");
   const [page, setPage] = useState(0);
-  const { settings, set, reset, isDefault } = useWickSettings();
-  // The dials move at the speed of a drag; the scan should not.
-  const query = useDebounced(wickQuery(settings), 350);
-
   const { data, loading, error, refresh } = useApi<WickResponse>(
-    `/api/wick?symbol=${encodeURIComponent(symbol)}&timeframe=${timeframe}&${query}`,
-    [symbol, timeframe, query],
+    `/api/wick?symbol=${encodeURIComponent(symbol)}&timeframe=${timeframe}`,
+    [symbol, timeframe],
   );
 
   // A new market or timeframe is a new list; staying on page 4 of it would show
   // an empty table.
-  useEffect(() => setPage(0), [symbol, timeframe, query]);
+  useEffect(() => setPage(0), [symbol, timeframe]);
 
   /* Live zone plus the recent historical ones, so a setup can be checked against
      the chart it was found on rather than taken on trust. */
@@ -120,58 +113,6 @@ export default function WickPage() {
               </button>
             ))}
           </div>
-        </div>
-      </Panel>
-
-      {/* ------------------------------ THRESHOLDS ---------------------------- */}
-      <Panel className="p-5 sm:p-6">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <Eyebrow>Rule thresholds</Eyebrow>
-          <button
-            onClick={() => reset()}
-            className="text-[10px] uppercase tracking-widest text-mute transition hover:text-gold"
-          >
-            Reset all
-          </button>
-        </div>
-        <p className="mb-4 mt-1 text-xs text-faint">
-          Every number the method depends on. Changes apply straight away — the rules, the chart and
-          the history below all re-read from these.
-        </p>
-        <div className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
-          {(Object.keys(WICK_SETTING_LABELS) as (keyof typeof WICK_SETTING_LABELS)[]).map((key) => {
-            const meta = WICK_SETTING_LABELS[key];
-            const value = settings[key] as number;
-            return (
-              <div key={key}>
-                <div className="flex items-baseline justify-between gap-2">
-                  <label className="text-xs text-bone">{meta.label}</label>
-                  <div className="flex items-baseline gap-2">
-                    <span className="ticker text-sm font-semibold text-gold">{value}</span>
-                    {!isDefault(key) ? (
-                      <button
-                        onClick={() => reset(key)}
-                        title="Reset to default"
-                        className="text-[10px] uppercase tracking-widest text-mute transition hover:text-gold"
-                      >
-                        Reset
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-                <input
-                  type="range"
-                  min={meta.min}
-                  max={meta.max}
-                  step={meta.step}
-                  value={value}
-                  onChange={(e) => set(key as keyof WickSettings, Number(e.target.value))}
-                  className="mt-1.5 w-full accent-[var(--color-gold)]"
-                />
-                <p className="mt-1 text-[10px] leading-relaxed text-faint">{meta.help}</p>
-              </div>
-            );
-          })}
         </div>
       </Panel>
 
@@ -452,14 +393,4 @@ function SymbolSearch({ value, onPick }: { value: string; onPick: (symbol: strin
       ) : null}
     </div>
   );
-}
-
-/** Holds a value still until it has stopped changing for `ms`. */
-function useDebounced<T>(value: T, ms: number): T {
-  const [settled, setSettled] = useState(value);
-  useEffect(() => {
-    const id = setTimeout(() => setSettled(value), ms);
-    return () => clearTimeout(id);
-  }, [value, ms]);
-  return settled;
 }
