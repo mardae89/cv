@@ -19,6 +19,7 @@ const PRIMARY: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: Icon.dashboard },
   { href: "/markets", label: "Markets", icon: Icon.markets },
   { href: "/scanner", label: "Scanner", icon: Icon.scanner },
+  { href: "/wick", label: "Wick Catching", icon: Icon.momentum },
   { href: "/news", label: "News Intelligence", icon: Icon.news },
   { href: "/calendar", label: "Economic Calendar", icon: Icon.calendar },
 ];

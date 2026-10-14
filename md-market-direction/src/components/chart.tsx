@@ -52,16 +52,42 @@ type Zone = "plot" | "price" | "time";
  * CSS pixel. That keeps text unstretched and makes every gesture a direct
  * pixel-to-value mapping rather than a guess through an aspect-ratio transform.
  */
+/** A shaded price band over a time range — the Wick Catching pullback zone. */
+export interface ChartZone {
+  fromT: number;
+  toT: number;
+  /** The two edges, in price. Order does not matter. */
+  priceA: number;
+  priceB: number;
+  /** A close beyond this invalidates the zone; drawn as a dashed line. */
+  invalidation?: number;
+  color: string;
+  opacity: number;
+  label?: string;
+}
+
 export function PriceChart({
   symbol,
   initialTimeframe = "1D",
   height = 420,
+  zones,
+  timeframe: controlledTimeframe,
+  onTimeframeChange,
 }: {
   symbol: string;
   initialTimeframe?: Timeframe;
   height?: number;
+  zones?: ChartZone[];
+  /** Drive the timeframe from outside; the chart stays self-driving when omitted. */
+  timeframe?: Timeframe;
+  onTimeframeChange?: (tf: Timeframe) => void;
 }) {
-  const [timeframe, setTimeframe] = useState<Timeframe>(initialTimeframe);
+  const [ownTimeframe, setOwnTimeframe] = useState<Timeframe>(initialTimeframe);
+  const timeframe = controlledTimeframe ?? ownTimeframe;
+  const setTimeframe = (tf: Timeframe) => {
+    setOwnTimeframe(tf);
+    onTimeframeChange?.(tf);
+  };
   const [data, setData] = useState<ChartPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -185,8 +211,15 @@ export function PriceChart({
   if (slice.length) {
     if (v.priceAuto) {
       const overlay = showMa ? ma50.filter((x): x is number => x != null) : [];
-      const hi = Math.max(...slice.map((c) => c.h), ...overlay);
-      const lo = Math.min(...slice.map((c) => c.l), ...overlay);
+      // A zone whose candle is on screen must be fully visible, or the band the
+      // user is waiting for could sit just outside the frame.
+      const windowFrom = slice[0]?.t ?? 0;
+      const windowTo = slice[slice.length - 1]?.t ?? 0;
+      const zoneEdges = (zones ?? [])
+        .filter((z) => z.toT >= windowFrom && z.fromT <= windowTo)
+        .flatMap((z) => [z.priceA, z.priceB]);
+      const hi = Math.max(...slice.map((c) => c.h), ...overlay, ...zoneEdges);
+      const lo = Math.min(...slice.map((c) => c.l), ...overlay, ...zoneEdges);
       const pad = (hi - lo) * 0.08 || hi * 0.01;
       top = hi + pad;
       bot = lo - pad;
@@ -454,6 +487,61 @@ export function PriceChart({
                 </text>
               </g>
             ))}
+
+            {/* pullback zones — drawn under price so the candles stay readable */}
+            {(zones ?? []).map((z, k) => {
+              // Time maps to a bar index, so a zone spanning a candle's period
+              // lands exactly on that candle rather than near it.
+              const indexAt = (t: number) => {
+                if (!slice.length) return null;
+                if (t <= slice[0].t) return 0;
+                if (t >= slice[slice.length - 1].t) return slice.length - 1;
+                let best = 0;
+                for (let i = 0; i < slice.length; i++) if (slice[i].t <= t) best = i;
+                return best;
+              };
+              const i0 = indexAt(z.fromT);
+              const i1 = indexAt(z.toT);
+              if (i0 == null || i1 == null) return null;
+              const x0 = X(i0) - step / 2;
+              const x1 = Math.max(X(i1) + step / 2, x0 + step);
+              const yA = Y(z.priceA);
+              const yB = Y(z.priceB);
+              const top = Math.min(yA, yB);
+              const h = Math.max(2, Math.abs(yB - yA));
+              return (
+                <g key={`z${k}`}>
+                  <rect
+                    x={x0}
+                    y={top}
+                    width={Math.max(2, x1 - x0)}
+                    height={h}
+                    fill={z.color}
+                    fillOpacity={z.opacity}
+                    stroke={z.color}
+                    strokeOpacity={Math.min(1, z.opacity + 0.35)}
+                    strokeWidth={1}
+                  />
+                  {z.invalidation != null ? (
+                    <line
+                      x1={x0}
+                      x2={x1}
+                      y1={Y(z.invalidation)}
+                      y2={Y(z.invalidation)}
+                      stroke={z.color}
+                      strokeOpacity={0.9}
+                      strokeWidth={1}
+                      strokeDasharray="4 3"
+                    />
+                  ) : null}
+                  {z.label ? (
+                    <text x={x0 + 4} y={top - 4} fill={z.color} fontSize={9} fontFamily="ui-monospace, monospace">
+                      {z.label}
+                    </text>
+                  ) : null}
+                </g>
+              );
+            })}
 
             {/* volume */}
             {slice.map((c, i) => (
