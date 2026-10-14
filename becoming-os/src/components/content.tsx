@@ -1,7 +1,7 @@
 // The content workflow shared by the Content page and the Today card: today's
 // filming focus, today's slate of ideas, check-off, slate filling, loading the
 // idea library, and the idea form. Every number is recomputed from saved ideas.
-import { Check, ChevronLeft, ChevronRight, Library, Plus } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Library, Plus, X } from "lucide-react";
 import { useState } from "react";
 import { Link } from "@/components/AppLink";
 import { useStore } from "@/data/store";
@@ -467,6 +467,12 @@ export function ContentTodayCard() {
                       {c.planned_for && c.planned_for < today && c.status === "open" && <span className="text-[11px] text-faint">Carried over from {fmtShort(c.planned_for)}</span>}
                     </div>
                   </div>
+                  {c.status === "open" && c.planned_for && (
+                    <button type="button" onClick={() => act.setPlanned(c, false)} aria-label={`Remove #${c.num} from today`} title="Remove from today"
+                      className="-mr-2 -mt-1.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-faint transition hover:bg-raised hover:text-alert">
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>

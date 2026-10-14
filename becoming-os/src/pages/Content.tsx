@@ -18,11 +18,13 @@ import type { ContentFormat, ContentIdea, ContentStrategy, FunnelStage, ISODate 
 type Tab = "today" | "library" | "strategy";
 const PAGE_SIZE = 10;
 
-type SortKey = "list" | "funnel" | "format" | "section" | "completed";
+type SortKey = "list" | "funnel" | "funnel-desc" | "short-first" | "long-first" | "section" | "completed";
 const SORTS: { value: SortKey; label: string }[] = [
   { value: "list", label: "List order" },
-  { value: "funnel", label: "Funnel stage" },
-  { value: "format", label: "Format" },
+  { value: "funnel", label: "Funnel: top → middle → bottom" },
+  { value: "funnel-desc", label: "Funnel: bottom → middle → top" },
+  { value: "short-first", label: "Short form first" },
+  { value: "long-first", label: "Long form first" },
   { value: "section", label: "Section" },
   { value: "completed", label: "Recently completed" },
 ];
@@ -298,7 +300,9 @@ function sortIdeas(list: ContentIdea[], sort: SortKey): ContentIdea[] {
   const cmp: Record<SortKey, (a: ContentIdea, b: ContentIdea) => number> = {
     list: byNum,
     funnel: (a, b) => FUNNEL_ORDER[a.funnel] - FUNNEL_ORDER[b.funnel] || byNum(a, b),
-    format: (a, b) => (a.format === b.format ? 0 : a.format === "short" ? -1 : 1) || byNum(a, b),
+    "funnel-desc": (a, b) => FUNNEL_ORDER[b.funnel] - FUNNEL_ORDER[a.funnel] || byNum(a, b),
+    "short-first": (a, b) => (a.format === b.format ? 0 : a.format === "short" ? -1 : 1) || byNum(a, b),
+    "long-first": (a, b) => (a.format === b.format ? 0 : a.format === "long" ? -1 : 1) || byNum(a, b),
     section: (a, b) => a.section.localeCompare(b.section) || byNum(a, b),
     completed: (a, b) => {
       const x = a.status === "done" ? a.completed_on ?? "" : "", y = b.status === "done" ? b.completed_on ?? "" : "";
@@ -357,11 +361,9 @@ function LibraryTab({ filters: f, setFilters, page, setPage, onEdit, onAddOwn }:
             <Segmented label="Status" className="w-full" value={f.status} onChange={(v) => set({ status: v })}
               options={[{ value: "open", label: "Open" }, { value: "done", label: "Done" }, { value: "all", label: "All" }]} />
           </Field>
-          <Field label="Funnel">
-            <Select value={f.funnel} onChange={(e) => set({ funnel: e.target.value as Filters["funnel"] })}>
-              <option value="all">All stages</option>
-              {(Object.keys(FUNNEL_LABEL) as FunnelStage[]).map((k) => <option key={k} value={k}>{FUNNEL_LABEL[k]}</option>)}
-            </Select>
+          <Field group label="Funnel stage" className="sm:col-span-2 lg:col-span-1">
+            <Segmented label="Funnel stage" className="w-full" value={f.funnel} onChange={(v) => set({ funnel: v })}
+              options={[{ value: "all", label: "All" }, { value: "top", label: "Top" }, { value: "middle", label: "Middle" }, { value: "bottom", label: "Bottom" }]} />
           </Field>
           <Field label="Section" hint={f.section ? SECTION_NOTES[f.section] : undefined} className="sm:col-span-2 lg:col-span-1">
             <Select value={f.section} onChange={(e) => set({ section: e.target.value })}>
