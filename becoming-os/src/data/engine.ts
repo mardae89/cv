@@ -173,6 +173,7 @@ export class Engine {
       }
     }
     e.startWatch();
+    await e.repairDuplicates();
     return e;
   }
 
@@ -183,6 +184,7 @@ export class Engine {
     for (const t of this.retryTimers.values()) clearTimeout(t);
     this.retryTimers.clear();
     if (this.watchTimer) clearTimeout(this.watchTimer);
+    if (this.repairTimer) clearTimeout(this.repairTimer);
   }
 
   /** Listen for other devices; if the listener dies, say so and reconnect when that can help. */
@@ -525,6 +527,30 @@ export class Engine {
     return { ...tables, [table]: list.filter((r) => !drop.has(r.id)) };
   }
 
+  /** Remove copies that break a uniqueness rule (see duplicateIds). Runs after loading and after syncing. */
+  private repairTimer: ReturnType<typeof setTimeout> | null = null;
+  private scheduleRepair() {
+    if (this.closed || this.repairTimer) return;
+    this.repairTimer = setTimeout(() => {
+      this.repairTimer = null;
+      void this.repairDuplicates();
+    }, 50);
+  }
+  async repairDuplicates(): Promise<number> {
+    let n = 0;
+    for (const t of LIST_KEYS) {
+      const ids = duplicateIds(t, this.state.tables[t]);
+      if (!ids.length) continue;
+      n += ids.length;
+      try {
+        await this.remove(t, ids);
+      } catch (e) {
+        console.error(`Couldn't remove duplicate ${t}`, e);
+      }
+    }
+    return n;
+  }
+
   private commit(patch: Partial<Omit<EngineState, "rev">>) {
     this.state = { ...this.state, ...patch, rev: this.state.rev + 1 };
     this.listeners.forEach((l) => l());
@@ -779,7 +805,10 @@ export class Engine {
       tables[c.table] = dedupe([...tables[c.table].filter((r) => bucketOf(c.table, r) !== c.bucket), ...rows]);
       changed = true;
     }
-    if (changed) this.commit({ tables });
+    if (changed) {
+      this.commit({ tables });
+      this.scheduleRepair();
+    }
     for (const k of rewrite) this.persist(k).catch(() => undefined);
   }
 }
@@ -809,6 +838,37 @@ function stripMeta(r: Record<string, unknown>) {
   const { user_id: _u, ...rest } = r;
   void _u;
   return rest;
+}
+
+/** Tables other rows point at: a duplicate there can't simply be dropped. */
+const PARENT_TABLES = new Set<ListKey>(LIST_KEYS.flatMap((t) => (TABLES[t].parents ?? []).map((p) => p.table)));
+
+/**
+ * Rows that break a uniqueness rule: two devices recorded the same thing (the
+ * same milestone, the same day's tick) before they synced. Keeps the copy
+ * changed most recently — the same choice on every device — and returns the
+ * ids of the others.
+ */
+export function duplicateIds(table: ListKey, rows: Row[]): string[] {
+  const sets = TABLES[table].unique ?? [];
+  if (!sets.length || PARENT_TABLES.has(table)) return [];
+  const stamp = (r: Row) => String(r.updated_at ?? r.created_at ?? "");
+  const better = (a: Row, b: Row) => (stamp(a) !== stamp(b) ? stamp(a) > stamp(b) : a.id < b.id);
+  const losers = new Set<string>();
+  for (const set of sets) {
+    const keep = new Map<string, Row>();
+    for (const r of rows) {
+      if (losers.has(r.id)) continue;
+      const k = JSON.stringify(set.map((f) => r[f] ?? null));
+      const cur = keep.get(k);
+      if (!cur) keep.set(k, r);
+      else if (better(r, cur)) {
+        losers.add(cur.id);
+        keep.set(k, r);
+      } else losers.add(r.id);
+    }
+  }
+  return [...losers];
 }
 
 function dedupe(rows: Row[]): Row[] {

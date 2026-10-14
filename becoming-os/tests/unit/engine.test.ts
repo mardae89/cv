@@ -1469,3 +1469,41 @@ describe("opening on the shared page", () => {
     await check;
   });
 });
+
+describe("duplicates from two devices", () => {
+  it("keeps one copy when both devices record the same milestone before syncing, and edits work again", async () => {
+    const store = new MemoryStore();
+    const phone = await open(store);
+    const desk = await open(store);
+    const row = { key: "power.first_green", category: "power", tier: "minor", title: "First green day", achieved_on: "2026-10-13" };
+    // Both save before either has heard from the other.
+    await Promise.all([phone.insert("achievements", [row]), desk.insert("achievements", [row])]);
+    await flush();
+    // Right after syncing, each device holds both copies…
+    expect(phone.getState().tables.achievements.filter((a) => a.key === "power.first_green")).toHaveLength(2);
+    // …until the repair runs.
+    await new Promise((r) => setTimeout(r, 150));
+    await flush();
+    for (const e of [phone, desk]) {
+      const rows = e.getState().tables.achievements.filter((a) => a.key === "power.first_green");
+      expect(rows).toHaveLength(1);
+    }
+    const id = phone.getState().tables.achievements[0].id;
+    await expect(phone.update("achievements", id, { celebrated_at: "2026-10-14T10:00:00Z" })).resolves.toBeTruthy();
+    phone.close();
+    desk.close();
+  });
+  it("repairs duplicates already stored when the app opens, keeping the most recently changed copy", async () => {
+    const store = new MemoryStore();
+    const a = await open(store);
+    const b = await open(store);
+    const log = { key: "power.first_perfect", category: "power", tier: "minor", title: "First perfect day", achieved_on: "2026-10-13" };
+    a.close();
+    b.close();
+    await a.insert("achievements", [log]).catch(() => undefined);
+    await b.insert("achievements", [log]).catch(() => undefined);
+    const fresh = await open(store);
+    expect(fresh.getState().tables.achievements.filter((x) => x.key === "power.first_perfect")).toHaveLength(1);
+    fresh.close();
+  });
+});

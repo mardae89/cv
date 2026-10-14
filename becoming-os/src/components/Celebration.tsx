@@ -179,8 +179,10 @@ export function CelebrationHost() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+  // Closed here even if saving "seen" fails, so the dialog can never trap the page.
+  const [dismissed, setDismissed] = useState<Set<string>>(() => new Set());
   const pending = data.achievements
-    .filter((a) => !a.celebrated_at)
+    .filter((a) => !a.celebrated_at && !dismissed.has(a.id))
     .sort((a, b) => (a.tier === b.tier ? (a.achieved_on < b.achieved_on ? 1 : -1) : a.tier === "major" ? -1 : 1));
   if (!pending.length) {
     closeAll.current = () => undefined;
@@ -198,6 +200,7 @@ export function CelebrationHost() {
   const done = async (all = false) => {
     setClosing(true);
     const ids = batch || all ? pending.map((p) => p.id) : [a.id];
+    setDismissed((d) => new Set([...d, ...ids]));
     const at = new Date().toISOString();
     // Each update shows at once; this waits only for storage to confirm.
     const results = await Promise.allSettled(ids.map((id) => update("achievements", id, { celebrated_at: at })));
