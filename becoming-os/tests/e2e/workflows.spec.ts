@@ -162,21 +162,21 @@ test("BECOMING OS — the fifteen core workflows", async ({ browser }) => {
     await logWeight(me, addDays(today, -1), "162");
     await expect(me.getByRole("dialog", { name: "Double-check this weigh-in" })).toBeVisible();
     await me.getByRole("dialog", { name: "Double-check this weigh-in" }).getByRole("button", { name: "Cancel" }).click();
-    await me.getByRole("form", { name: "Weigh-in form" }).getByLabel("Weight in pounds").fill("262");
+    await me.getByRole("form", { name: "Weigh-in form" }).getByLabel("Weight in pounds").fill("263");
     await me.getByRole("form", { name: "Weigh-in form" }).getByRole("button", { name: "Save weigh-in" }).click();
     await expect(me.getByText("Weigh-in saved.")).toBeVisible();
     // The cancelled typo never reached storage.
-    await expect.poll(async () => (await rows(me, "weights")).map((w) => w.weight).sort()).toEqual([262, 267]);
+    await expect.poll(async () => (await rows(me, "weights")).map((w) => w.weight).sort()).toEqual([263, 267]);
     await me.goto("/#/");
-    // 7-day average of 267 and 262 = 264.5 → 2.5 lb, 5% of the 50 lb goal
-    await expect(me.getByText("264.5 lb").first()).toBeVisible();
-    await expect(me.getByText("2.5", { exact: true }).first()).toBeVisible();
-    await expect(me.getByText("5%", { exact: true }).first()).toBeVisible();
+    // Counted from the latest weigh-in: 267 → 263 = 4.0 lb, 8% of the 50 lb goal (7-day average 265 shown alongside)
+    await expect(me.getByText("4.0", { exact: true }).first()).toBeVisible();
+    await expect(me.getByText("8%", { exact: true }).first()).toBeVisible();
+    await expect(me.getByText(/7-day avg 265/).first()).toBeVisible();
     await me.goto("/#/progress");
     await expect(me.locator(".recharts-surface").first()).toBeVisible();
   });
 
-  await test.step("6. A five-pound milestone unlocks on the 7-day average and is celebrated", async () => {
+  await test.step("6. A five-pound milestone unlocks on the first weigh-in 5 lb down and is celebrated", async () => {
     await logWeight(me, today, "261");
     await celebrate(me, "5 pounds lost");
     await settle(me);
@@ -274,9 +274,9 @@ test("BECOMING OS — the fifteen core workflows", async ({ browser }) => {
     await sheet.getByRole("button", { name: "Save changes" }).click();
     await expect(me.getByText("Weigh-in updated.")).toBeVisible();
     await expect.poll(async () => (await rows(me, "weights")).find((w) => w.entry_date === today)?.weight).toBe(264);
-    // 7-day average (262 + 264) / 2 = 263 → 4.0 lb: the 5 lb milestone no longer holds
+    // Latest weigh-in 264 → 3.0 lb, and no weigh-in is 5 lb down any more: the 5 lb milestone no longer holds
     await me.goto("/#/");
-    await expect(me.getByText("4.0", { exact: true }).first()).toBeVisible();
+    await expect(me.getByText("3.0", { exact: true }).first()).toBeVisible();
     await me.goto("/#/achievements");
     await expect(me.getByTestId("timeline").getByText("5 pounds lost")).toHaveCount(0);
 

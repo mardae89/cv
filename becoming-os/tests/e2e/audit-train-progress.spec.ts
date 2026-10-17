@@ -878,10 +878,10 @@ for (const vp of SIZES) {
       const weights = (await rows(page, "weights")) as Row[];
       const byDate = new Map(weights.map((w) => [w.entry_date as string, w]));
       const list = card(page, "All weigh-ins").getByRole("listitem").filter({ has: page.getByRole("button", { name: "Edit" }) });
-      const latestScale = page.getByText("Latest scale", { exact: true }).locator("..");
+      const latestScale = page.getByText("Latest weigh-in", { exact: true }).locator("..");
       await expect(list).toHaveCount(14);
       // What the weigh-in should move: the pounds-lost number, the 7-day average, this week's average.
-      const lostNumber = page.locator(".card").filter({ hasText: "Pounds lost · 7-day average" }).locator(".display-num");
+      const lostNumber = page.locator(".card").filter({ has: page.locator(".eyebrow", { hasText: /^Pounds lost/ }) }).locator(".display-num");
       const avgStat = page.locator(".eyebrow").filter({ hasText: /^7-day average$/ }).locator("..");
       const weekRow = card(page, "Weekly averages").getByRole("row").nth(1);
       const before = { lost: await lostNumber.innerText(), avg: await avgStat.innerText(), week: await weekRow.innerText() };
