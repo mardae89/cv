@@ -959,7 +959,10 @@ for (const vp of SIZES) {
       await settle(page);
       await expect(latestScale).toContainText(newest);
       await go(page, "/");
-      await expect(page.getByText(`Scale ${w1.toFixed(1)} lb`)).toBeVisible();
+      // Today's fitness card shows the latest weigh-in, with the 7-day average beneath it.
+      const fitness = page.locator(".card").filter({ has: page.getByRole("heading", { name: "My fitness" }) });
+      await expect(fitness.getByText(`${w1.toFixed(1)} lb`, { exact: true })).toBeVisible();
+      await expect(fitness.getByText(/^7-day avg /)).toBeVisible();
       await finish(page, errors);
     });
 

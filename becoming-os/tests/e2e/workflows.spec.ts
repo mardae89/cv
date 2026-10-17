@@ -356,7 +356,7 @@ test("BECOMING OS — the fifteen core workflows", async ({ browser }) => {
     await me.goto("/");
     await me.waitForURL(atHome); // setup is remembered — no onboarding again
     expect((await stored(me)).profile?.display_name).toBe(ME.name);
-    await expect(me.getByText("4.0", { exact: true }).first()).toBeVisible();
+    await expect(me.getByText("3.0", { exact: true }).first()).toBeVisible(); // 267 → 264 after the step 11 edit
     const card = me.locator(".card", { has: me.getByRole("heading", { name: "Business" }) });
     await expect(card.getByText("$1,300", { exact: true })).toBeVisible();
     await me.goto("/#/train");
