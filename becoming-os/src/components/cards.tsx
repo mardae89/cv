@@ -44,7 +44,7 @@ export function FitnessCard() {
       <CardHead eyebrow="Body" title="My fitness" to="/progress" />
       <div className="grid grid-cols-3 gap-3">
         <Stat label="Start" value={lb(g.start)} sub={g.startDate ? fmtDate(g.startDate) : undefined} />
-        <Stat label="7-day avg" value={lb(wp.trend)} sub={wp.latest ? `Scale ${lb(wp.latest.weight)}` : "No weigh-ins yet"} />
+        <Stat label="Latest" value={wp.latest ? lb(wp.latest.weight) : "—"} sub={wp.latest ? `7-day avg ${lb(wp.trend)}` : "No weigh-ins yet"} />
         <Stat label="Target" value={g.stretchWeight ? `${g.stretchWeight}–${g.targetWeight}` : lb(g.targetWeight)} sub={g.stretchWeight ? "lb range" : undefined} />
       </div>
       <div className="mt-5 flex items-baseline gap-2">

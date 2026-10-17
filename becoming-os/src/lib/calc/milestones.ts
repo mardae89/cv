@@ -59,9 +59,9 @@ function weightMilestones(data: UserData): Milestone[] {
       group: "Weight",
       tier: isGoal || isStretch || k % 25 === 0 ? "major" : "minor",
       title: isGoal ? `Goal reached: ${k} lb lost` : isStretch ? `Stretch goal: ${k} lb lost` : `${k} pounds lost`,
-      requirement: `7-day average at or below ${at.toFixed(1)} lb (${k} lb below your ${goal.start} lb start)`,
+      requirement: `A weigh-in at or below ${at.toFixed(1)} lb (${k} lb below your ${goal.start} lb start)`,
       detail: achievedOn
-        ? `7-day average reached ${at.toFixed(1)} lb or lower on this date.`
+        ? `Weighed in at ${at.toFixed(1)} lb or lower on this date.`
         : undefined,
       value: k,
       achievedOn,

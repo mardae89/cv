@@ -19,7 +19,7 @@ export function progressLine(a: Pick<AchievementRow, "category">, data: UserData
   switch (a.category) {
     case "weight": {
       const wp = weightProgress(data.goals, data.weights);
-      return wp ? `${lb(wp.lost)} lost on the 7-day average · ${pct(wp.pctPrimary)} of the ${wp.goal.targetLoss} lb goal` : "";
+      return wp ? `${lb(wp.lost)} lost · ${pct(wp.pctPrimary)} of the ${wp.goal.targetLoss} lb goal` : "";
     }
     case "business": {
       const s = data.businessSettings;

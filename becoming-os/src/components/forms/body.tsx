@@ -55,7 +55,7 @@ export function WeightForm({ initial, onDone }: { initial?: WeightEntry; onDone?
         if (!c.ok) {
           const ok = await confirm({
             title: "Double-check this weigh-in",
-            body: <><p>{w} lb is {c.reasons.join(" ")}</p><p className="mt-2">If it's a typo, go back and fix it. Milestones use your 7-day average, but a wrong number still skews it.</p></>,
+            body: <><p>{w} lb is {c.reasons.join(" ")}</p><p className="mt-2">If it's a typo, go back and fix it. Progress and milestones count from your weigh-ins, so a wrong number would count.</p></>,
             confirmLabel: "It's correct — save",
           });
           if (!ok) return;

@@ -1,6 +1,7 @@
-// Weight progress. Daily scale readings swing with water and food, so goal
-// progress and milestones use the 7-day average: the mean of every weigh-in in
-// the seven calendar days ending on a given date.
+// Weight progress. Pounds lost, goal progress and milestones count from your
+// weigh-ins (start weight minus the latest weigh-in). The 7-day average — the
+// mean of every weigh-in in the seven calendar days ending on a date — is kept
+// alongside as a smoother view of the direction.
 import { addDays, diffDays, weekStart } from "../dates";
 import { clamp, num, round } from "../format";
 import type { BodyGoals, ISODate, WeightEntry } from "../types";
@@ -72,7 +73,7 @@ export interface WeightProgress {
   latest: WeightPoint | null;
   /** Current 7-day average, or the start weight before any weigh-ins. */
   trend: number;
-  /** Pounds lost on the 7-day average (negative if above the start). */
+  /** Pounds lost: start minus the latest weigh-in (negative if above the start). */
   lost: number;
   /** Pounds lost on the latest single weigh-in. */
   lostScale: number | null;
@@ -95,7 +96,10 @@ export function weightProgress(goals: BodyGoals | null, entries: WeightEntry[]):
   const series = trendSeries(weighIns(entries));
   const latest = series.length ? series[series.length - 1] : null;
   const trend = latest ? latest.trend : goal.start;
-  const lost = round(goal.start - trend, 1);
+  // Progress counts from your latest weigh-in — what the scale actually said.
+  // The 7-day average is kept alongside as a smoother view of the direction.
+  const current = latest ? latest.weight : goal.start;
+  const lost = round(goal.start - current, 1);
   const pctPrimaryRaw = (lost / goal.targetLoss) * 100;
   const pctStretchRaw = goal.stretchLoss ? (lost / goal.stretchLoss) * 100 : null;
   // Keeps counting in 5 lb steps past the goal.
@@ -161,9 +165,9 @@ export function weightSteps(goal: WeightGoalView): number[] {
   return [...steps].sort((a, b) => a - b);
 }
 
-/** First date the 7-day average reached `loss` pounds below the start. */
+/** First weigh-in at least `loss` pounds below the start. */
 export function firstDateLost(series: WeightPoint[], start: number, loss: number): ISODate | null {
-  for (const p of series) if (round(start - p.trend, 2) >= loss - 1e-9) return p.date;
+  for (const p of series) if (round(start - p.weight, 2) >= loss - 1e-9) return p.date;
   return null;
 }
 

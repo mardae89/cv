@@ -53,7 +53,7 @@ export default function Charts() {
     { key: "trend", label: "7-day average weight", group: "Body", grain: "day", fmt: (v) => `${round(v, 1)} lb`, summary: "last-first",
       points: (f, t) => series.filter((p) => p.date >= f && p.date <= t).map((p) => ({ date: p.date, value: p.trend })) },
     { key: "lost", label: "Pounds lost", group: "Body", grain: "day", fmt: (v) => `${round(v, 1)} lb`, summary: "last",
-      points: (f, t) => start === null ? [] : series.filter((p) => p.date >= f && p.date <= t).map((p) => ({ date: p.date, value: round(num(start) - p.trend, 1) })) },
+      points: (f, t) => start === null ? [] : series.filter((p) => p.date >= f && p.date <= t).map((p) => ({ date: p.date, value: round(num(start) - p.weight, 1) })) },
     { key: "sleep", label: "Sleep (hours)", group: "Body", grain: "day", fmt: (v) => `${round(v, 1)} h`, summary: "avg",
       points: (f, t) => data.checkins.filter((c) => c.checkin_date >= f && c.checkin_date <= t && c.sleep_hours !== null).map((c) => ({ date: c.checkin_date, value: num(c.sleep_hours) })) },
     { key: "revenue", label: "Monthly revenue earned", group: "Business", grain: "month", fmt: money, summary: "sum", business: true,

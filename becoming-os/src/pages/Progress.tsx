@@ -44,7 +44,7 @@ export default function Progress() {
   const g = wp.goal;
   const { from, to } = rangeFor(range, today, wp.series[0]?.date);
   const pts = wp.series.filter((p) => p.date >= from && p.date <= to);
-  const chartData = pts.map((p) => ({ date: p.date, weight: p.weight, trend: p.trend, lost: round(g.start - p.trend, 1) }));
+  const chartData = pts.map((p) => ({ date: p.date, weight: p.weight, trend: p.trend, lost: round(g.start - p.weight, 1) }));
   const weeks = weeklyWeights(data.weights).reverse();
   const plan = weightPlan(g, wp.trend, today, MISSION_END, data.goals!.pace);
   const waist = newestFirst(data.weights.filter((w) => w.waist_in !== null && w.entry_date >= from && w.entry_date <= to), (w) => w.entry_date)
@@ -61,7 +61,7 @@ export default function Progress() {
 
       <div className="grid gap-4 lg:grid-cols-[1fr_1.4fr]">
         <Card>
-          <Eyebrow className="mb-2">Pounds lost · 7-day average</Eyebrow>
+          <Eyebrow className="mb-2">Pounds lost{wp.latest ? ` · ${lb(g.start)} → ${lb(wp.latest.weight)}` : ""}</Eyebrow>
           <div className="display-num text-[72px] leading-none text-gold">{Math.max(0, wp.lost).toFixed(1)}</div>
           {wp.lost < 0 && <p className="text-[13px] text-mute">Currently {signed(-wp.lost)} lb above the start — that happens. Keep logging.</p>}
           <div className="mt-5 space-y-4">
@@ -70,14 +70,14 @@ export default function Progress() {
             {g.stretchLoss && <Meter value={wp.pctStretch ?? 0} label={`${g.stretchLoss} lb stretch → ${lb(g.stretchWeight)}`} right={pct(wp.pctStretch, 1)} sub={`${wp.remainingStretch} lb remaining`} />}
           </div>
           <div className="mt-5 grid grid-cols-2 gap-4 border-t border-hair pt-4">
-            <Stat label="7-day average" value={lb(wp.trend)} sub={wp.weekChange !== null ? `${signed(wp.weekChange)} lb vs last week` : undefined} />
-            <Stat label="Latest scale" value={wp.latest ? lb(wp.latest.weight) : "—"} sub={wp.latest ? fmtShort(wp.latest.date) : undefined} />
+            <Stat label="Latest weigh-in" value={wp.latest ? lb(wp.latest.weight) : "—"} sub={wp.latest ? fmtShort(wp.latest.date) : undefined} />
+            <Stat label="7-day average" value={lb(wp.trend)} sub={wp.weekChange !== null ? `${signed(wp.weekChange)} lb vs last week` : "Smooths day-to-day swings"} />
             <Stat label="Next milestone" value={`${wp.nextMilestone} lb`} sub={`${wp.toNextMilestone} lb to go`} accent />
             <Stat label="Average pace" value={avgWeekly !== null ? `${avgWeekly} lb/wk` : "—"} sub={`${wp.daysTracked} weigh-ins`} />
           </div>
         </Card>
 
-        <ChartCard title="Weight" sub="Dots are single weigh-ins; the gold line is the 7-day average that drives progress and milestones."
+        <ChartCard title="Weight" sub="Dots are your weigh-ins, which progress and milestones count from. The gold line is the 7-day average, to show the direction."
           action={<RangePicker value={range} onChange={setRange} />}
           empty={chartData.length ? false : "No weigh-ins in this range yet."}>
           <Chart data={chartData} x="date" height={300} fmt={(v) => `${round(v, 0)}`}
@@ -100,7 +100,7 @@ export default function Progress() {
       </Card>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <ChartCard title="Pounds lost" sub="On the 7-day average" empty={chartData.length ? false : "No data yet."}>
+        <ChartCard title="Pounds lost" sub="At each weigh-in" empty={chartData.length ? false : "No data yet."}>
           <Chart data={chartData} x="date" height={220} fmt={(v) => `${round(v, 1)}`} series={[{ key: "lost", label: "Pounds lost", color: GOLD, type: "area" }]}
             refs={[{ y: g.targetLoss, label: `${g.targetLoss} lb` }]} />
         </ChartCard>
@@ -120,7 +120,7 @@ export default function Progress() {
                   <span className={cx("num w-14 shrink-0 text-[15px] font-semibold", m.achievedOn ? "text-gold" : "text-faint")}>{m.value} lb</span>
                   <div className="min-w-0 flex-1">
                     <div className={cx("text-[13.5px]", m.achievedOn ? "text-bone" : "text-mute")}>{m.title}</div>
-                    <div className="text-[11.5px] text-faint">{m.achievedOn ? `Reached ${fmtDate(m.achievedOn)}` : `7-day avg ≤ ${round(g.start - (m.value ?? 0), 1)} lb`}</div>
+                    <div className="text-[11.5px] text-faint">{m.achievedOn ? `Reached ${fmtDate(m.achievedOn)}` : `Weigh in at ${round(g.start - (m.value ?? 0), 1)} lb or less`}</div>
                   </div>
                   {m.achievedOn && row ? <MilestonePhoto achievementId={row.id} photoId={row.photo_id} title={m.title} /> : !m.achievedOn && <Lock className="h-3.5 w-3.5 text-faint" />}
                 </li>

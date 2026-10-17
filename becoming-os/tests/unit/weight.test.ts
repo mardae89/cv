@@ -17,15 +17,26 @@ describe("weight progress", () => {
     expect(p.remaining).toBe(50);
   });
 
-  it("uses the 7-day average, not the single latest reading", () => {
+  it("counts progress from the latest weigh-in; the 7-day average is shown alongside", () => {
     const entries = [w("2026-10-10", 267), w("2026-10-11", 266), w("2026-10-12", 262)];
     const p = weightProgress(g, entries)!;
     expect(p.trend).toBe(265);
-    expect(p.lost).toBe(2);
+    expect(p.lost).toBe(5);
     expect(p.lostScale).toBe(5);
-    expect(p.pctPrimary).toBeCloseTo(4);
-    expect(p.pctStretch).toBeCloseTo(3.33, 1);
-    expect(p.toNextMilestone).toBe(3);
+    expect(p.pctPrimary).toBeCloseTo(10);
+    expect(p.pctStretch).toBeCloseTo(8.33, 1);
+    expect(p.nextMilestone).toBe(10);
+    expect(p.toNextMilestone).toBe(5);
+  });
+
+  it("267 → 262.4 is 4.6 lb lost: 0.4 to the 5 lb milestone, 45.4 left of the 50 lb goal", () => {
+    const entries = [w("2026-10-10", 267), w("2026-10-13", 265.2), w("2026-10-15", 263.8), w("2026-10-17", 262.4)];
+    const p = weightProgress(g, entries)!;
+    expect(p.lost).toBe(4.6);
+    expect(p.nextMilestone).toBe(5);
+    expect(p.toNextMilestone).toBe(0.4);
+    expect(p.remaining).toBe(45.4);
+    expect(p.pctPrimary).toBeCloseTo(9.2);
   });
 
   it("drops readings older than 7 calendar days from the average", () => {
@@ -69,16 +80,16 @@ describe("weight progress", () => {
 });
 
 describe("weight milestones", () => {
-  it("unlocks 5 lb only when the 7-day average gets there, on the first such date", () => {
+  it("unlocks 5 lb on the first weigh-in 5 lb below the start", () => {
     const data = makeData({
       goals: goals(267, 50, 60),
-      weights: [w("2026-10-10", 267), w("2026-10-11", 261.5)], // single reading −5.5, average −2.75
+      weights: [w("2026-10-10", 267), w("2026-10-14", 262.4)], // −4.6
     });
-    let five = evaluate(data, "2026-10-11").milestones.find((m) => m.key === "weight.5")!;
+    let five = evaluate(data, "2026-10-14").milestones.find((m) => m.key === "weight.5")!;
     expect(five.achievedOn).toBeNull();
     data.weights.push(w("2026-10-18", 262), w("2026-10-19", 261.6));
     five = evaluate(data, "2026-10-19").milestones.find((m) => m.key === "weight.5")!;
-    expect(five.achievedOn).toBe("2026-10-18"); // window Oct 12–18 holds only 262
+    expect(five.achievedOn).toBe("2026-10-18"); // 262 is exactly 5 lb down
     expect(five.prevKey).toBeUndefined();
     expect(five.nextKey).toBe("weight.10");
   });

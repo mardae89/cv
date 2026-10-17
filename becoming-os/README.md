@@ -28,7 +28,7 @@ How to start: **[DEPLOY.md](DEPLOY.md)**.
 | Content Bank | `/content` | Release today: pick short or long form and see ten open ideas at a time (priority sections first), with Next. Today's slate (crossed out when done), filming focus, the week's release schedule. The bank of 129 ideas — 10 per page, filter by format, funnel stage, CTA, section, status. Your strategy (positioning, tone, goal, rules), editable, and what each section is for |
 | Traffic | `/traffic` | The four numbers — people reached, conversations, invitations, members — by channel, weekly totals, conversion, the daily ten, where to find people |
 | Logging | `/log` | Weigh-ins, waist, check-ins (sleep, energy, soreness, fatigue, water), pain & symptoms, progress photos, workouts with sets/reps/weights, meals and macros, business transactions, outreach/content counts, habits, journal |
-| Body | `/progress` | 7-day-average trend, 50 lb and 60 lb meters, weekly averages, waist, plan vs. sustainable pace, weight milestones with photos, full history |
+| Body | `/progress` | Pounds lost from your weigh-ins, the 7-day average alongside, 50 lb and 60 lb meters, weekly averages, waist, plan vs. sustainable pace, weight milestones with photos, full history |
 | Train | `/train` | Injury awareness, five-phase 10K roadmap gated on clearance, weekly sessions/miles, longest-run progression, pain chart, strength records |
 | Business | `/business`, `/business/:id` | Revenue earned vs. cash collected vs. expenses vs. profit, MRR, receivables, customers & churn, pipeline, offers, outreach targets, estimate forecast, CSV export, per-business workspaces |
 | Habits (Daily execution) | `/habits` | What's scheduled for set days — filming short-form Mon–Tue, long-form Wed–Fri, editing Mon–Fri, learning, and anything you add — plus rest days, streaks and tasks. Today's score is completed ÷ scheduled, however many items there are. A one-tap "Tidy up" on Today removes habits the Power List already covers |
@@ -57,9 +57,10 @@ Settings → Power List & motivation.
 All metrics are recomputed from saved records on every change (`src/lib/calc/`), so
 editing or deleting anything updates every meter, chart and milestone.
 
-**Weight.** Progress uses the **7-day average**: the mean of every weigh-in in the
-seven calendar days ending on the latest one. Pounds lost = confirmed start − 7-day
-average. Meters cap at 100%; the real change keeps showing past the goal.
+**Weight.** Pounds lost = confirmed start − your latest weigh-in; goal %, pounds
+remaining and the next milestone all count from that. The **7-day average** (the
+mean of every weigh-in in the seven calendar days ending on a date) is shown
+alongside to smooth day-to-day swings. Meters cap at 100%; the real change keeps showing past the goal.
 Day-to-day jumps larger than normal water swings (≈5 lb, plus ½ lb per extra day
 between weigh-ins) ask for confirmation before saving.
 
@@ -74,7 +75,7 @@ revenue by default; switch it to cash or profit in Settings.
 Because they look at history, a heavier week or a slower month never takes one away.
 Correcting or deleting the record that earned one does.
 
-- Weight: every 5 lb on the 7-day average, plus the exact goal and stretch goal.
+- Weight: every 5 lb, on the first weigh-in that far below the start, plus the exact goal and stretch goal.
 - Business: $1K → $10K within one calendar month (the day month-to-date crosses it),
   $10K sustained three consecutive months, first client, first recurring customer,
   first $1K of recurring revenue in a month, ten customers, first profitable month
