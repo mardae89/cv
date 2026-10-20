@@ -1,0 +1,302 @@
+// MD MARKET DIRECTION — production data model (PostgreSQL).
+//
+// The running application uses the JSON store in src/lib/db/store.ts so it works
+// with zero infrastructure. This schema is the production target: implement the
+// same narrow store interface on top of Prisma and nothing above it changes.
+//
+//   npx prisma migrate dev --name init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Tier {
+  free
+  pro
+  elite
+}
+
+enum Role {
+  user
+  admin
+}
+
+model User {
+  id             String         @id @default(cuid())
+  email          String         @unique
+  name           String
+  passwordHash   String
+  role           Role           @default(user)
+  createdAt      DateTime       @default(now())
+  lastSeenAt     DateTime       @default(now())
+  onboarded      Boolean        @default(false)
+  mode           String         @default("swing")
+  markets        String[]
+  defaultTf      String         @default("1D")
+  emailAlerts    Boolean        @default(false)
+  browserAlerts  Boolean        @default(true)
+  disclaimerAt   DateTime?
+  subscription   Subscription?
+  watchlists     Watchlist[]
+  alerts         Alert[]
+  journal        JournalEntry[]
+  backtests      Backtest[]
+  conversations  AiConversation[]
+
+  @@index([createdAt])
+}
+
+model Subscription {
+  id               String    @id @default(cuid())
+  userId           String    @unique
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tier             Tier      @default(free)
+  status           String    @default("none")
+  provider         String    @default("none")
+  externalId       String?
+  stripeCustomerId String?
+  currentPeriodEnd DateTime?
+  startedAt        DateTime?
+}
+
+model Asset {
+  id          String   @id @default(cuid())
+  symbol      String   @unique
+  name        String
+  assetClass  String
+  group       String
+  sector      String?
+  precision   Int      @default(2)
+  metadata    Json
+  quotes      Quote[]
+  candles     Candle[]
+  scores      MarketScore[]
+  metrics     TechnicalMetric[]
+  structures  MarketStructure[]
+
+  @@index([assetClass])
+}
+
+model Quote {
+  id        String   @id @default(cuid())
+  assetId   String
+  asset     Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  price     Float
+  change    Float
+  changePct Float
+  dayHigh   Float
+  dayLow    Float
+  prevClose Float
+  volume    Float
+  source    String
+  demo      Boolean  @default(true)
+  at        DateTime @default(now())
+
+  @@index([assetId, at])
+}
+
+model Candle {
+  id        String   @id @default(cuid())
+  assetId   String
+  asset     Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  timeframe String
+  openTime  DateTime
+  open      Float
+  high      Float
+  low       Float
+  close     Float
+  volume    Float
+
+  @@unique([assetId, timeframe, openTime])
+  @@index([assetId, timeframe, openTime])
+}
+
+model TechnicalMetric {
+  id        String   @id @default(cuid())
+  assetId   String
+  asset     Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  timeframe String
+  at        DateTime @default(now())
+  payload   Json
+
+  @@index([assetId, timeframe, at])
+}
+
+model MarketStructure {
+  id        String   @id @default(cuid())
+  assetId   String
+  asset     Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  timeframe String
+  at        DateTime @default(now())
+  bias      String
+  payload   Json
+
+  @@index([assetId, timeframe, at])
+}
+
+model NewsArticle {
+  id          String          @id @default(cuid())
+  externalId  String          @unique
+  headline    String
+  source      String
+  url         String?
+  publishedAt DateTime
+  category    String
+  theme       String
+  impact      String
+  summary     String
+  demo        Boolean         @default(true)
+  sentiments  NewsSentiment[]
+
+  @@index([publishedAt])
+}
+
+model NewsSentiment {
+  id        String      @id @default(cuid())
+  articleId String
+  article   NewsArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  symbol    String
+  relevance Float
+  sentiment Float
+  reason    String
+
+  @@unique([articleId, symbol])
+  @@index([symbol])
+}
+
+model EconomicEvent {
+  id         String   @id @default(cuid())
+  externalId String   @unique
+  name       String
+  country    String
+  currency   String
+  time       DateTime
+  importance String
+  actual     String?
+  forecast   String?
+  previous   String?
+  tags       String[]
+  demo       Boolean  @default(true)
+
+  @@index([time])
+}
+
+model MarketScore {
+  id         String   @id @default(cuid())
+  assetId    String
+  asset      Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  mode       String
+  score      Int
+  direction  String
+  rawPoints  Float
+  quality    String
+  categories Json
+  at         DateTime @default(now())
+
+  @@index([assetId, mode, at])
+}
+
+model Watchlist {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  symbols   String[]
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Alert {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  symbol          String
+  kind            String
+  threshold       Float
+  direction       String?
+  note            String    @default("")
+  active          Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  lastTriggeredAt DateTime?
+  triggerCount    Int       @default(0)
+  lastState       String?
+
+  @@index([userId, active])
+}
+
+model JournalEntry {
+  id             String    @id @default(cuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  symbol         String
+  direction      String
+  entry          Float
+  stop           Float?
+  target         Float?
+  size           Float?
+  openedAt       DateTime
+  closedAt       DateTime?
+  strategy       String
+  timeframe      String
+  mdScoreAtEntry Int?
+  screenshotUrl  String?
+  notes          String    @default("")
+  outcome        String    @default("open")
+  resultR        Float?
+  resultPct      Float?
+
+  @@index([userId, openedAt])
+}
+
+model Backtest {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  params    Json
+  summary   Json
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model AiConversation {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  messages  Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, updatedAt])
+}
+
+model SystemLog {
+  id      String   @id @default(cuid())
+  at      DateTime @default(now())
+  level   String
+  scope   String
+  message String
+  meta    Json?
+
+  @@index([at])
+}
+
+model ProviderStatus {
+  id            String    @id @default(cuid())
+  providerId    String    @unique
+  kind          String
+  live          Boolean
+  ok            Boolean
+  message       String
+  lastSuccessAt DateTime?
+  lastErrorAt   DateTime?
+  latencyMs     Int?
+}
