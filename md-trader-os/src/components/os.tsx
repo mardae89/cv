@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Eyebrow } from "./primitives";
 import { Icon } from "./icons";
 import type { Quote } from "@/lib/os/content";
@@ -308,3 +308,41 @@ export function LocalNote() {
     </p>
   );
 }
+
+/**
+ * A destructive action that asks twice, in place. The first tap arms it and
+ * says what will happen; the second, within a few seconds, does it. Browser
+ * confirm() dialogs are blocked in some embedded views and are clumsy on a
+ * phone, so nothing in the app relies on them.
+ */
+export function ConfirmButton({
+  label, confirmLabel, onConfirm, className = "",
+}: {
+  label: string;
+  confirmLabel: string;
+  onConfirm: () => void;
+  className?: string;
+}) {
+  const [armed, setArmed] = useState(false);
+  useEffect(() => {
+    if (!armed) return;
+    const t = setTimeout(() => setArmed(false), 4000);
+    return () => clearTimeout(t);
+  }, [armed]);
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        if (!armed) return setArmed(true);
+        setArmed(false);
+        onConfirm();
+      }}
+      className={`border px-3 py-2 font-display text-[11px] font-semibold uppercase tracking-widest transition ${
+        armed ? "border-bear bg-bear/15 text-bear" : "border-hairline text-faint hover:border-bear/60 hover:text-bear"
+      } ${className}`}
+    >
+      {armed ? confirmLabel : label}
+    </button>
+  );
+}
+

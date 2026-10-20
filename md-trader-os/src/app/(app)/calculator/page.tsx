@@ -9,6 +9,7 @@ import { getAsset, pipSize, pipUnit, TRADABLE_ASSETS } from "@/lib/data/universe
 import { usePlan } from "@/lib/os/store";
 import { expectedWorstStreak, streakProbability } from "@/lib/os/analytics";
 import { fmtPrice } from "@/lib/utils/format";
+import { readQuery } from "@/lib/route";
 
 /* ------------------------------ instrument specs ------------------------------ */
 
@@ -102,7 +103,7 @@ export default function CalculatorPage() {
     if (plan.accountSize) setAccount(String(plan.accountSize));
     setCurrency(plan.accountCurrency);
     setRiskPct(String(plan.riskPerTradePct));
-    const q = new URLSearchParams(window.location.search);
+    const q = readQuery();
     const sym = q.get("symbol");
     if (sym && getAsset(sym)) {
       setSymbol(getAsset(sym)!.symbol);

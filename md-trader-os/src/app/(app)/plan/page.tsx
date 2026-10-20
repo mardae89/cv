@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Eyebrow, GhostButton, Panel, SectionHeading, Skeleton } from "@/components/primitives";
-import { Chips, Field, LocalNote, TextArea, TextInput, fmtMoney, num } from "@/components/os";
+import { Chips, ConfirmButton, Field, LocalNote, TextArea, TextInput, fmtMoney, num } from "@/components/os";
 import { Icon } from "@/components/icons";
 import { DEFAULT_PLAN, SESSIONS, uid, usePlan, type PlanItem, type TradingPlan } from "@/lib/os/store";
 import { TRADABLE_ASSETS } from "@/lib/data/universe";
@@ -133,13 +133,11 @@ export default function PlanPage() {
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <LocalNote />
-        <GhostButton
-          onClick={() => {
-            if (window.confirm("Reset the plan to the defaults? Your journal is not affected.")) save({ ...DEFAULT_PLAN, updatedAt: Date.now() });
-          }}
-        >
-          Reset to defaults
-        </GhostButton>
+        <ConfirmButton
+          label="Reset plan to defaults"
+          confirmLabel="Tap again — your journal is not affected"
+          onConfirm={() => save({ ...DEFAULT_PLAN, updatedAt: Date.now() })}
+        />
       </div>
     </div>
   );

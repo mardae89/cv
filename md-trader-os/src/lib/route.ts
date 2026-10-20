@@ -1,0 +1,36 @@
+/**
+ * DEEP-LINK QUERY, READ THE SAME WAY EVERYWHERE.
+ *
+ * Pages opened from another page carry a little state in the query string
+ * (/journal?new=1, /wick-catcher?symbol=EUR/USD). In the deployed app that is
+ * the real URL. The single-file preview has no URL of its own to route on, so
+ * it installs an in-memory router on `window.__mdosRouter`, and these helpers
+ * read from whichever is present.
+ */
+
+export interface InMemoryRouter {
+  query(): URLSearchParams;
+  replace(path: string): void;
+}
+
+declare global {
+  interface Window {
+    __mdosRouter?: InMemoryRouter;
+  }
+}
+
+export function readQuery(): URLSearchParams {
+  if (typeof window === "undefined") return new URLSearchParams();
+  return window.__mdosRouter ? window.__mdosRouter.query() : new URLSearchParams(window.location.search);
+}
+
+/** Drops the query once it has been acted on, so a refresh does not repeat it. */
+export function replaceRoute(path: string) {
+  if (window.__mdosRouter) window.__mdosRouter.replace(path);
+  else window.history.replaceState(null, "", path);
+}
+
+/** True inside the single-file preview, where downloads are blocked. */
+export function isPreview(): boolean {
+  return typeof window !== "undefined" && Boolean(window.__mdosRouter);
+}

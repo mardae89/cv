@@ -10,6 +10,7 @@ import { DirectionBadge, EmptyState, ErrorState, Eyebrow, GhostButton, GoldButto
 import { Bar } from "@/components/os";
 import { LogTradeModal, type TradeDraft } from "@/components/trade-forms";
 import { fmtPrice, timeAgo } from "@/lib/utils/format";
+import { readQuery, replaceRoute } from "@/lib/route";
 
 interface BoardRow {
   symbol: string;
@@ -33,13 +34,13 @@ export default function WickCatcherPage() {
   const [symbol, setSymbol] = useState<string | null>(null);
 
   useEffect(() => {
-    const s = new URLSearchParams(window.location.search).get("symbol");
+    const s = readQuery().get("symbol");
     if (s) setSymbol(s);
   }, []);
 
   const select = (s: string | null) => {
     setSymbol(s);
-    window.history.replaceState(null, "", s ? `/wick-catcher?symbol=${encodeURIComponent(s)}` : "/wick-catcher");
+    replaceRoute(s ? `/wick-catcher?symbol=${encodeURIComponent(s)}` : "/wick-catcher");
     window.scrollTo({ top: 0 });
   };
 

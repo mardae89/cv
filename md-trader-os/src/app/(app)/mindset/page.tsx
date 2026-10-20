@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Eyebrow, GhostButton, GoldButton, Panel, SectionHeading } from "@/components/primitives";
 import { QuoteCard } from "@/components/os";
 import { LESSONS, QUOTES, TOPICS, type Block, type Lesson, type Topic } from "@/lib/os/content";
+import { readQuery, replaceRoute } from "@/lib/route";
 
 export default function MindsetPage() {
   const [topic, setTopic] = useState<Topic | "all">("all");
@@ -12,7 +13,7 @@ export default function MindsetPage() {
 
   // Deep link: /mindset?lesson=fomo-protocol opens that lesson.
   useEffect(() => {
-    const slug = new URLSearchParams(window.location.search).get("lesson");
+    const slug = readQuery().get("lesson");
     const l = slug ? LESSONS.find((x) => x.slug === slug) : null;
     if (l) setOpen(l);
   }, []);
@@ -20,7 +21,7 @@ export default function MindsetPage() {
   const lessons = topic === "all" ? LESSONS : LESSONS.filter((l) => l.topic === topic);
   const quotes = topic === "all" ? QUOTES : QUOTES.filter((q) => q.topic === topic);
 
-  if (open) return <LessonReader lesson={open} onBack={() => { setOpen(null); window.history.replaceState(null, "", "/mindset"); }} onOpen={setOpen} />;
+  if (open) return <LessonReader lesson={open} onBack={() => { setOpen(null); replaceRoute("/mindset"); }} onOpen={setOpen} />;
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">

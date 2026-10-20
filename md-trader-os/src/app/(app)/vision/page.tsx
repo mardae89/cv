@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { EmptyState, Eyebrow, GhostButton, GoldButton, Panel, SectionHeading, Skeleton } from "@/components/primitives";
-import { Bar, Field, LocalNote, Modal, Segmented, TextArea, TextInput, num } from "@/components/os";
+import { Bar, ConfirmButton, Field, LocalNote, Modal, Segmented, TextArea, TextInput, num } from "@/components/os";
 import { Icon } from "@/components/icons";
 import { uid, useVision, type VisionItem } from "@/lib/os/store";
 
@@ -91,10 +91,8 @@ export default function VisionPage() {
             if (persist(next)) { setAdding(null); setEditing(null); }
           }}
           onDelete={editing ? () => {
-            if (window.confirm("Remove this from your board?")) {
-              persist(items.filter((x) => x.id !== editing.id));
-              setEditing(null);
-            }
+            persist(items.filter((x) => x.id !== editing.id));
+            setEditing(null);
           } : undefined}
         />
       ) : null}
@@ -257,7 +255,7 @@ function VisionEditor({
             Save
           </GoldButton>
           <GhostButton onClick={onClose}>Cancel</GhostButton>
-          {onDelete ? <button onClick={onDelete} className="ml-auto text-xs uppercase tracking-widest text-faint hover:text-bear">Remove</button> : null}
+          {onDelete ? <ConfirmButton className="ml-auto" label="Remove" confirmLabel="Tap again to remove" onConfirm={onDelete} /> : null}
         </div>
       </div>
     </Modal>

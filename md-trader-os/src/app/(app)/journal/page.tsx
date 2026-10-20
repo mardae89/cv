@@ -3,13 +3,14 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { EmptyState, Eyebrow, GhostButton, GoldButton, Panel, SectionHeading, Skeleton } from "@/components/primitives";
-import { Bar, LocalNote, Segmented, Stat, fmtMoney, fmtR, toneOf } from "@/components/os";
+import { Bar, ConfirmButton, LocalNote, Segmented, Stat, fmtMoney, fmtR, toneOf } from "@/components/os";
 import { CloseTradeModal, LogTradeModal, type TradeDraft } from "@/components/trade-forms";
 import { Icon } from "@/components/icons";
 import { usePlan, useTrades, type Trade } from "@/lib/os/store";
 import { breakdowns, dailyResults, equityCurve, stats, type Bucket } from "@/lib/os/analytics";
 import { pipUnit, getAsset } from "@/lib/data/universe";
 import { fmtPrice } from "@/lib/utils/format";
+import { readQuery, replaceRoute } from "@/lib/route";
 
 type Tab = "trades" | "analytics" | "calendar";
 
@@ -24,7 +25,7 @@ export default function JournalPage() {
 
   // Deep links from the Wick Catcher and market pages: /journal?new=1&symbol=…
   useEffect(() => {
-    const q = new URLSearchParams(window.location.search);
+    const q = readQuery();
     if (!q.get("new")) return;
     const n = (k: string) => (q.get(k) != null && q.get(k) !== "" && Number.isFinite(Number(q.get(k))) ? Number(q.get(k)) : undefined);
     setLogging({
@@ -35,7 +36,7 @@ export default function JournalPage() {
       mdScore: n("score") ?? null,
       reasons: q.get("reasons") ?? undefined,
     });
-    window.history.replaceState(null, "", "/journal");
+    replaceRoute("/journal");
   }, []);
 
   const shown = trades.filter((t) => (filter === "all" ? true : filter === "open" ? t.outcome === "open" : t.outcome !== "open"));
@@ -110,7 +111,6 @@ export default function JournalPage() {
           onClose={() => setViewing(null)}
           onEdit={() => { setClosing(viewing); setViewing(null); }}
           onDelete={() => {
-            if (!window.confirm(`Delete this ${viewing.symbol} trade? This cannot be undone.`)) return;
             saveTrades((prev) => prev.filter((x) => x.id !== viewing.id));
             setViewing(null);
           }}
@@ -252,10 +252,10 @@ function TradeDetail({
             </div>
           ) : null}
         </div>
-        <div className="flex flex-wrap gap-2 border-t border-hairline-soft px-5 py-4">
+        <div className="flex flex-wrap items-center gap-2 border-t border-hairline-soft px-5 py-4">
           <GoldButton onClick={onEdit}>{t.outcome === "open" ? "Close trade" : "Edit result"}</GoldButton>
           <Link href={`/markets/${encodeURIComponent(t.symbol)}`}><GhostButton>Open chart</GhostButton></Link>
-          <button onClick={onDelete} className="ml-auto text-xs uppercase tracking-widest text-faint hover:text-bear">Delete</button>
+          <ConfirmButton className="ml-auto" label="Delete" confirmLabel="Tap again to delete" onConfirm={onDelete} />
         </div>
       </div>
     </div>

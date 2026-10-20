@@ -1,0 +1,9 @@
+@import "../src/app/globals.css";
+@source "../src";
+@source "./";
+
+/* next/font supplies these in the deployed app; here Google Fonts does. */
+:root {
+  --font-montserrat: "Montserrat";
+  --font-opensans: "Open Sans";
+}

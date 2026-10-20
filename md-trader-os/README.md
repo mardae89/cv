@@ -36,6 +36,17 @@ npm run build && npm start
 npm run typecheck
 ```
 
+### Single-file preview
+
+```bash
+npm run preview:build    # writes preview/dist/md-trader-os.html
+```
+
+The same pages and engine, bundled into one HTML file that runs with no server
+(demo prices only). It is what gets published as the clickable preview. The few
+server-only modules are swapped for in-memory stand-ins in `preview/shims`; see
+`preview/build.mjs`.
+
 ---
 
 ## What changed from MD Market Direction
