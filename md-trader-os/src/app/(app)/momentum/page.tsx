@@ -12,9 +12,16 @@ import {
   DirectionBadge, ErrorState, Eyebrow, Panel, SectionHeading, Skeleton, TrendScopeSwitch,
 } from "@/components/primitives";
 import { fmtSigned } from "@/lib/utils/format";
+import { getAsset } from "@/lib/data/universe";
+
+const GROUPS = ["All", "Forex Majors", "Forex Minors", "Index Futures", "Metals", "Energy"];
+/** The board is ranked strongest first, so the top of it is what matters. */
+const FIRST = 12;
 
 export default function MomentumPage() {
   const [symbol, setSymbol] = useState<string | null>(null);
+  const [group, setGroup] = useState("All");
+  const [showAll, setShowAll] = useState(false);
   const [scope, setScope] = useTrendScope();
   const board = useApi<{ results: MdMomentumResult[]; demo: boolean }>(
     symbol ? null : `/api/momentum?scope=${scope}`,
@@ -24,6 +31,9 @@ export default function MomentumPage() {
     symbol ? `/api/momentum?symbol=${encodeURIComponent(symbol)}&scope=${scope}` : null,
     [scope],
   );
+
+  const results = (board.data?.results ?? []).filter((r) => group === "All" || getAsset(r.symbol)?.group === group);
+  const shown = showAll ? results : results.slice(0, FIRST);
 
   const up = board.upgrade ?? detail.upgrade;
   if (up) return <Paywall requiredTier={up.requiredTier} featureName="MD Momentum Mode" />;
@@ -49,6 +59,7 @@ export default function MomentumPage() {
 
       {!symbol ? (
         <>
+          <GroupChips value={group} onChange={(g) => { setGroup(g); setShowAll(false); }} />
           {board.error ? <ErrorState message={board.error} onRetry={board.refresh} /> : null}
           {board.loading && !board.data ? (
             <Skeleton className="h-96" />
@@ -60,7 +71,7 @@ export default function MomentumPage() {
                 <span>MD Momentum</span>
                 <span className="text-right">Direction</span>
               </div>
-              {board.data?.results.map((r) => (
+              {shown.map((r) => (
                 <button
                   key={r.symbol}
                   onClick={() => setSymbol(r.symbol)}
@@ -75,6 +86,14 @@ export default function MomentumPage() {
                   <div className="text-right"><DirectionBadge direction={r.direction} small /></div>
                 </button>
               ))}
+              {results.length > FIRST ? (
+                <button
+                  onClick={() => setShowAll(!showAll)}
+                  className="w-full border-t border-hairline px-4 py-3 text-center text-[10px] uppercase tracking-widest text-gold hover:bg-panel-2"
+                >
+                  {showAll ? `Show the strongest ${FIRST} only` : `Show all ${results.length} markets`}
+                </button>
+              ) : null}
             </Panel>
           )}
         </>
@@ -148,6 +167,24 @@ function MomentumDetail({ result }: { result: MdMomentumResult }) {
           </div>
         ))}
       </Panel>
+    </div>
+  );
+}
+
+function GroupChips({ value, onChange }: { value: string; onChange: (g: string) => void }) {
+  return (
+    <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+      <div className="flex gap-1 whitespace-nowrap">
+        {GROUPS.map((g) => (
+          <button
+            key={g}
+            onClick={() => onChange(g)}
+            className={`border px-3 py-1.5 font-display text-[10px] font-semibold uppercase tracking-widest ${value === g ? "border-gold bg-gold text-void" : "border-hairline text-mute hover:text-gold"}`}
+          >
+            {g}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

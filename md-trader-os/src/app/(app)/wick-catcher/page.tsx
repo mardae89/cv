@@ -26,6 +26,8 @@ interface BoardRow {
 }
 
 const GROUP_ORDER = ["Forex Majors", "Forex Minors", "Index Futures", "Metals", "Energy"];
+/** Nearest or strongest first, so the top of the board is the part worth reading. */
+const FIRST = 12;
 
 export default function WickCatcherPage() {
   const [symbol, setSymbol] = useState<string | null>(null);
@@ -63,6 +65,7 @@ function Board({ onOpen }: { onOpen: (s: string) => void }) {
   const [group, setGroup] = useState<string>("all");
   const [withTrend, setWithTrend] = useState(true);
   const [sort, setSort] = useState<"near" | "score">("near");
+  const [showAll, setShowAll] = useState(false);
   const { data, loading, error, refresh } = useApi<{ rows: BoardRow[]; generatedAt: number }>(
     `/api/wick-catcher?mode=${mode}&scope=${scope}`,
     [mode, scope],
@@ -89,7 +92,7 @@ function Board({ onOpen }: { onOpen: (s: string) => void }) {
         {["all", ...GROUP_ORDER].map((g) => (
           <button
             key={g}
-            onClick={() => setGroup(g)}
+            onClick={() => { setGroup(g); setShowAll(false); }}
             className={`border px-3 py-1.5 font-display text-[10px] font-semibold uppercase tracking-widest ${group === g ? "border-gold bg-gold text-void" : "border-hairline text-mute hover:text-gold"}`}
           >
             {g === "all" ? "All" : g}
@@ -115,7 +118,7 @@ function Board({ onOpen }: { onOpen: (s: string) => void }) {
           <div className="hidden grid-cols-[1.2fr_90px_1.4fr_120px_90px] gap-3 border-b border-hairline px-4 py-2.5 text-[10px] uppercase tracking-widest text-faint sm:grid">
             <span>Market</span><span>HTF bias</span><span>Best zone</span><span>Zone strength</span><span className="text-right">Status</span>
           </div>
-          {rows.map((r) => (
+          {(showAll ? rows : rows.slice(0, FIRST)).map((r) => (
             <button
               key={r.symbol}
               onClick={() => onOpen(r.symbol)}
@@ -141,6 +144,14 @@ function Board({ onOpen }: { onOpen: (s: string) => void }) {
               <div className="text-right">{r.best ? <StatusTag status={r.best.status} /> : null}</div>
             </button>
           ))}
+          {rows.length > FIRST ? (
+            <button
+              onClick={() => setShowAll(!showAll)}
+              className="w-full border-t border-hairline px-4 py-3 text-center text-[10px] uppercase tracking-widest text-gold hover:bg-panel-2"
+            >
+              {showAll ? `Show the top ${FIRST} only` : `Show all ${rows.length} markets`}
+            </button>
+          ) : null}
         </Panel>
       )}
       {data ? <div className="text-right text-[10px] uppercase tracking-widest text-faint">Updated {timeAgo(data.generatedAt)}</div> : null}

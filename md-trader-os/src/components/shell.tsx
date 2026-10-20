@@ -226,6 +226,10 @@ function AccountFooter({ user, className = "" }: { user: ShellUser; className?: 
  * Data-source banner. Demo data must never be mistaken for live market data, and
  * a partially-live instance must not be presented as fully live — so this states
  * the actual coverage rather than a single on/off flag.
+ *
+ * It scrolls away rather than sticking: the mobile header and the desktop rail
+ * already stick to the top, and two sticky bars at top:0 drew one over the
+ * other. Every card still carries its own Live / Demo label.
  */
 export function DemoBanner() {
   const { data } = useApi<{
@@ -241,7 +245,7 @@ export function DemoBanner() {
 
   if (live === 0) {
     return (
-      <div className="sticky top-0 z-50 border-b border-gold/30 bg-gold/10 px-4 py-2 text-center">
+      <div className="border-b border-gold/30 bg-gold/10 px-4 py-2 text-center">
         <p className="display text-[10px] font-bold uppercase tracking-[0.2em] text-gold sm:text-[11px]">
           Demo mode — {data.demoSources.join(", ")} are generated sample data. Connect live data to enable real-time analysis.
         </p>
@@ -252,7 +256,7 @@ export function DemoBanner() {
   const exhausted = data.budget?.exhausted;
   return (
     <div
-      className={`sticky top-0 z-50 border-b px-4 py-2 text-center ${
+      className={`border-b px-4 py-2 text-center ${
         exhausted ? "border-bear/30 bg-bear/10" : "border-bull/25 bg-bull/5"
       }`}
     >
