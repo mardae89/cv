@@ -65,6 +65,32 @@ pre-trade checklist asks about high-impact releases.
 
 ---
 
+## The Momentum Meter
+
+Open any market on MD Momentum. The meter answers the strategy's weekly
+question: is there enough momentum behind last week's candle for this week's
+pullback wick to be caught and pushed on?
+
+- **The dial** — −100 (full push down) to +100 (full push up), on a spring so a
+  new reading swings the needle. "MD" is the weighted strategy reading; pick 1W
+  down to 5M to see one timeframe on its own scale. The lower the timeframe, the
+  more the needle moves. While the page is open it re-reads the feed every 10
+  seconds.
+- **The setup this week** — the four rules as pass / fail: price clearly on one
+  side of the weekly 50 EMA; last week a nice-size momentum candle that way
+  (body ≥ 0.5× weekly ATR, closed in the outer 40% of its range); a clear daily
+  pullback into it (24–79% of its range, on at least one counter-trend day); and
+  the 1H/15M turning back with the weekly. The verdict is *In play*, *Pullback
+  forming*, *Waiting for the pullback* or *Not this week*.
+- **Where the push comes from** — each source's signed points against its cap.
+- **Drawings** of last week's candle against the weekly 50 EMA and its wick zone,
+  and of this week's daily candles against last week's range and 38–62% zone.
+- **Room to run** — how much of the average weekly and daily range is used.
+
+Every threshold is in `MOMENTUM_METER` in `src/lib/config/scoring.ts`.
+
+---
+
 ## The Wick Catcher
 
 MD Momentum decides which way. The Wick Catcher decides where. For each market

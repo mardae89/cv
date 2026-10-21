@@ -281,3 +281,32 @@ export const WICK_CATCHER = {
     round: 0.8,
   },
 } as const;
+
+/**
+ * MOMENTUM METER — the MD strategy's own rules, as numbers.
+ *
+ *   1. Weekly side: price above the weekly 50 EMA looks for buys, below for
+ *      sells — and it has to be clearly on that side, not hugging the line.
+ *   2. The previous weekly candle must be a decent-size momentum candle in the
+ *      same direction. It does not need to be a huge engulfing candle; a
+ *      nice-size body that closes near its extreme is the requirement.
+ *   3. The daily has to make a clear pullback into that candle this week —
+ *      that pullback is the wick being caught.
+ *   4. Lower timeframes turning back in the weekly direction is the trigger.
+ */
+export const MOMENTUM_METER = {
+  /** Distance from the weekly 50 EMA, in weekly ATR, to count as clearly on a side. */
+  sideClearAtr: 0.25,
+  /** Previous weekly body as a multiple of weekly ATR. */
+  prevWeek: { small: 0.35, niceSize: 0.5, large: 1.2, veryLarge: 2 },
+  /** Where the previous week closed within its range, measured in its direction. */
+  prevWeekCloseLocation: 0.6,
+  /** Pullback depth as a share of the previous week's range. */
+  pullback: { min: 0.236, goldenLow: 0.382, goldenHigh: 0.618, deep: 0.786 },
+  /** A lower-timeframe push beyond this (out of 100) counts as momentum turning. */
+  turnThreshold: 15,
+  /** Composite needle weights — where the push comes from. Sum to 100. */
+  weights: { weeklyEma: 20, prevWeek: 22, weeklyStructure: 10, daily: 14, fourHour: 14, oneHour: 12, fifteen: 8 },
+  /** Bars of history drawn behind each timeframe's needle. */
+  trail: 36,
+} as const;

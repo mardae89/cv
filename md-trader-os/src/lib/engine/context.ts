@@ -1,5 +1,7 @@
 import type { Candle, EconomicEvent, MacroSnapshot, Quote, Timeframe } from "@/lib/types";
-import { providers, withFallback, isDemoMode, isLiveSymbol, markLive, marketProviderFor } from "@/lib/providers/registry";
+import {
+  anyLiveMarket, isConfirmedLive, isDemoMode, markLive, marketProviderFor, meteredMarket, providers, withFallback,
+} from "@/lib/providers/registry";
 import { singleton, TtlCache } from "@/lib/utils/cache";
 import { ALL_TIMEFRAMES } from "@/lib/config/scoring";
 
@@ -17,10 +19,17 @@ import { ALL_TIMEFRAMES } from "@/lib/config/scoring";
  * dashboard inside a free plan's daily budget, and every screen shows the real
  * age of what it is displaying rather than implying it is a live tick.
  */
-const LIVE = Boolean(process.env.TWELVE_DATA_API_KEY);
-const INTRADAY_TTL = Number(process.env.MD_INTRADAY_TTL_MS ?? (LIVE ? 15 * 60_000 : 45_000));
-const DAILY_TTL = Number(process.env.MD_DAILY_TTL_MS ?? (LIVE ? 6 * 60 * 60_000 : 45_000));
-const QUOTE_TTL = Number(process.env.MD_QUOTE_TTL_MS ?? (LIVE ? 60_000 : 15_000));
+// Metered (Twelve Data): long windows to stay inside a free plan. Unmetered live
+// feeds (OANDA, the free feed): short enough to feel current. Demo: cheap to
+// regenerate.
+const METERED = meteredMarket();
+const LIVE = anyLiveMarket();
+const INTRADAY_TTL = Number(process.env.MD_INTRADAY_TTL_MS ?? (METERED ? 15 * 60_000 : LIVE ? 2 * 60_000 : 45_000));
+const DAILY_TTL = Number(process.env.MD_DAILY_TTL_MS ?? (METERED ? 6 * 60 * 60_000 : LIVE ? 2 * 60_000 : 45_000));
+const QUOTE_TTL = Number(process.env.MD_QUOTE_TTL_MS ?? (METERED ? 60_000 : LIVE ? 20_000 : 15_000));
+/** The momentum meter's own refresh: one symbol, a few hundred bars, often. */
+const RECENT_TTL = Number(process.env.MD_RECENT_TTL_MS ?? 15_000);
+const recentCache = singleton("recentCache", () => new TtlCache<Candle[]>(RECENT_TTL, 200));
 
 const candleCache = singleton("candleCache", () => new TtlCache<Candle[]>(INTRADAY_TTL, 2000));
 const bundleCache = singleton("bundleCache", () => new TtlCache<Record<Timeframe, Candle[]>>(INTRADAY_TTL, 200));
@@ -35,6 +44,14 @@ export interface AnalysisContext {
   demo: boolean;
   degraded: string[];
   candles(symbol: string, tf: Timeframe): Promise<Candle[]>;
+  /**
+   * The latest bars on one timeframe, refreshed every few seconds where the
+   * feed allows it. Used by the momentum meter so its needle follows price;
+   * everything else reads the cached bundle through `candles`.
+   */
+  recent(symbol: string, tf: Timeframe): Promise<Candle[]>;
+  /** Fetch several markets' series concurrently, ahead of a sequential scan. */
+  warm(symbols: string[]): Promise<void>;
   quote(symbol: string): Promise<Quote | null>;
   /** Whether THIS symbol came from a live feed. Tracked per asset, not globally. */
   isLive(symbol: string): boolean;
@@ -60,7 +77,7 @@ export async function buildContext(now = Date.now()): Promise<AnalysisContext> {
 
   const macroEntry = await macroCache.wrap("all", () => providers.macro.getMacroSnapshot());
 
-  return {
+  const ctx: AnalysisContext = {
     now,
     events: eventEntry.value,
     macro: macroEntry.value,
@@ -126,10 +143,35 @@ export async function buildContext(now = Date.now()): Promise<AnalysisContext> {
       });
       return entry.value;
     },
+    async recent(symbol: string, tf: Timeframe) {
+      const live = marketProviderFor(symbol);
+      // Metered feeds are not polled; they keep their long cache window.
+      if (!live || live.id === "twelve-data") return ctx.candles(symbol, tf);
+      const entry = await recentCache.wrap(`${symbol}|${tf}`, async () => {
+        const r = await withFallback("market", () => live.getHistoricalData(symbol, tf, 400), async () => [] as Candle[]);
+        return r.data;
+      });
+      return entry.value.length >= 30 ? entry.value : ctx.candles(symbol, tf);
+    },
+    async warm(symbols: string[]) {
+      const live = symbols.filter((s) => marketProviderFor(s) !== null);
+      const queue = live.slice();
+      // A handful at a time: fast, without looking like a flood to the vendor.
+      const workers = Array.from({ length: Math.min(6, queue.length) }, async () => {
+        while (queue.length) {
+          const s = queue.shift()!;
+          await ctx.candles(s, "5M").catch(() => undefined);
+        }
+      });
+      await Promise.all(workers);
+    },
     isLive(symbol: string) {
-      return liveSymbols.has(symbol.toUpperCase());
+      // A bundle served from cache never runs the fetch that records it, so
+      // the registry's confirmed set is the record that outlives a request.
+      return liveSymbols.has(symbol.toUpperCase()) || (marketProviderFor(symbol) !== null && isConfirmedLive(symbol));
     },
   };
+  return ctx;
 }
 
 export function cacheStats() {

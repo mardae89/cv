@@ -8,6 +8,8 @@ import { useApi, useTicker } from "@/lib/hooks";
 import { guest } from "@/lib/guestStore";
 import type { Watchlist } from "@/lib/db/schema";
 import { LogTradeModal } from "@/components/trade-forms";
+import { MeterCard } from "@/components/momentum-meter";
+import type { MomentumMeter } from "@/lib/engine/momentumMeter";
 import { useTradingMode, useTrendScope } from "@/lib/useTrendScope";
 import { PriceChart } from "@/components/chart";
 import { EvidenceBreakdown, ScoreDial } from "@/components/score";
@@ -33,6 +35,7 @@ export default function MarketDetailPage({ params }: { params: Promise<{ symbol:
   const [showWatchlist, setShowWatchlist] = useState(false);
   const [showAlert, setShowAlert] = useState(false);
   const [showLog, setShowLog] = useState(false);
+  const momentum = useApi<{ meter: MomentumMeter }>(`/api/momentum?symbol=${encodeURIComponent(symbol)}&meterOnly=1`);
   const wick = useApi<{ report: WickReport }>(
     `/api/wick-catcher?symbol=${encodeURIComponent(symbol)}&scope=${scope}&mode=${mode}`,
     [scope, mode],
@@ -153,6 +156,9 @@ export default function MarketDetailPage({ params }: { params: Promise<{ symbol:
           </div>
         ) : null}
       </Panel>
+
+      {/* --------------------------- MOMENTUM METER ----------------------------- */}
+      {momentum.data?.meter ? <MeterCard meter={momentum.data.meter} /> : momentum.loading ? <Skeleton className="h-48" /> : null}
 
       {/* ------------------------------- CHART ---------------------------------- */}
       <div className="bleed">

@@ -1,6 +1,6 @@
 import type { AssetAnalysis, Candle, Direction } from "@/lib/types";
 import { MD_MOMENTUM_RULES } from "@/lib/config/scoring";
-import { clamp } from "./indicators";
+import { atr, clamp } from "./indicators";
 
 /**
  * MD MOMENTUM MODE.
@@ -53,11 +53,23 @@ export function evaluateMdMomentum(analysis: AssetAnalysis, weeklyCandles: Candl
   const oneTech = tech("1H");
   const oneStruct = struct("1H");
 
-  // The previous CLOSED weekly candle — the current week is still forming.
+  // The previous CLOSED weekly candle — the current week is still forming. It
+  // has to be a decent-size momentum candle: its body is measured against the
+  // weekly ATR, and where it closed in its range counts too (see MOMENTUM_METER).
   const prevWeekly = weeklyCandles[weeklyCandles.length - 2];
-  const prevWeeklyReading = prevWeekly
-    ? clamp(((prevWeekly.c - prevWeekly.o) / (prevWeekly.h - prevWeekly.l || 1)) * 2, -1, 1)
-    : 0;
+  const weeklyAtr = (() => {
+    const a = atr(weeklyCandles.slice(0, -1), 14);
+    for (let i = a.length - 1; i >= 0; i--) if (a[i] != null) return a[i]!;
+    return null;
+  })();
+  const prevWeeklyReading = (() => {
+    if (!prevWeekly) return 0;
+    const range = prevWeekly.h - prevWeekly.l || 1;
+    const body = prevWeekly.c - prevWeekly.o;
+    const bodyAtr = Math.abs(body) / (weeklyAtr || range);
+    const closeLoc = body >= 0 ? (prevWeekly.c - prevWeekly.l) / range : (prevWeekly.h - prevWeekly.c) / range;
+    return Math.sign(body) * (0.7 * clamp((bodyAtr - 0.2) / 0.6, 0, 1) + 0.3 * clamp((closeLoc - 0.4) / 0.5, 0, 1));
+  })();
 
   const ma50Reading = (() => {
     if (!weeklyTech || weeklyTech.ma50 == null) return 0;
@@ -83,7 +95,7 @@ export function evaluateMdMomentum(analysis: AssetAnalysis, weeklyCandles: Candl
       label: "Previous Weekly Candle",
       reading: prevWeeklyReading,
       value: prevWeekly ? (prevWeekly.c >= prevWeekly.o ? "Bullish close" : "Bearish close") : "Data unavailable",
-      detail: "The last completed weekly candle. A continuation setup prefers this to agree with the intended direction.",
+      detail: "The last completed weekly candle, sized against the weekly ATR. A continuation setup needs a nice-size candle in the intended direction that closed near its extreme.",
     },
     {
       key: "priceVsMa50Weekly",

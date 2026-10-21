@@ -29,8 +29,11 @@ export async function scanUniverse(
   if (hit) return hit.value;
 
   const out: AssetAnalysis[] = [];
-  // Sequential on purpose: the demo generator is CPU-bound and the live adapters
-  // are rate-limited. Series are cached, so repeated symbols cost nothing.
+  // Live series are fetched a few at a time first, so the scan below reads
+  // them from cache instead of waiting on dozens of requests in a row.
+  await ctx.warm(list);
+  // Sequential on purpose: the demo generator is CPU-bound. Series are cached,
+  // so repeated symbols cost nothing.
   for (const symbol of list) {
     const a = await analyseAsset(ctx, symbol, { mode, scope });
     if (a) out.push(a);

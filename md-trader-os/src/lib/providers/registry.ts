@@ -9,6 +9,7 @@ import { DemoCalendarProvider } from "./demo/calendar";
 import { DemoMacroProvider } from "./demo/macro";
 import { TwelveDataProvider } from "./live/twelveData";
 import { OandaProvider, oandaCovers } from "./live/oanda";
+import { YahooProvider, yahooCovers } from "./live/yahoo";
 import { FmpCalendarProvider } from "./live/fmpCalendar";
 import { ASSETS } from "@/lib/data/universe";
 import { budget } from "./budget";
@@ -45,7 +46,14 @@ const liveTwelve = process.env.TWELVE_DATA_API_KEY
   ? new TwelveDataProvider(process.env.TWELVE_DATA_API_KEY)
   : null;
 
-const liveMarket = liveOanda ?? liveTwelve;
+/**
+ * Real prices with no key at all, so a fresh deploy is not stuck on demo data.
+ * On by default; MD_FREE_DATA=off turns it off (for example once a licensed
+ * feed covers everything). See live/yahoo.ts for its limits.
+ */
+const liveYahoo = process.env.MD_FREE_DATA === "off" ? null : new YahooProvider();
+
+const liveMarket = liveOanda ?? liveTwelve ?? liveYahoo;
 
 /** Which live provider, if any, serves this symbol. */
 export function marketProviderFor(symbol: string): MarketDataProvider | null {
@@ -54,6 +62,8 @@ export function marketProviderFor(symbol: string): MarketDataProvider | null {
   if (liveOanda && oandaCovers(s)) return liveOanda;
   // Twelve Data is metered, so it is restricted to the configured shortlist.
   if (liveTwelve && LIVE_SYMBOLS.has(s)) return liveTwelve;
+  // Anything still uncovered tries the free feed before falling back to demo.
+  if (liveYahoo && yahooCovers(s)) return liveYahoo;
   return null;
 }
 const liveCalendar = process.env.FMP_API_KEY ? new FmpCalendarProvider(process.env.FMP_API_KEY) : null;
@@ -96,6 +106,19 @@ export function markLive(symbol: string, live: boolean) {
 }
 export function confirmedLiveSymbols(): string[] {
   return Array.from(confirmedLive);
+}
+export function isConfirmedLive(symbol: string): boolean {
+  return confirmedLive.has(symbol.toUpperCase());
+}
+
+/** True when any live market source is configured (the free feed included). */
+export function anyLiveMarket(): boolean {
+  return liveMarket !== null;
+}
+
+/** Twelve Data bills per request, so it gets the long cache windows. */
+export function meteredMarket(): boolean {
+  return liveTwelve !== null && liveOanda === null;
 }
 
 /** Records of degraded calls, surfaced to the user rather than hidden. */
@@ -179,7 +202,8 @@ export function providerStatus(): ProviderHealth[] {
   return [
     ...(liveOanda ? [liveOanda.health()] : []),
     ...(liveTwelve ? [liveTwelve.health()] : []),
-    ...(liveOanda || liveTwelve ? [] : [providers.market.health()]),
+    ...(liveYahoo ? [liveYahoo.health()] : []),
+    ...(liveMarket ? [] : [providers.market.health()]),
     providers.calendar.health(),
     providers.macro.health(),
   ];

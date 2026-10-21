@@ -9,6 +9,8 @@ import type { WickReport, WickZone } from "@/lib/engine/wickCatcher";
 import { DirectionBadge, EmptyState, ErrorState, Eyebrow, GhostButton, GoldButton, Panel, SectionHeading, Skeleton } from "@/components/primitives";
 import { Bar } from "@/components/os";
 import { LogTradeModal, type TradeDraft } from "@/components/trade-forms";
+import { MeterCard } from "@/components/momentum-meter";
+import type { MomentumMeter } from "@/lib/engine/momentumMeter";
 import { fmtPrice, timeAgo } from "@/lib/utils/format";
 import { readQuery, replaceRoute } from "@/lib/route";
 
@@ -193,6 +195,8 @@ function Detail({ symbol }: { symbol: string }) {
     `/api/wick-catcher?symbol=${encodeURIComponent(symbol)}&mode=${mode}&scope=${scope}`,
     [mode, scope],
   );
+  // The wick is only worth catching with momentum behind it.
+  const meter = useApi<{ meter: MomentumMeter }>(`/api/momentum?symbol=${encodeURIComponent(symbol)}&meterOnly=1`);
 
   if (error) return <ErrorState message={error} onRetry={refresh} />;
   if (loading && !data) return <Skeleton className="h-[30rem]" />;
@@ -239,6 +243,8 @@ function Detail({ symbol }: { symbol: string }) {
           <Ladder report={r} />
         </div>
       </Panel>
+
+      {meter.data?.meter ? <MeterCard meter={meter.data.meter} /> : null}
 
       {r.zones.length === 0 ? (
         <EmptyState title="No zones in reach" message="No tracked level sits within three daily ATRs of price. That usually means price is in open space — wait for structure to form." />

@@ -52,7 +52,9 @@ const js = await build({
   define: { "process.env.NODE_ENV": '"production"' },
   // Server config is read from process.env; in the browser every key is unset,
   // which is exactly the app's demo mode.
-  banner: { js: "var process={env:{NODE_ENV:'production'}};" },
+  // The free feed is switched off: the artifact viewer blocks network requests,
+  // so the preview runs on the demo engine and says so.
+  banner: { js: "var process={env:{NODE_ENV:'production',MD_FREE_DATA:'off'}};" },
   plugins: [shims],
   logLevel: "warning",
 });
