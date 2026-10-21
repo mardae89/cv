@@ -1,27 +1,45 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
-import { Eyebrow, GhostButton, GoldButton, Panel, SectionHeading } from "@/components/primitives";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Eyebrow, GhostButton, GoldButton, Panel, SectionHeading, Skeleton } from "@/components/primitives";
 import { QuoteCard } from "@/components/os";
+import { BackButton } from "@/components/back-button";
 import { LESSONS, QUOTES, TOPICS, type Block, type Lesson, type Topic } from "@/lib/os/content";
-import { readQuery, replaceRoute } from "@/lib/route";
+import { useShellBack } from "@/lib/shellBack";
 
 export default function MindsetPage() {
-  const [topic, setTopic] = useState<Topic | "all">("all");
-  const [open, setOpen] = useState<Lesson | null>(null);
+  return (
+    <Suspense fallback={<Skeleton className="mx-auto h-96 max-w-6xl" />}>
+      <Mindset />
+    </Suspense>
+  );
+}
 
-  // Deep link: /mindset?lesson=fomo-protocol opens that lesson.
-  useEffect(() => {
-    const slug = readQuery().get("lesson");
-    const l = slug ? LESSONS.find((x) => x.slug === slug) : null;
-    if (l) setOpen(l);
-  }, []);
+// Survives the trip into a lesson and back, so the library comes back filtered
+// the way the trader left it.
+let lastTopic: Topic | "all" = "all";
+let lastRead: string | null = null;
+
+function Mindset() {
+  const params = useSearchParams();
+  const router = useRouter();
+  const [topic, setTopicState] = useState<Topic | "all">(lastTopic);
+  const setTopic = (t: Topic | "all") => { lastTopic = t; setTopicState(t); };
+
+  // The open lesson lives in the URL (/mindset?lesson=fomo-protocol), so the
+  // phone's back gesture, the header Back button and deep links all agree.
+  const slug = params.get("lesson");
+  const open = slug ? LESSONS.find((x) => x.slug === slug) ?? null : null;
+  useShellBack(open ? "/mindset" : null);
+
+  const read = (l: Lesson) => { lastRead = l.slug; router.push(`/mindset?lesson=${encodeURIComponent(l.slug)}`); };
 
   const lessons = topic === "all" ? LESSONS : LESSONS.filter((l) => l.topic === topic);
   const quotes = topic === "all" ? QUOTES : QUOTES.filter((q) => q.topic === topic);
 
-  if (open) return <LessonReader lesson={open} onBack={() => { setOpen(null); replaceRoute("/mindset"); }} onOpen={setOpen} />;
+  if (open) return <LessonReader lesson={open} onOpen={read} />;
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -45,10 +63,14 @@ export default function MindsetPage() {
         <Eyebrow className="mb-3">Lessons · {lessons.length}</Eyebrow>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {lessons.map((l) => (
-            <button key={l.slug} onClick={() => setOpen(l)} className="panel flex flex-col p-4 text-left transition hover:border-gold/40">
+            <button
+              key={l.slug}
+              onClick={() => read(l)}
+              className={`panel flex flex-col p-4 text-left transition hover:border-gold/40 ${l.slug === lastRead ? "border-gold/50" : ""}`}
+            >
               <div className="flex items-center justify-between text-[10px] uppercase tracking-widest">
                 <span className="text-gold">{TOPICS.find((t) => t.key === l.topic)?.label}</span>
-                <span className="text-faint">{l.minutes} min</span>
+                <span className="text-faint">{l.slug === lastRead ? "Just read" : `${l.minutes} min`}</span>
               </div>
               <div className="display mt-2 text-base font-bold leading-snug">{l.title}</div>
               <p className="mt-1 flex-1 text-sm text-mute">{l.summary}</p>
@@ -81,14 +103,14 @@ function TopicButton({ active, onClick, children }: { active: boolean; onClick: 
   );
 }
 
-function LessonReader({ lesson, onBack, onOpen }: { lesson: Lesson; onBack: () => void; onOpen: (l: Lesson) => void }) {
+function LessonReader({ lesson, onOpen }: { lesson: Lesson; onOpen: (l: Lesson) => void }) {
   const related = LESSONS.filter((l) => l.topic === lesson.topic && l.slug !== lesson.slug);
   const quote = QUOTES.find((q) => q.topic === lesson.topic);
   useEffect(() => window.scrollTo({ top: 0 }), [lesson.slug]);
 
   return (
     <article className="mx-auto max-w-2xl space-y-6">
-      <button onClick={onBack} className="text-xs uppercase tracking-widest text-gold hover:underline">← Mindset Library</button>
+      <BackButton fallback="/mindset" label="Mindset Library" desktopOnly />
       <header>
         <div className="text-[10px] uppercase tracking-widest text-gold">
           {TOPICS.find((t) => t.key === lesson.topic)?.label} · {lesson.minutes} min read
@@ -119,6 +141,10 @@ function LessonReader({ lesson, onBack, onOpen }: { lesson: Lesson; onBack: () =
           </div>
         </div>
       ) : null}
+
+      <div className="border-t border-hairline-soft pt-5">
+        <BackButton fallback="/mindset" label="All lessons" />
+      </div>
     </article>
   );
 }

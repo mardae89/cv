@@ -1,4 +1,4 @@
-import { navigate, useLocation } from "../router";
+import { goBack, navigate, useLocation } from "../router";
 
 /** The subset of next/navigation the app's client pages use. */
 export function usePathname(): string {
@@ -10,7 +10,7 @@ export function useSearchParams(): URLSearchParams {
 }
 
 export function useRouter() {
-  return { push: navigate, replace: navigate, back: () => navigate("/dashboard"), refresh: () => {}, prefetch: () => {} };
+  return { push: navigate, replace: navigate, back: goBack, refresh: () => {}, prefetch: () => {} };
 }
 
 export function redirect(href: string): never {

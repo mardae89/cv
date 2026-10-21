@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Eyebrow } from "./primitives";
 import { Icon } from "./icons";
 import type { Quote } from "@/lib/os/content";
@@ -39,6 +39,25 @@ export function num(v: string): number | null {
 
 /* ----------------------------------- modal ---------------------------------- */
 
+/**
+ * What every pop-up does: Escape closes it, and the page behind stays put
+ * instead of scrolling under the trader's thumb.
+ */
+export function useModal(onClose: () => void) {
+  const close = useRef(onClose);
+  close.current = onClose;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") close.current(); };
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, []);
+}
+
 export function Modal({
   title,
   children,
@@ -50,6 +69,7 @@ export function Modal({
   onClose: () => void;
   wide?: boolean;
 }) {
+  useModal(onClose);
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-void/80 p-0 backdrop-blur-sm sm:items-center sm:p-6"

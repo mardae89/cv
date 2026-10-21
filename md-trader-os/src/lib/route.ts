@@ -11,6 +11,8 @@
 export interface InMemoryRouter {
   query(): URLSearchParams;
   replace(path: string): void;
+  back(): void;
+  canGoBack(): boolean;
 }
 
 declare global {
@@ -33,4 +35,14 @@ export function replaceRoute(path: string) {
 /** True inside the single-file preview, where downloads are blocked. */
 export function isPreview(): boolean {
   return typeof window !== "undefined" && Boolean(window.__mdosRouter);
+}
+
+/**
+ * Whether "back" stays inside the app. The preview keeps its own history; the
+ * deployed app has the browser's, and a page opened fresh from a shared link
+ * has nothing behind it — so back goes to the page's parent instead.
+ */
+export function canGoBack(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.__mdosRouter ? window.__mdosRouter.canGoBack() : window.history.length > 1;
 }

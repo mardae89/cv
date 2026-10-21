@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { EmptyState, Eyebrow, GhostButton, GoldButton, Panel, SectionHeading, Skeleton } from "@/components/primitives";
-import { Bar, ConfirmButton, LocalNote, Segmented, Stat, fmtMoney, fmtR, toneOf } from "@/components/os";
+import { Bar, ConfirmButton, LocalNote, Segmented, Stat, fmtMoney, fmtR, toneOf, useModal } from "@/components/os";
 import { CloseTradeModal, LogTradeModal, type TradeDraft } from "@/components/trade-forms";
 import { Icon } from "@/components/icons";
 import { usePlan, useTrades, type Trade } from "@/lib/os/store";
@@ -182,6 +182,7 @@ function TradeDetail({
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  useModal(onClose);
   const precision = getAsset(t.symbol)?.precision ?? 5;
   const row = (label: string, value: React.ReactNode) => (
     <div className="flex items-baseline justify-between gap-3 border-b border-hairline-soft py-1.5 text-sm last:border-b-0">

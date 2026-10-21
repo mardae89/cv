@@ -6,6 +6,9 @@ import { useEffect, useState } from "react";
 import { Icon } from "./icons";
 import { Logo } from "./logo";
 import { useApi } from "@/lib/hooks";
+import { useShellBackTarget } from "@/lib/shellBack";
+import { useGoBack } from "./back-button";
+import { readQuery } from "@/lib/route";
 import type { Tier } from "@/lib/config/tiers";
 
 interface NavItem {
@@ -104,7 +107,7 @@ export function AppShell({ user, children }: { user: ShellUser; children: React.
 
         <div className="min-w-0 flex-1">
           <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-hairline-soft bg-ink/95 px-4 py-3 backdrop-blur lg:hidden">
-            <Link href="/dashboard"><Logo size={24} /></Link>
+            <HeaderStart />
             <button
               onClick={() => setMenuOpen((v) => !v)}
               aria-label="Menu"
@@ -141,6 +144,10 @@ export function AppShell({ user, children }: { user: ShellUser; children: React.
             <Link
               key={item.href}
               href={item.href}
+              onClick={() => {
+                // Re-tapping the tab you are on goes to the top, the way phone apps do.
+                if (pathname === item.href && !readQuery().toString()) window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
               className={`flex flex-col items-center gap-1 py-2.5 text-[10px] uppercase tracking-widest ${
                 active ? "text-gold" : "text-faint"
               }`}
@@ -151,6 +158,36 @@ export function AppShell({ user, children }: { user: ShellUser; children: React.
           );
         })}
       </nav>
+    </div>
+  );
+}
+
+/**
+ * The left of the phone's top bar: the logo, or — while a detail view is open
+ * — a back button beside a smaller logo, reachable however far down the page.
+ */
+function HeaderStart() {
+  const target = useShellBackTarget();
+  if (!target) return <Link href="/dashboard"><Logo size={24} /></Link>;
+  return <HeaderBack fallback={target} />;
+}
+
+function HeaderBack({ fallback }: { fallback: string }) {
+  const back = useGoBack(fallback);
+  return (
+    <div className="flex items-center gap-3">
+      <button
+        type="button"
+        onClick={back}
+        className="-ml-1 flex items-center gap-1 py-1 pr-2 font-display text-sm font-semibold text-gold"
+        aria-label="Back"
+      >
+        <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={2.2} aria-hidden>
+          <path d="M15 5l-7 7 7 7" />
+        </svg>
+        Back
+      </button>
+      <Link href="/dashboard" aria-label="Dashboard"><Logo size={20} showWord={false} /></Link>
     </div>
   );
 }

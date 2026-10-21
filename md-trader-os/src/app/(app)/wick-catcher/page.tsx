@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useApi, useTicker } from "@/lib/hooks";
 import { useTradingMode, useTrendScope } from "@/lib/useTrendScope";
 import type { Direction } from "@/lib/types";
@@ -12,7 +13,9 @@ import { LogTradeModal, type TradeDraft } from "@/components/trade-forms";
 import { MeterCard } from "@/components/momentum-meter";
 import type { MomentumMeter } from "@/lib/engine/momentumMeter";
 import { fmtPrice, timeAgo } from "@/lib/utils/format";
-import { readQuery, replaceRoute } from "@/lib/route";
+import { BackButton } from "@/components/back-button";
+import { useShellBack } from "@/lib/shellBack";
+import { getAsset } from "@/lib/data/universe";
 
 interface BoardRow {
   symbol: string;
@@ -33,29 +36,38 @@ const GROUP_ORDER = ["Forex Majors", "Forex Minors", "Index Futures", "Metals", 
 const FIRST = 12;
 
 export default function WickCatcherPage() {
-  const [symbol, setSymbol] = useState<string | null>(null);
+  // The selected market lives in the URL (?symbol=), so the tab, the back
+  // button and a shared link all land on the right view.
+  return (
+    <Suspense fallback={<Skeleton className="mx-auto h-96 max-w-6xl" />}>
+      <WickCatcher />
+    </Suspense>
+  );
+}
 
-  useEffect(() => {
-    const s = readQuery().get("symbol");
-    if (s) setSymbol(s);
-  }, []);
+/** The market last opened from the board, highlighted when the trader comes back. */
+let lastOpened: string | null = null;
 
-  const select = (s: string | null) => {
-    setSymbol(s);
-    replaceRoute(s ? `/wick-catcher?symbol=${encodeURIComponent(s)}` : "/wick-catcher");
-    window.scrollTo({ top: 0 });
+function WickCatcher() {
+  const params = useSearchParams();
+  const router = useRouter();
+  const raw = params.get("symbol");
+  const symbol = raw ? getAsset(raw)?.symbol ?? raw : null;
+  useShellBack(symbol ? "/wick-catcher" : null);
+
+  const open = (s: string) => {
+    lastOpened = s;
+    router.push(`/wick-catcher?symbol=${encodeURIComponent(s)}`);
   };
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
+      {symbol ? <BackButton fallback="/wick-catcher" label="Wick Catcher" desktopOnly /> : null}
       <SectionHeading
         title="Wick Catcher"
         subtitle="MD Momentum says which way. This says where: the prices a pullback is likely to wick into before the trend resumes — so the entry waits there instead of chasing."
-        action={symbol ? (
-          <button onClick={() => select(null)} className="text-xs uppercase tracking-widest text-gold hover:underline">← All markets</button>
-        ) : undefined}
       />
-      {symbol ? <Detail symbol={symbol} /> : <Board onOpen={select} />}
+      {symbol ? <Detail symbol={symbol} /> : <Board onOpen={open} />}
     </div>
   );
 }
@@ -121,11 +133,13 @@ function Board({ onOpen }: { onOpen: (s: string) => void }) {
           <div className="hidden grid-cols-[1.2fr_90px_1.4fr_120px_90px] gap-3 border-b border-hairline px-4 py-2.5 text-[10px] uppercase tracking-widest text-faint sm:grid">
             <span>Market</span><span>HTF bias</span><span>Best zone</span><span>Zone strength</span><span className="text-right">Status</span>
           </div>
-          {(showAll ? rows : rows.slice(0, FIRST)).map((r) => (
+          {(showAll || (lastOpened != null && rows.findIndex((x) => x.symbol === lastOpened) >= FIRST) ? rows : rows.slice(0, FIRST)).map((r) => (
             <button
               key={r.symbol}
               onClick={() => onOpen(r.symbol)}
-              className="grid w-full grid-cols-[1fr_auto] items-center gap-3 border-b border-hairline-soft px-4 py-3 text-left transition last:border-b-0 hover:bg-panel-2 sm:grid-cols-[1.2fr_90px_1.4fr_120px_90px]"
+              className={`grid w-full grid-cols-[1fr_auto] items-center gap-3 border-b border-hairline-soft px-4 py-3 text-left transition last:border-b-0 hover:bg-panel-2 sm:grid-cols-[1.2fr_90px_1.4fr_120px_90px] ${
+                r.symbol === lastOpened ? "bg-gold/5 shadow-[inset_3px_0_0_var(--color-gold)]" : ""
+              }`}
             >
               <div className="min-w-0">
                 <div className="display text-sm font-semibold">{r.symbol}</div>
@@ -259,6 +273,8 @@ function Detail({ symbol }: { symbol: string }) {
           ))}
         </div>
       )}
+
+      <BackButton fallback="/wick-catcher" label="All markets" />
 
       <p className="text-[11px] text-faint">
         Zones are algorithmic levels for planning entries, not predictions or signals. Confirm them on your own chart, and size every trade from the stop.

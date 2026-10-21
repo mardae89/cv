@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useApi, useTicker } from "@/lib/hooks";
 import { useTrendScope } from "@/lib/useTrendScope";
 import type { MdMomentumResult } from "@/lib/engine/mdMomentum";
@@ -16,7 +17,8 @@ import {
 } from "@/components/momentum-meter";
 import { fmtPrice, fmtSigned, timeAgo } from "@/lib/utils/format";
 import { getAsset } from "@/lib/data/universe";
-import { readQuery, replaceRoute } from "@/lib/route";
+import { BackButton } from "@/components/back-button";
+import { useShellBack } from "@/lib/shellBack";
 
 const GROUPS = ["All", "Forex Majors", "Forex Minors", "Index Futures", "Metals", "Energy"];
 /** The board is ranked by setup, then by push, so the top of it is what matters. */
@@ -55,20 +57,33 @@ function labelFor(push: number) {
 }
 
 export default function MomentumPage() {
-  const [symbol, setSymbol] = useState<string | null>(null);
-  useEffect(() => {
-    const s = readQuery().get("symbol");
-    if (s) setSymbol(getAsset(s)?.symbol ?? s);
-  }, []);
+  // The selected market lives in the URL (?symbol=), so the tab, the back
+  // button and a shared link all land on the right view.
+  return (
+    <Suspense fallback={<Skeleton className="mx-auto h-96 max-w-6xl" />}>
+      <Momentum />
+    </Suspense>
+  );
+}
 
-  const open = (s: string | null) => {
-    setSymbol(s);
-    replaceRoute(s ? `/momentum?symbol=${encodeURIComponent(s)}` : "/momentum");
-    window.scrollTo({ top: 0 });
+/** The market last opened from the board, highlighted when the trader comes back. */
+let lastOpened: string | null = null;
+
+function Momentum() {
+  const params = useSearchParams();
+  const router = useRouter();
+  const raw = params.get("symbol");
+  const symbol = raw ? getAsset(raw)?.symbol ?? raw : null;
+  useShellBack(symbol ? "/momentum" : null);
+
+  const open = (s: string) => {
+    lastOpened = s;
+    router.push(`/momentum?symbol=${encodeURIComponent(s)}`);
   };
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
+      {symbol ? <BackButton fallback="/momentum" label="MD Momentum" desktopOnly /> : null}
       <SectionHeading
         title={symbol ? "Momentum Meter" : "MD Momentum"}
         subtitle={
@@ -76,9 +91,6 @@ export default function MomentumPage() {
             ? "Is there enough momentum behind last week's candle for this week's wick to be caught and pushed on?"
             : "Every market against the strategy: weekly side, last week's momentum candle, the daily pullback, and the turn."
         }
-        action={symbol ? (
-          <button onClick={() => open(null)} className="text-xs uppercase tracking-widest text-gold hover:underline">← All markets</button>
-        ) : undefined}
       />
       {symbol ? <MeterView symbol={symbol} /> : <Board onOpen={open} />}
     </div>
@@ -114,7 +126,9 @@ function Board({ onOpen }: { onOpen: (s: string) => void }) {
         ),
     [board.data, group, verdict],
   );
-  const shown = showAll ? rows : rows.slice(0, FIRST);
+  // Coming back from a market beyond the first twelve keeps it on the board.
+  const lastIndex = lastOpened ? rows.findIndex((r) => r.symbol === lastOpened) : -1;
+  const shown = showAll || lastIndex >= FIRST ? rows : rows.slice(0, FIRST);
 
   if (board.upgrade) return <Paywall requiredTier={board.upgrade.requiredTier} featureName="MD Momentum Mode" />;
 
@@ -162,7 +176,9 @@ function Board({ onOpen }: { onOpen: (s: string) => void }) {
             <button
               key={r.symbol}
               onClick={() => onOpen(r.symbol)}
-              className="grid w-full grid-cols-[68px_1fr_auto] items-center gap-3 border-b border-hairline-soft px-3 py-2.5 text-left transition last:border-b-0 hover:bg-panel-2 md:grid-cols-[76px_1.3fr_1fr_150px_120px] md:px-4"
+              className={`grid w-full grid-cols-[68px_1fr_auto] items-center gap-3 border-b border-hairline-soft px-3 py-2.5 text-left transition last:border-b-0 hover:bg-panel-2 md:grid-cols-[76px_1.3fr_1fr_150px_120px] md:px-4 ${
+                r.symbol === lastOpened ? "bg-gold/5 shadow-[inset_3px_0_0_var(--color-gold)]" : ""
+              }`}
             >
               <MiniGauge value={r.meter.push} />
               <div className="min-w-0">
@@ -406,6 +422,7 @@ function MeterView({ symbol }: { symbol: string }) {
       </div>
 
       <div className="flex flex-wrap gap-2">
+        <BackButton fallback="/momentum" label="All markets" />
         <Link href={`/wick-catcher?symbol=${encodeURIComponent(meter.symbol)}`}><GhostButton>Wick zones for {meter.symbol}</GhostButton></Link>
         <Link href={`/markets/${encodeURIComponent(meter.symbol)}`}><GhostButton>Chart &amp; full analysis</GhostButton></Link>
         <GhostButton onClick={() => setShowChecklist(!showChecklist)}>{showChecklist ? "Hide" : "Show"} MD Momentum checklist</GhostButton>

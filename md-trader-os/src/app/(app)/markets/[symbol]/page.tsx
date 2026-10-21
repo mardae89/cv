@@ -8,6 +8,9 @@ import { useApi, useTicker } from "@/lib/hooks";
 import { guest } from "@/lib/guestStore";
 import type { Watchlist } from "@/lib/db/schema";
 import { LogTradeModal } from "@/components/trade-forms";
+import { Modal } from "@/components/os";
+import { BackButton } from "@/components/back-button";
+import { useShellBack } from "@/lib/shellBack";
 import { MeterCard } from "@/components/momentum-meter";
 import type { MomentumMeter } from "@/lib/engine/momentumMeter";
 import { useTradingMode, useTrendScope } from "@/lib/useTrendScope";
@@ -26,6 +29,7 @@ export default function MarketDetailPage({ params }: { params: Promise<{ symbol:
   useTicker(5000);
   const [scope, setScope] = useTrendScope();
   const [mode] = useTradingMode();
+  useShellBack("/markets");
 
   const { data, loading, error, refresh } = useApi<{ analysis: AssetAnalysis; degraded: string[] }>(
     `/api/market-analysis?symbol=${encodeURIComponent(symbol)}&scope=${scope}&mode=${mode}`,
@@ -69,6 +73,7 @@ export default function MarketDetailPage({ params }: { params: Promise<{ symbol:
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
+      <BackButton fallback="/markets" label="Forex & Futures" desktopOnly />
       {/* ------------------------------- HERO ---------------------------------- */}
       <Panel className="fade-up overflow-hidden">
         <div className="gold-line" />
@@ -458,23 +463,6 @@ function Check({ label, on, bearish = false }: { label: string; on: boolean; bea
       <span className={on ? "text-bone" : "text-faint"}>{label}</span>
       <span className={on ? (bearish ? "text-bear" : "text-bull") : "text-faint"}>{on ? "✓" : "—"}</span>
     </li>
-  );
-}
-
-function Modal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-void/80 p-0 backdrop-blur-sm sm:items-center sm:p-6" onClick={onClose}>
-      <div
-        className="panel max-h-[85vh] w-full max-w-xl overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between border-b border-hairline-soft px-5 py-3">
-          <h3 className="display text-sm font-bold uppercase tracking-widest">{title}</h3>
-          <button onClick={onClose} className="text-mute hover:text-bone"><Icon.close /></button>
-        </div>
-        <div className="p-5">{children}</div>
-      </div>
-    </div>
   );
 }
 
