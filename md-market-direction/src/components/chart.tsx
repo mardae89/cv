@@ -128,8 +128,8 @@ export function PriceChart({
   zones?: ChartZone[];
   levels?: ChartLevel[];
   markers?: ChartMarker[];
-  /** Called while a draggable level is being dragged, with its new price. */
-  onLevelMove?: (id: string, price: number) => void;
+  /** Called while a draggable level is dragged, with where it now sits. */
+  onLevelMove?: (id: string, price: number, t: number) => void;
   /** The level the reader has selected, if any. */
   selectedLevel?: string | null;
   /** Called when a level is selected, or the selection is dropped. */
@@ -309,14 +309,14 @@ export function PriceChart({
       const zoneEdges = (zones ?? [])
         .filter((z) => z.toT >= windowFrom && z.fromT <= windowTo)
         .flatMap((z) => [z.priceA, z.priceB]);
-      const levelEdges = (levels ?? [])
-        .filter((l) => l.toT >= windowFrom && l.fromT <= windowTo)
-        .map((l) => l.price);
+      // Levels are deliberately NOT in here. A line being dragged would widen
+      // the range, the range would move the line under the finger holding it,
+      // and the drag would stutter against its own feedback.
       const markerEdges = (markers ?? [])
         .filter((m) => m.t >= windowFrom && m.t <= windowTo)
         .map((m) => m.price);
-      const hi = Math.max(...slice.map((c) => c.h), ...overlay, ...zoneEdges, ...levelEdges, ...markerEdges);
-      const lo = Math.min(...slice.map((c) => c.l), ...overlay, ...zoneEdges, ...levelEdges, ...markerEdges);
+      const hi = Math.max(...slice.map((c) => c.h), ...overlay, ...zoneEdges, ...markerEdges);
+      const lo = Math.min(...slice.map((c) => c.l), ...overlay, ...zoneEdges, ...markerEdges);
       const pad = (hi - lo) * 0.08 || hi * 0.01;
       top = hi + pad;
       bot = lo - pad;
@@ -332,6 +332,14 @@ export function PriceChart({
   const bodyW = Math.max(1, Math.min(step * 0.74, 34));
   /** i is an index into `slice`; it is offset back into absolute bar space. */
   const X = (i: number) => (first + i - v.start) * step + step / 2;
+  /* Time maps to x continuously, not bar by bar: a line dragged sideways has to
+     follow the finger rather than jump from one candle to the next. */
+  const barMs =
+    candles.length > 1
+      ? (candles[candles.length - 1].t - candles[0].t) / (candles.length - 1)
+      : 1;
+  const xAtT = (t: number) => ((t - (candles[0]?.t ?? 0)) / barMs - v.start) * step + step / 2;
+  const tAtX = (x: number) => (candles[0]?.t ?? 0) + ((x - step / 2) / step + v.start) * barMs;
   const Y = (p: number) => PAD_T + ((top - p) / (top - bot || 1)) * priceH;
   const priceAt = (y: number) => top - ((y - PAD_T) / (priceH || 1)) * (top - bot);
   const maxVol = Math.max(1, ...slice.map((c) => c.v));
@@ -340,9 +348,11 @@ export function PriceChart({
 
   /* ── gestures ──────────────────────────────────────────────────────────── */
   const pointers = useRef(new Map<number, { x: number; y: number }>());
-  /* A level being dragged. While one is held the chart does not pan: the
-     gesture belongs to the line, not to the view. */
-  const dragLevel = useRef<string | null>(null);
+  /* A level being dragged, and where it was held: the line keeps the same
+     distance from the pointer it was picked up at, so it does not jump to centre
+     itself the moment it starts moving. While one is held the chart does not
+     pan — the gesture belongs to the line, not to the view. */
+  const dragLevel = useRef<{ id: string; dPrice: number; dT: number } | null>(null);
   const [overLevel, setOverLevel] = useState(false);
   const gesture = useRef<{
     zone: Zone;
@@ -413,7 +423,13 @@ export function PriceChart({
     svgRef.current?.setPointerCapture(e.pointerId);
     const held = levelAt(e.clientX, e.clientY);
     if (held && pointers.current.size === 0) {
-      dragLevel.current = held;
+      const rect = svgRef.current!.getBoundingClientRect();
+      const lv = (levels ?? []).find((l) => l.id === held);
+      dragLevel.current = {
+        id: held,
+        dPrice: lv ? lv.price - priceAt(e.clientY - rect.top) : 0,
+        dT: lv ? lv.fromT - tAtX(e.clientX - rect.left) : 0,
+      };
       if (held !== selectedLevel) onSelectLevel?.(held);
       return;
     }
@@ -439,8 +455,12 @@ export function PriceChart({
   const onPointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
     if (dragLevel.current) {
       const rect = svgRef.current!.getBoundingClientRect();
+      const { id, dPrice, dT } = dragLevel.current;
+      // Free in both directions, at the offset it was picked up at. Price is
+      // clamped to the plot so a line cannot be lost above or below it; time is
+      // not, because a line may well belong off to one side.
       const y = clamp(e.clientY - rect.top, PAD_T, PAD_T + priceH);
-      onLevelMove?.(dragLevel.current, priceAt(y));
+      onLevelMove?.(id, priceAt(y) + dPrice, tAtX(e.clientX - rect.left) + dT);
       return;
     }
     if (pointers.current.has(e.pointerId)) {
@@ -751,19 +771,14 @@ export function PriceChart({
             const usedLabelY: number[] = [];
             const lineYs = (levels ?? []).map((lv) => Y(lv.price));
             return (levels ?? []).map((lv, k) => {
-              const idx = (t: number) => {
-                if (!slice.length) return 0;
-                if (t <= slice[0].t) return 0;
-                if (t >= slice[slice.length - 1].t) return slice.length - 1;
-                let best = 0;
-                for (let i = 0; i < slice.length; i++) if (slice[i].t <= t) best = i;
-                return best;
-              };
-              const anchor = X(idx(lv.fromT)) - step / 2;
+              // Clamped to the plot, not to a bar: the line is drawn where its
+              // time falls, and only the drawing stops at the frame.
+              const at = (t: number) => clamp(xAtT(t), 0, plotW);
+              const anchor = at(lv.fromT);
               const x0 = lv.extendLeft ? 0 : anchor;
               const x1 = lv.extendRight
                 ? plotW
-                : Math.max(X(idx(lv.toT)) + step / 2, (lv.extendLeft ? anchor : x0) + step);
+                : Math.max(at(lv.toT), (lv.extendLeft ? anchor : x0) + step);
               const y = Y(lv.price);
               const selected = lv.draggable && lv.id != null && lv.id === selectedLevel;
               return (

@@ -75,6 +75,8 @@ const STATE_TONE: Record<ZoneState, string> = {
  */
 interface LineEdit {
   price?: number;
+  /** Where along the chart the reader dragged it, as a time. */
+  anchorT?: number;
   extent?: LineExtent;
 }
 
@@ -192,14 +194,15 @@ export default function WickPage() {
       const id = lineId(label, t);
       const edit = myEdits[id] ?? {};
       const at = edit.price ?? price;
+      const anchorT = edit.anchorT ?? t;
       if (out.some((l) => Math.abs(l.price - at) < 1e-9)) return;
       const extent: LineExtent = edit.extent ?? "right";
       const price_ = fmtPrice(at, data.precision);
       const moved = edit.price != null;
       out.push({
         price: at,
-        fromT: t,
-        toT: t,
+        fromT: anchorT,
+        toT: anchorT,
         extendRight: extent !== "left",
         extendLeft: extent !== "right",
         dashed: true,
@@ -365,7 +368,7 @@ export default function WickPage() {
               zones={zones}
               levels={sosLevels}
               markers={sosMarkers}
-              onLevelMove={(id, price) => editLine(id, { price })}
+              onLevelMove={(id, price, anchorT) => editLine(id, { price, anchorT })}
               selectedLevel={selected}
               onSelectLevel={setSelected}
               overlay={
