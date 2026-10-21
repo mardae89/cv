@@ -309,4 +309,10 @@ export const MOMENTUM_METER = {
   weights: { weeklyEma: 20, prevWeek: 22, weeklyStructure: 10, daily: 14, fourHour: 14, oneHour: 12, fifteen: 8 },
   /** Bars of history drawn behind each timeframe's needle. */
   trail: 36,
+  /**
+   * Timing a push: it starts when the reading passes ±start, lasts while it
+   * stays beyond ±hold on the same side, and needs this many past pushes that
+   * ran at least as long before an estimate is given.
+   */
+  runway: { start: 20, hold: 5, minSamples: 6 },
 } as const;

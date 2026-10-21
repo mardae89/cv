@@ -11,7 +11,7 @@ import { Paywall } from "@/components/paywall";
 import { ScoreMeter } from "@/components/score";
 import { ErrorState, Eyebrow, GhostButton, Panel, SectionHeading, Skeleton } from "@/components/primitives";
 import {
-  DailyPullback, MiniGauge, MomentumGauge, PushArrow, PushTrail, RoomBar, SourceBars, TimeframeStack, VerdictCard,
+  DailyPullback, MiniGauge, MomentumGauge, PushArrow, PushTrail, RoomBar, RunwayStrip, SourceBars, TimeframeStack, VerdictCard,
   VerdictTag, WeeklyStory,
 } from "@/components/momentum-meter";
 import { fmtPrice, fmtSigned, timeAgo } from "@/lib/utils/format";
@@ -319,6 +319,9 @@ function MeterView({ symbol }: { symbol: string }) {
                   The higher timeframes move the needle slowly; pick 15M or 5M to watch it move with price.
                 </p>
               )}
+              <div className="mt-4">
+                <RunwayStrip duration={meter.duration} symbol={meter.symbol} />
+              </div>
             </div>
             <VerdictCard meter={meter} />
           </div>

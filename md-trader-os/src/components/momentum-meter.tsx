@@ -3,7 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import type { Candle } from "@/lib/types";
-import type { Gate, MeterTimeframe, MomentumMeter, PushSource, TimeframePush, Verdict } from "@/lib/engine/momentumMeter";
+import type { Gate, MeterTimeframe, MomentumMeter, PushSource, Runway, TimeframePush, Verdict } from "@/lib/engine/momentumMeter";
 import { fmtPrice } from "@/lib/utils/format";
 
 /**
@@ -507,6 +507,62 @@ export function RoomBar({ label, used }: { label: string; used: number | null })
       </div>
     </div>
   );
+}
+
+/* --------------------------------- runway ---------------------------------- */
+
+const TF_WORD: Record<MeterTimeframe, string> = { "1W": "weekly", "1D": "daily", "4H": "4H", "1H": "1H", "15M": "15M", "5M": "5M" };
+
+/**
+ * How long the push might last, in one small strip. The estimate is this
+ * market's own history: past pushes on the same timeframe that had already
+ * lasted as long as this one, and how much longer the middle half kept going.
+ */
+export function RunwayStrip({ duration, symbol }: { duration: MomentumMeter["duration"]; symbol: string }) {
+  if (!duration) return null;
+  const h = duration.headline;
+  const down = h?.direction === "down";
+  const tone = down ? "text-bear" : "text-bull";
+  const fill = h ? h.ageBars / (h.ageBars + h.medianBars) : 0;
+
+  return (
+    <div className="border border-hairline-soft bg-ink/80 px-4 py-3">
+      <div className="flex items-center justify-between gap-3">
+        <span className="eyebrow">How long it could last</span>
+        <span className="text-[9px] uppercase tracking-widest text-faint">Estimate</span>
+      </div>
+      {h ? (
+        <>
+          <div className="mt-1.5 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+            <span className={`display flex items-center gap-1.5 text-xl font-extrabold tracking-tight ${tone}`}>
+              <PushArrow value={down ? -50 : 50} className="h-5 w-5" />
+              {h.label} more
+            </span>
+            <span className="text-[11px] uppercase tracking-widest text-mute">
+              {TF_WORD[h.timeframe]} push {h.direction} · {h.age} in
+            </span>
+          </div>
+          <div className="mt-2 h-1 bg-hairline-soft" aria-hidden>
+            <div className={`h-full ${down ? "bg-bear" : "bg-bull"}`} style={{ width: `${Math.round(fill * 100)}%` }} />
+          </div>
+          <p className="mt-2 text-[11px] leading-relaxed text-faint">
+            {h.samples} past {TF_WORD[h.timeframe]} pushes on {symbol} lasted at least this long; the middle half kept going another {h.range}.
+            {duration.next ? <> Shorter term, the {TF_WORD[duration.next.timeframe]} push: <span className="text-mute">{duration.next.label}</span>.</> : null}
+            {duration.weekly ? <> Weekly trend behind it: <span className="text-mute">{duration.weekly.label}</span>.</> : null}
+          </p>
+        </>
+      ) : (
+        <p className="mt-1.5 text-sm text-mute">{timingGap(duration)}</p>
+      )}
+    </div>
+  );
+}
+
+function timingGap(d: NonNullable<MomentumMeter["duration"]>): string {
+  const w: Runway | null = d.weekly;
+  return w
+    ? `Momentum is stalling on the daily and below, so there is no push to time. The weekly push ${w.direction} has usually run ${w.label} more.`
+    : "Momentum is stalling, or this push has no close match in this market's history — there is nothing to time yet.";
 }
 
 /* ------------------------------ compact panel ------------------------------ */

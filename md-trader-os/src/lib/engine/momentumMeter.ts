@@ -101,6 +101,8 @@ export interface MomentumMeter {
   daily: { bars: Candle[]; levels: { label: string; price: number; kind: "range" | "fib" }[]; weekStart: number | null };
   why: string[];
   risks: string[];
+  /** How long the current push has usually lasted on this market; null on the board. */
+  duration: { headline: Runway | null; next: Runway | null; weekly: Runway | null } | null;
   generatedAt: number;
   demo: boolean;
 }
@@ -128,44 +130,195 @@ function lastNumber(series: (number | null)[]): number | null {
  * the other a few hundred.
  */
 export function pushOf(candles: Candle[]): { push: number; rsi: number | null; hist: number | null; histPrev: number | null } {
-  if (candles.length < 35) return { push: 0, rsi: null, hist: null, histPrev: null };
-  const closes = candles.map((c) => c.c);
-  const r = lastNumber(rsi(closes, 14));
-  const m = macd(closes);
-  const hist = m.hist[m.hist.length - 1] ?? null;
-  const histPrev = m.hist[m.hist.length - 2] ?? null;
-  const a = lastNumber(atr(candles, 14)) ?? closes[closes.length - 1] * 0.001;
-  const move = closes[closes.length - 1] - closes[closes.length - 11];
-
-  let s = 0;
-  if (r != null) s += clamp((r - 50) / 22, -1, 1) * 0.4;
-  if (hist != null && a) s += Math.tanh(hist / (a * 0.18)) * 0.35;
-  if (a) s += Math.tanh(move / (a * 2.2)) * 0.25;
-  return { push: clamp(s, -1, 1) * 100, rsi: r, hist, histPrev };
+  const s = pushSeries(candles);
+  const n = s.push.length;
+  return { push: n ? s.push[n - 1] : 0, rsi: s.rsi[n - 1] ?? null, hist: s.hist[n - 1] ?? null, histPrev: s.hist[n - 2] ?? null };
 }
 
-/** Indicators only need a few hundred bars of warm-up; reading more is waste. */
-const WINDOW = 320;
+/**
+ * The push at every bar, from indicator series computed once — the same
+ * formula as above, in one pass. The trail behind the needle and the runway
+ * estimate both read it, so they agree with the needle exactly.
+ */
+export function pushSeries(candles: Candle[]): { push: number[]; rsi: (number | null)[]; hist: (number | null)[] } {
+  if (candles.length < 35) return { push: candles.map(() => 0), rsi: candles.map(() => null), hist: candles.map(() => null) };
+  const closes = candles.map((c) => c.c);
+  const r = rsi(closes, 14);
+  const m = macd(closes);
+  const a = atr(candles, 14);
+  const push = closes.map((c, i) => {
+    const ai = a[i];
+    if (i < 34 || ai == null || !ai) return 0;
+    let v = 0;
+    const ri = r[i];
+    if (ri != null) v += clamp((ri - 50) / 22, -1, 1) * 0.4;
+    const hi = m.hist[i];
+    if (hi != null) v += Math.tanh(hi / (ai * 0.18)) * 0.35;
+    v += Math.tanh((c - closes[i - 10]) / (ai * 2.2)) * 0.25;
+    return clamp(v, -1, 1) * 100;
+  });
+  return { push, rsi: r, hist: m.hist };
+}
 
-function timeframeReading(tf: MeterTimeframe, candles: Candle[], withTrail: boolean): TimeframePush {
-  const base = candles.slice(-(WINDOW + M.trail + 1));
-  const now = pushOf(base);
-  const prev = pushOf(base.slice(0, -1));
-  const trail: number[] = [];
-  if (withTrail && base.length > 60) {
-    for (let k = Math.min(M.trail, base.length - 40); k >= 1; k--) trail.push(Math.round(pushOf(base.slice(0, base.length - k)).push));
-    trail.push(Math.round(now.push));
+/** History read per timeframe — enough past pushes to time the current one. */
+const HISTORY = 2000;
+
+function timeframeReading(tf: MeterTimeframe, candles: Candle[], withTrail: boolean): { reading: TimeframePush; series: number[] } {
+  const base = candles.slice(-HISTORY);
+  const s = pushSeries(base);
+  const n = s.push.length;
+  const now = n ? s.push[n - 1] : 0;
+  const prev = n > 1 ? s.push[n - 2] : now;
+  const trail = withTrail && n > 60 ? s.push.slice(-(M.trail + 1)).map((v) => Math.round(v)) : [];
+  const hist = s.hist[n - 1];
+  const histPrev = s.hist[n - 2];
+  const delta = now - prev;
+  return {
+    series: s.push,
+    reading: {
+      timeframe: tf,
+      push: Math.round(now),
+      previous: Math.round(prev),
+      pace: Math.abs(delta) < 2 ? "steady" : Math.sign(delta) === Math.sign(now || delta) ? "building" : "fading",
+      rsi: s.rsi[n - 1] ?? null,
+      macd: hist == null || histPrev == null ? null : hist > histPrev ? "rising" : hist < histPrev ? "falling" : "flat",
+      trail,
+      barTime: candles.length ? candles[candles.length - 1].t : null,
+    },
+  };
+}
+
+/* --------------------------------- runway --------------------------------- */
+
+/**
+ * HOW LONG THE PUSH MIGHT LAST.
+ *
+ * Read from this market's own history, not from a rule of thumb. On each
+ * timeframe a push starts when the reading passes ±start and lasts while it
+ * stays beyond ±hold on the same side. Every past push that has already lasted
+ * as long as the current one is a precedent; how much longer those kept going
+ * — the middle half of them — is the estimate. It is a measure of what has
+ * usually happened, not a promise of what will.
+ */
+export interface Runway {
+  timeframe: MeterTimeframe;
+  direction: "up" | "down";
+  /** Bars the current push has run so far. */
+  ageBars: number;
+  /** Remaining bars: median and the middle-half range of the precedents. */
+  medianBars: number;
+  lowBars: number;
+  highBars: number;
+  /** How many past pushes lasted at least as long as this one. */
+  samples: number;
+  /** Readable forms: "~3 days", "2–5 days", "day 3". */
+  label: string;
+  range: string;
+  age: string;
+}
+
+const TF_HOURS: Record<MeterTimeframe, number> = { "1W": 24 * 7, "1D": 24, "4H": 4, "1H": 1, "15M": 0.25, "5M": 1 / 12 };
+
+/** A span on a timeframe, said the way a trader would say it. */
+export function spanLabel(bars: number, tf: MeterTimeframe, approx = true): string {
+  const t = approx ? "~" : "";
+  if (tf === "1W") {
+    if (bars < 1) return `${t}a few days`;
+    const w = Math.round(bars);
+    return `${t}${w} week${w === 1 ? "" : "s"}`;
   }
-  const delta = now.push - prev.push;
+  if (tf === "1D") {
+    const d = Math.max(1, Math.round(bars));
+    if (d >= 10) return `${t}${Math.round(d / 5)} weeks`;
+    return d >= 5 ? `${t}1 week` : `${t}${d} day${d === 1 ? "" : "s"}`;
+  }
+  const hours = bars * TF_HOURS[tf];
+  if (hours >= 20) {
+    const d = Math.max(1, Math.round((hours / 24) * 2) / 2);
+    return `${t}${d} day${d === 1 ? "" : "s"}`;
+  }
+  if (hours >= 1) {
+    const h = Math.max(1, Math.round(hours));
+    return `${t}${h} hour${h === 1 ? "" : "s"}`;
+  }
+  return `${t}${Math.max(5, Math.round((hours * 60) / 5) * 5)} minutes`;
+}
+
+function rangeLabel(lo: number, hi: number, tf: MeterTimeframe): string {
+  const a = spanLabel(lo, tf, false);
+  const b = spanLabel(hi, tf, false);
+  if (a === b) return a;
+  // "2 days–5 days" reads better as "2–5 days" when the unit is shared.
+  const [na, ...ua] = a.split(" ");
+  const [nb, ...ub] = b.split(" ");
+  const unitA = ua.join(" ").replace(/s$/, "");
+  const unitB = ub.join(" ").replace(/s$/, "");
+  return unitA === unitB && /^\d+(\.\d+)?$/.test(na) && /^\d+(\.\d+)?$/.test(nb) ? `${na}–${nb} ${ub.join(" ")}` : `${a} – ${b}`;
+}
+
+function quantile(sorted: number[], q: number): number {
+  if (!sorted.length) return 0;
+  const i = (sorted.length - 1) * q;
+  const lo = Math.floor(i);
+  const hi = Math.ceil(i);
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (i - lo);
+}
+
+export function runwayFor(tf: MeterTimeframe, series: number[]): Runway | null {
+  const { start, hold, minSamples } = M.runway;
+  const n = series.length;
+  if (n < 60) return null;
+
+  // The current push: walk back while the reading holds on one side, and only
+  // count it if it reached the start level somewhere along the way.
+  const last = series[n - 1];
+  const dir = last >= hold ? 1 : last <= -hold ? -1 : 0;
+  if (!dir) return null;
+  let i = n - 1;
+  let peak = 0;
+  while (i >= 0 && series[i] * dir > hold) {
+    peak = Math.max(peak, series[i] * dir);
+    i--;
+  }
+  if (peak < start) return null;
+  const age = n - 1 - i;
+
+  // Completed past pushes, either direction: momentum persistence is a
+  // property of the market, and both sides double the precedents.
+  const lengths: number[] = [];
+  let runDir = 0;
+  let runLen = 0;
+  let runPeak = 0;
+  const stopAt = i + 1; // exclude the current, unfinished push
+  for (let k = 34; k < stopAt; k++) {
+    const v = series[k];
+    if (runDir && v * runDir > hold) {
+      runLen++;
+      runPeak = Math.max(runPeak, v * runDir);
+      continue;
+    }
+    if (runDir && runPeak >= start) lengths.push(runLen);
+    runDir = v >= hold ? 1 : v <= -hold ? -1 : 0;
+    runLen = runDir ? 1 : 0;
+    runPeak = runDir ? Math.abs(v) : 0;
+  }
+
+  const precedents = lengths.filter((L) => L > age).map((L) => L - age).sort((a, b) => a - b);
+  if (precedents.length < minSamples) return null;
+  const median = quantile(precedents, 0.5);
+  const low = quantile(precedents, 0.25);
+  const high = quantile(precedents, 0.75);
   return {
     timeframe: tf,
-    push: Math.round(now.push),
-    previous: Math.round(prev.push),
-    pace: Math.abs(delta) < 2 ? "steady" : Math.sign(delta) === Math.sign(now.push || delta) ? "building" : "fading",
-    rsi: now.rsi,
-    macd: now.hist == null || now.histPrev == null ? null : now.hist > now.histPrev ? "rising" : now.hist < now.histPrev ? "falling" : "flat",
-    trail,
-    barTime: candles.length ? candles[candles.length - 1].t : null,
+    direction: dir > 0 ? "up" : "down",
+    ageBars: age,
+    medianBars: median,
+    lowBars: low,
+    highBars: high,
+    samples: precedents.length,
+    label: spanLabel(median, tf),
+    range: rangeLabel(low, high, tf),
+    age: spanLabel(age, tf, false),
   };
 }
 
@@ -203,20 +356,23 @@ export function buildMomentumMeter(inputs: MeterInputs): MomentumMeter {
   const price = latest?.c ?? analysis.quote.price;
 
   const weekly = aggregate(daily, "1W");
-  const tfs: TimeframePush[] = [
-    timeframeReading("1W", weekly, withTrail),
-    timeframeReading("1D", daily, withTrail),
-    timeframeReading("4H", inputs.fourHour, withTrail),
-    timeframeReading("1H", inputs.oneHour, withTrail),
-    timeframeReading("15M", inputs.fifteen, withTrail),
-    timeframeReading("5M", inputs.five, withTrail),
-  ];
+  const tfReadings = {
+    "1W": timeframeReading("1W", weekly, withTrail),
+    "1D": timeframeReading("1D", daily, withTrail),
+    "4H": timeframeReading("4H", inputs.fourHour, withTrail),
+    "1H": timeframeReading("1H", inputs.oneHour, withTrail),
+    "15M": timeframeReading("15M", inputs.fifteen, withTrail),
+    "5M": timeframeReading("5M", inputs.five, withTrail),
+  } satisfies Record<MeterTimeframe, { reading: TimeframePush; series: number[] }>;
+  const tfs: TimeframePush[] = METER_TIMEFRAMES.map((k) => tfReadings[k].reading);
   const tf = (k: MeterTimeframe) => tfs.find((x) => x.timeframe === k)!;
 
   const base = {
     symbol: asset.symbol, name: asset.name, precision: p, pipUnit: unit, price,
     timeframes: tfs, generatedAt: Date.now(), demo: analysis.demo,
   };
+  // Timing the push is the detail view's job; the ranked board skips it.
+  const timePush = (needle: number) => (withTrail ? estimateDuration(tfReadings, needle) : null);
 
   if (weekly.length < 56 || daily.length < 30) {
     return {
@@ -225,7 +381,7 @@ export function buildMomentumMeter(inputs: MeterInputs): MomentumMeter {
       gates: [], sources: [], aligned: 0, prevWeek: null, pullback: null,
       volatility: { weeklyAtr: null, weekUsed: null, dailyAtr: null, dayUsed: null },
       weekly: { bars: weekly.slice(-12), ema: [] }, daily: { bars: daily.slice(-12), levels: [], weekStart: null },
-      why: [], risks: [],
+      why: [], risks: [], duration: timePush(0),
     };
   }
 
@@ -429,6 +585,31 @@ export function buildMomentumMeter(inputs: MeterInputs): MomentumMeter {
     daily: { bars: daily.slice(-12), levels, weekStart: current.t },
     why,
     risks,
+    duration: timePush(push),
+  };
+}
+
+/**
+ * The headline times the push a trader is actually riding this week: the
+ * highest of the daily, 4H and 1H whose push agrees with the needle. The next
+ * timeframe down is given beside it for managing the entry, and the weekly
+ * push — the trend behind it all — as context. With the needle stalling there
+ * is no push to time.
+ */
+function estimateDuration(
+  readings: Record<MeterTimeframe, { reading: TimeframePush; series: number[] }>,
+  needle: number,
+): MomentumMeter["duration"] {
+  const dir = needle >= 20 ? "up" : needle <= -20 ? "down" : null;
+  const weeklyRun = runwayFor("1W", readings["1W"].series);
+  if (!dir) return { headline: null, next: null, weekly: weeklyRun };
+  const runs = (["1D", "4H", "1H"] as MeterTimeframe[])
+    .map((tf) => runwayFor(tf, readings[tf].series))
+    .filter((r): r is Runway => r !== null && r.direction === dir);
+  return {
+    headline: runs[0] ?? null,
+    next: runs[1] ?? null,
+    weekly: weeklyRun && weeklyRun.direction === dir ? weeklyRun : null,
   };
 }
 

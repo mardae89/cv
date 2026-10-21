@@ -86,6 +86,11 @@ pullback wick to be caught and pushed on?
 - **Drawings** of last week's candle against the weekly 50 EMA and its wick zone,
   and of this week's daily candles against last week's range and 38–62% zone.
 - **Room to run** — how much of the average weekly and daily range is used.
+- **How long it could last** — an estimate from the market's own history: past
+  pushes on the same timeframe that had already lasted as long as this one, and
+  how much longer the middle half of them kept going. Timed on the highest of
+  the daily, 4H and 1H that agrees with the needle, with the next one down and
+  the weekly trend beside it.
 
 Every threshold is in `MOMENTUM_METER` in `src/lib/config/scoring.ts`.
 
