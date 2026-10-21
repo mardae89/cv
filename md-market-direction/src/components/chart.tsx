@@ -399,36 +399,50 @@ export function PriceChart({
   };
 
   /** The draggable level under a pointer, if any. */
-  const levelAt = (clientX: number, clientY: number): string | null => {
+  const levelAt = (clientX: number, clientY: number, touch = false): string | null => {
     const rect = svgRef.current?.getBoundingClientRect();
     if (!rect || !onLevelMove) return null;
     const x = clientX - rect.left;
     const y = clientY - rect.top;
     if (x > plotW) return null;
     let hit: string | null = null;
+    let hitGap = Infinity;
     for (const lv of levels ?? []) {
       if (!lv.draggable || !lv.id) continue;
-      // A thumb is about 10mm across, so the band is wide; once a line is
-      // selected it is wider still, because that one is the one being worked on.
-      const reach = lv.id === selectedLevel ? 22 : 12;
-      if (Math.abs(Y(lv.price) - y) > reach) continue;
+      // A fingertip covers the better part of a centimetre and lands where it
+      // lands, so the band a touch can grab a line by is wide — anywhere near
+      // the line, not on it. A mouse is precise and gets a narrower one. Either
+      // way the line in hand is easier to catch again than the rest.
+      const selected = lv.id === selectedLevel;
+      const reach = touch ? (selected ? 36 : 26) : selected ? 18 : 10;
+      const gap = Math.abs(Y(lv.price) - y);
+      if (gap > reach) continue;
       // The selected line wins where two overlap: it is the one in hand.
-      if (lv.id === selectedLevel) return lv.id;
-      if (hit == null) hit = lv.id;
+      if (selected) return lv.id;
+      if (gap < hitGap) {
+        hit = lv.id;
+        hitGap = gap;
+      }
     }
     return hit;
   };
 
   const onPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
     svgRef.current?.setPointerCapture(e.pointerId);
-    const held = levelAt(e.clientX, e.clientY);
+    const held = levelAt(e.clientX, e.clientY, e.pointerType !== "mouse");
     if (held && pointers.current.size === 0) {
       const rect = svgRef.current!.getBoundingClientRect();
       const lv = (levels ?? []).find((l) => l.id === held);
+      const grabX = e.clientX - rect.left;
+      // Where the line was picked up, relative to the pointer. A line whose
+      // start is off the left of the window has no offset worth keeping — it
+      // would take a drag halfway across the screen before anything moved — so
+      // it comes to the hand instead.
+      const anchorX = lv ? xAtT(lv.fromT) : grabX;
       dragLevel.current = {
         id: held,
         dPrice: lv ? lv.price - priceAt(e.clientY - rect.top) : 0,
-        dT: lv ? lv.fromT - tAtX(e.clientX - rect.left) : 0,
+        dT: lv && anchorX >= 0 && anchorX <= plotW ? lv.fromT - tAtX(grabX) : 0,
       };
       if (held !== selectedLevel) onSelectLevel?.(held);
       return;
@@ -456,11 +470,15 @@ export function PriceChart({
     if (dragLevel.current) {
       const rect = svgRef.current!.getBoundingClientRect();
       const { id, dPrice, dT } = dragLevel.current;
-      // Free in both directions, at the offset it was picked up at. Price is
-      // clamped to the plot so a line cannot be lost above or below it; time is
-      // not, because a line may well belong off to one side.
+      // Free in both directions, at the offset it was picked up at. Both are
+      // held inside the plot: a line dragged out of the window stops responding
+      // to the hand that is dragging it, which reads as the drag being stuck.
       const y = clamp(e.clientY - rect.top, PAD_T, PAD_T + priceH);
-      onLevelMove?.(id, priceAt(y) + dPrice, tAtX(e.clientX - rect.left) + dT);
+      const x = e.clientX - rect.left;
+      // A margin at each edge so the line always keeps a grabbable length,
+      // whichever way it is set to run.
+      const t = clamp(tAtX(x) + dT, tAtX(36), tAtX(plotW - 36));
+      onLevelMove?.(id, priceAt(y) + dPrice, t);
       return;
     }
     if (pointers.current.has(e.pointerId)) {
@@ -473,7 +491,7 @@ export function PriceChart({
       const y = e.clientY - rect.top;
       setHover(i >= 0 && i < slice.length ? i : null);
       setHoverY(y >= PAD_T && y <= PAD_T + priceH ? y : null);
-      setOverLevel(levelAt(e.clientX, e.clientY) != null);
+      setOverLevel(levelAt(e.clientX, e.clientY, e.pointerType !== "mouse") != null);
       return;
     }
     const g = gesture.current;
@@ -792,8 +810,8 @@ export function PriceChart({
                       <line
                         x1={x0} x2={x1} y1={y} y2={y}
                         stroke={lv.color}
-                        strokeWidth={selected ? 16 : 9}
-                        opacity={selected ? 0.22 : 0.12}
+                        strokeWidth={selected ? 22 : 12}
+                        opacity={selected ? 0.2 : 0.1}
                       />
                       {(selected ? [x0 + 6, (x0 + x1) / 2, x1 - 6] : [Math.max(x0, 10)]).map((hx, hi) => (
                         <g key={`h${hi}`}>
