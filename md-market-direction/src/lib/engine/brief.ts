@@ -1,7 +1,6 @@
 import type { AssetAnalysis, GlobalDirection } from "@/lib/types";
 import type { AnalysisContext } from "./context";
 import { radar } from "./market";
-import { untilLabel } from "@/lib/utils/format";
 
 /**
  * DAILY MARKET BRIEF — the "open the app and know where you stand" summary.
@@ -37,17 +36,15 @@ export function buildBrief(ctx: AnalysisContext, analyses: AssetAnalysis[], glob
     global,
     strongest: bullish.map((a) => ({ symbol: a.asset.symbol, name: a.asset.name, score: a.score.score })),
     weakest: bearish.map((a) => ({ symbol: a.asset.symbol, name: a.asset.name, score: a.score.score })),
-    events: ctx.events
-      .filter((e) => e.time > ctx.now && e.time < ctx.now + 36 * 3_600_000)
-      .slice(0, 5)
-      .map((e) => ({ name: e.name, when: untilLabel(e.time, ctx.now), importance: e.importance })),
+    // Price-only build: no calendar or news in the brief.
+    events: [],
     biggestChanges: changes.map((a) => ({
       symbol: a.asset.symbol,
       delta: a.change!.delta,
       headline: a.change!.headline,
       reasons: a.change!.reasons,
     })),
-    headlines: ctx.news.slice(0, 5).map((n) => ({ headline: n.headline, source: n.source, impact: n.impact })),
+    headlines: [],
     generatedAt: Date.now(),
     demo: ctx.demo,
   };

@@ -131,10 +131,6 @@ export function buildWhatCouldChangeIt(
   if (eventRisk.nextEvent) {
     out.push(`${eventRisk.nextEvent.name} (${eventRisk.nextEvent.importance} impact) — a surprise in either direction can reset the read.`);
   }
-  const macroCat = score.categories.find((c) => c.key === "macro");
-  if (macroCat?.available && macroCat.evidence[0]) {
-    out.push(`A change in ${macroCat.evidence[0].label.toLowerCase()} would change the macro contribution.`);
-  }
   if (score.conflict.dampening > 0.1) {
     out.push("Lower timeframes realigning with the higher timeframes would remove the conflict penalty.");
   }

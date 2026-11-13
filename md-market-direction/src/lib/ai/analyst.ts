@@ -71,11 +71,9 @@ export async function buildAnalystContext(
     symbols,
     analyses,
     global,
-    upcomingEvents: ctx.events
-      .filter((e) => e.time > ctx.now)
-      .slice(0, 6)
-      .map((e) => ({ name: e.name, time: e.time, importance: e.importance, country: e.country })),
-    headlines: ctx.news.slice(0, 8).map((n) => ({ headline: n.headline, source: n.source, impact: n.impact, theme: n.theme })),
+    // Price-only build: no calendar or news reaches the analyst.
+    upcomingEvents: [],
+    headlines: [],
     demo: ctx.demo,
   };
 }
@@ -106,12 +104,8 @@ export function renderContext(data: AnalystContextData): string {
         `momentum score ${a.momentumScore}/100`,
         `categories: ${a.score.categories.map((c) => `${c.label} ${c.points >= 0 ? "+" : ""}${c.points.toFixed(1)}/${c.weight}${c.available ? "" : " (unavailable)"}`).join(", ")}`,
         a.score.conflict.conflicted ? `CONFLICT: ${a.score.conflict.message}` : "",
-        a.eventRisk.nextEvent
-          ? `next event ${a.eventRisk.nextEvent.name} ${untilLabel(a.eventRisk.nextEvent.time)}, risk ${a.eventRisk.risk}`
-          : "no scheduled event risk",
         a.previous ? `score 24h ago ${a.previous.score} (${a.previous.direction})` : "",
         a.change?.reasons.length ? `changes: ${a.change.reasons.join(" ")}` : "",
-        `top news: ${a.news.slice(0, 3).map((n) => `"${n.article.headline}" (${n.assetSentiment >= 0 ? "supportive" : "headwind"})`).join("; ") || "none relevant"}`,
       ]
         .filter(Boolean)
         .join(" | "),
@@ -158,7 +152,7 @@ export function deterministicAnswer(question: string, data: AnalystContextData):
     parts.push(
       data.upcomingEvents.length
         ? `Next scheduled events:\n${data.upcomingEvents.map((e) => `• ${e.name} (${e.country}, ${e.importance} impact) — ${untilLabel(e.time)}`).join("\n")}`
-        : "No scheduled events found in the current calendar window.",
+        : "The economic calendar is not part of this build. Check Forex Factory for scheduled events.",
     );
   } else if (/chang|shift|different/.test(q)) {
     const changed = data.analyses.filter((a) => a.change && a.change.kind !== "stable");

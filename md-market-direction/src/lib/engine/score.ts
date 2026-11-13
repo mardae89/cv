@@ -178,8 +178,8 @@ export function detectConflict(
 export interface BuildScoreParams {
   categories: CategoryInput[];
   conflict: ConflictReport;
-  /** 0..1 — how much conviction the upcoming event calendar should remove. */
-  eventDampening: number;
+  /** Unused in the price-only build; kept so callers need not change. */
+  eventDampening?: number;
   weights?: Partial<Record<CategoryKey, number>>;
   /** Freshness + coverage notes used for the evidence-quality read. */
   qualityNotes?: string[];
@@ -188,7 +188,6 @@ export interface BuildScoreParams {
 export function buildScore({
   categories,
   conflict,
-  eventDampening,
   weights,
   qualityNotes = [],
 }: BuildScoreParams): MdScore {
@@ -196,7 +195,7 @@ export function buildScore({
   const byKey = new Map(categories.map((c) => [c.key, c]));
 
   // 1. Directional categories first (everything except event risk).
-  const directional = CATEGORY_ORDER.filter((k) => k !== "eventRisk");
+  const directional = CATEGORY_ORDER.filter((k) => k !== "eventRisk" && W[k] > 0);
   let raw = 0;
   let availableWeight = 0;
   let votingWeight = 0;
@@ -230,30 +229,8 @@ export function buildScore({
     });
   }
 
-  // 2. Event risk pulls conviction TOWARD NEUTRAL in whichever direction the rest
-  //    of the evidence points. It never flips a market bearish on its own.
-  const eventWeight = W.eventRisk;
-  totalWeight += eventWeight;
-  const sign = raw === 0 ? 0 : Math.sign(raw);
-  const eventPoints = -Math.abs(eventDampening) * eventWeight * sign;
-  const eventInput = byKey.get("eventRisk");
-  if (eventDampening > 0) {
-    availableWeight += eventWeight;
-    votingWeight += eventWeight * voteShare(eventDampening);
-  }
-  raw += eventPoints;
-  results.push({
-    key: "eventRisk",
-    label: CATEGORY_LABELS.eventRisk,
-    strength: -eventDampening,
-    weight: eventWeight,
-    points: eventPoints,
-    fill: 1 - eventDampening,
-    available: (eventInput?.available ?? false) || eventDampening > 0,
-    evidence: eventInput?.evidence ?? [],
-    summary: eventInput?.summary ?? "No scheduled event risk detected for this market.",
-  });
-
+  // 2. Event risk is switched off in the price-only build (weight 0): it was
+  //    driven by a generated calendar, so it no longer touches the score.
   // 3. The score measures alignment among the evidence that EXISTS. Categories
   //    with nothing to say are not counted as votes for "neutral", which would
   //    otherwise cap a textbook trend in a quiet news cycle around 77.

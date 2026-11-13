@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { Candle, Timeframe, TimeframeStructure } from "@/lib/types";
 import { ALL_TIMEFRAMES } from "@/lib/config/scoring";
 import { fmtPrice } from "@/lib/utils/format";
@@ -52,21 +52,114 @@ type Zone = "plot" | "price" | "time";
  * CSS pixel. That keeps text unstretched and makes every gesture a direct
  * pixel-to-value mapping rather than a guess through an aspect-ratio transform.
  */
+/** A shaded price band over a time range — the Wick Catching pullback zone. */
+export interface ChartZone {
+  fromT: number;
+  toT: number;
+  /** The two edges, in price. Order does not matter. */
+  priceA: number;
+  priceB: number;
+  /** A close beyond this invalidates the zone; drawn as a dashed line. */
+  invalidation?: number;
+  color: string;
+  opacity: number;
+  label?: string;
+  /** Run the band the full width of the plot, the way it is drawn by hand. */
+  fullWidth?: boolean;
+}
+
+/** A horizontal price level across a time span — the shift-of-structure line. */
+export interface ChartLevel {
+  price: number;
+  fromT: number;
+  toT: number;
+  color: string;
+  label?: string;
+  dashed?: boolean;
+  /**
+   * Carry the line to the right edge of the plot. A structure point is a level
+   * price has still to break, so it runs forward into empty chart rather than
+   * stopping at the last bar.
+   */
+  extendRight?: boolean;
+  /** Drawn back: a rung behind the one that matters now. */
+  faint?: boolean;
+  /** Identifies the level to the owner when it is selected or dragged. */
+  id?: string;
+  /** Lets the level be selected, dragged, and its ends changed. */
+  draggable?: boolean;
+  /** Carry the line to the left edge as well. */
+  extendLeft?: boolean;
+}
+
+/** A point on a bar — a structure point, or where a shift landed. */
+export interface ChartMarker {
+  t: number;
+  price: number;
+  /** Text beside the dot. Left out, the dot stands on its own. */
+  label?: string;
+  color: string;
+  /** Which side of the bar the text sits on. Ignored without a label. */
+  side: "above" | "below";
+  /** Dot radius; the default suits a marker that carries text. */
+  radius?: number;
+}
+
 export function PriceChart({
   symbol,
   initialTimeframe = "1D",
   height = 420,
+  zones,
+  levels,
+  markers,
+  onLevelMove,
+  selectedLevel,
+  onSelectLevel,
+  overlay,
+  focusT,
+  symbolControl,
+  viewControl,
+  timeframe: controlledTimeframe,
+  onTimeframeChange,
 }: {
   symbol: string;
   initialTimeframe?: Timeframe;
   height?: number;
+  zones?: ChartZone[];
+  levels?: ChartLevel[];
+  markers?: ChartMarker[];
+  /** Called while a draggable level is dragged, with where it now sits. */
+  onLevelMove?: (id: string, price: number, t: number) => void;
+  /** The level the reader has selected, if any. */
+  selectedLevel?: string | null;
+  /** Called when a level is selected, or the selection is dropped. */
+  onSelectLevel?: (id: string | null) => void;
+  /** Pinned inside the chart body — controls for whatever is selected. */
+  overlay?: ReactNode;
+  /** Scroll so this bar time is centred. Changing it moves the view once. */
+  focusT?: number | null;
+  /** Rendered in the chart's own toolbar — a symbol picker, so the market can
+      be changed without leaving the chart. */
+  symbolControl?: ReactNode;
+  /** Also in the toolbar, beside the overlay toggles: what the chart is
+      drawing, so the view can be switched from the chart itself. */
+  viewControl?: ReactNode;
+  /** Drive the timeframe from outside; the chart stays self-driving when omitted. */
+  timeframe?: Timeframe;
+  onTimeframeChange?: (tf: Timeframe) => void;
 }) {
-  const [timeframe, setTimeframe] = useState<Timeframe>(initialTimeframe);
+  const [ownTimeframe, setOwnTimeframe] = useState<Timeframe>(initialTimeframe);
+  const timeframe = controlledTimeframe ?? ownTimeframe;
+  const setTimeframe = (tf: Timeframe) => {
+    setOwnTimeframe(tf);
+    onTimeframeChange?.(tf);
+  };
   const [data, setData] = useState<ChartPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [showMa, setShowMa] = useState(true);
   const [hover, setHover] = useState<number | null>(null);
+  const [hoverY, setHoverY] = useState<number | null>(null);
   const [width, setWidth] = useState(720);
   const [chartH, setChartH] = useState(height);
   const [fullscreen, setFullscreen] = useState(false);
@@ -76,6 +169,30 @@ export function PriceChart({
   const viewRef = useRef<View>({ start: 0, count: 160, priceAuto: true, center: 0, span: 1 });
   const [, bump] = useState(0);
   const repaint = useCallback(() => bump((n) => n + 1), []);
+
+  /* Centre the view on a requested bar. Without this, picking a setup from a
+     list would highlight a zone the user cannot see — the chart keeps whatever
+     window it was last dragged to. */
+  const focusedRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (focusT == null || !data?.candles.length) return;
+    if (focusedRef.current === focusT) return;
+    focusedRef.current = focusT;
+    const idx = data.candles.findIndex((c) => c.t >= focusT);
+    if (idx < 0) return;
+    const view = viewRef.current;
+    // Centring alone is not enough: at a few hundred bars the zone being pointed
+    // at is a sliver. Tighten the window — but never widen one the user has
+    // already zoomed in past.
+    view.count = Math.min(view.count, 60);
+    const maxStart = Math.max(0, data.candles.length - view.count);
+    // A bar that is already within a window sitting at the live edge needs no
+    // scrolling: centring on it there would push the newest bars off screen,
+    // and where price is now is half of what the mark is being read against.
+    view.start = idx >= maxStart ? maxStart : Math.max(0, Math.min(idx - view.count / 2, maxStart));
+    view.priceAuto = true;
+    repaint();
+  }, [focusT, data, repaint]);
 
   /* Real pixel size, so the viewBox is 1:1 with CSS pixels and the chart fills
      whatever space it has — including a rotated phone and true fullscreen. */
@@ -185,8 +302,21 @@ export function PriceChart({
   if (slice.length) {
     if (v.priceAuto) {
       const overlay = showMa ? ma50.filter((x): x is number => x != null) : [];
-      const hi = Math.max(...slice.map((c) => c.h), ...overlay);
-      const lo = Math.min(...slice.map((c) => c.l), ...overlay);
+      // A zone whose candle is on screen must be fully visible, or the band the
+      // user is waiting for could sit just outside the frame.
+      const windowFrom = slice[0]?.t ?? 0;
+      const windowTo = slice[slice.length - 1]?.t ?? 0;
+      const zoneEdges = (zones ?? [])
+        .filter((z) => z.toT >= windowFrom && z.fromT <= windowTo)
+        .flatMap((z) => [z.priceA, z.priceB]);
+      // Levels are deliberately NOT in here. A line being dragged would widen
+      // the range, the range would move the line under the finger holding it,
+      // and the drag would stutter against its own feedback.
+      const markerEdges = (markers ?? [])
+        .filter((m) => m.t >= windowFrom && m.t <= windowTo)
+        .map((m) => m.price);
+      const hi = Math.max(...slice.map((c) => c.h), ...overlay, ...zoneEdges, ...markerEdges);
+      const lo = Math.min(...slice.map((c) => c.l), ...overlay, ...zoneEdges, ...markerEdges);
       const pad = (hi - lo) * 0.08 || hi * 0.01;
       top = hi + pad;
       bot = lo - pad;
@@ -199,16 +329,31 @@ export function PriceChart({
   }
 
   const step = plotW / Math.max(1, n);
-  const bodyW = Math.max(1, Math.min(step * 0.62, 30));
+  const bodyW = Math.max(1, Math.min(step * 0.74, 34));
   /** i is an index into `slice`; it is offset back into absolute bar space. */
   const X = (i: number) => (first + i - v.start) * step + step / 2;
+  /* Time maps to x continuously, not bar by bar: a line dragged sideways has to
+     follow the finger rather than jump from one candle to the next. */
+  const barMs =
+    candles.length > 1
+      ? (candles[candles.length - 1].t - candles[0].t) / (candles.length - 1)
+      : 1;
+  const xAtT = (t: number) => ((t - (candles[0]?.t ?? 0)) / barMs - v.start) * step + step / 2;
+  const tAtX = (x: number) => (candles[0]?.t ?? 0) + ((x - step / 2) / step + v.start) * barMs;
   const Y = (p: number) => PAD_T + ((top - p) / (top - bot || 1)) * priceH;
+  const priceAt = (y: number) => top - ((y - PAD_T) / (priceH || 1)) * (top - bot);
   const maxVol = Math.max(1, ...slice.map((c) => c.v));
   const volTop = PAD_T + priceH + GAP;
   const VY = (vol: number) => volTop + VOL_H - (vol / maxVol) * VOL_H;
 
   /* ── gestures ──────────────────────────────────────────────────────────── */
   const pointers = useRef(new Map<number, { x: number; y: number }>());
+  /* A level being dragged, and where it was held: the line keeps the same
+     distance from the pointer it was picked up at, so it does not jump to centre
+     itself the moment it starts moving. While one is held the chart does not
+     pan — the gesture belongs to the line, not to the view. */
+  const dragLevel = useRef<{ id: string; dPrice: number; dT: number } | null>(null);
+  const [overLevel, setOverLevel] = useState(false);
   const gesture = useRef<{
     zone: Zone;
     startX: number;
@@ -253,8 +398,57 @@ export function PriceChart({
     v.span = clamp(base.span * factor, Math.abs(v.center) * 1e-5 || 1e-6, Math.abs(v.center) * 20 || 1e9);
   };
 
+  /** The draggable level under a pointer, if any. */
+  const levelAt = (clientX: number, clientY: number, touch = false): string | null => {
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (!rect || !onLevelMove) return null;
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    if (x > plotW) return null;
+    let hit: string | null = null;
+    let hitGap = Infinity;
+    for (const lv of levels ?? []) {
+      if (!lv.draggable || !lv.id) continue;
+      // A fingertip covers the better part of a centimetre and lands where it
+      // lands, so the band a touch can grab a line by is wide — anywhere near
+      // the line, not on it. A mouse is precise and gets a narrower one. Either
+      // way the line in hand is easier to catch again than the rest.
+      const selected = lv.id === selectedLevel;
+      const reach = touch ? (selected ? 36 : 26) : selected ? 18 : 10;
+      const gap = Math.abs(Y(lv.price) - y);
+      if (gap > reach) continue;
+      // The selected line wins where two overlap: it is the one in hand.
+      if (selected) return lv.id;
+      if (gap < hitGap) {
+        hit = lv.id;
+        hitGap = gap;
+      }
+    }
+    return hit;
+  };
+
   const onPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
     svgRef.current?.setPointerCapture(e.pointerId);
+    const held = levelAt(e.clientX, e.clientY, e.pointerType !== "mouse");
+    if (held && pointers.current.size === 0) {
+      const rect = svgRef.current!.getBoundingClientRect();
+      const lv = (levels ?? []).find((l) => l.id === held);
+      const grabX = e.clientX - rect.left;
+      // Where the line was picked up, relative to the pointer. A line whose
+      // start is off the left of the window has no offset worth keeping — it
+      // would take a drag halfway across the screen before anything moved — so
+      // it comes to the hand instead.
+      const anchorX = lv ? xAtT(lv.fromT) : grabX;
+      dragLevel.current = {
+        id: held,
+        dPrice: lv ? lv.price - priceAt(e.clientY - rect.top) : 0,
+        dT: lv && anchorX >= 0 && anchorX <= plotW ? lv.fromT - tAtX(grabX) : 0,
+      };
+      if (held !== selectedLevel) onSelectLevel?.(held);
+      return;
+    }
+    // A press anywhere else puts the line down.
+    if (selectedLevel && zoneAt(e.clientX, e.clientY) === "plot") onSelectLevel?.(null);
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     const pts = Array.from(pointers.current.values());
     const rect = svgRef.current!.getBoundingClientRect();
@@ -273,6 +467,20 @@ export function PriceChart({
   };
 
   const onPointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (dragLevel.current) {
+      const rect = svgRef.current!.getBoundingClientRect();
+      const { id, dPrice, dT } = dragLevel.current;
+      // Free in both directions, at the offset it was picked up at. Both are
+      // held inside the plot: a line dragged out of the window stops responding
+      // to the hand that is dragging it, which reads as the drag being stuck.
+      const y = clamp(e.clientY - rect.top, PAD_T, PAD_T + priceH);
+      const x = e.clientX - rect.left;
+      // A margin at each edge so the line always keeps a grabbable length,
+      // whichever way it is set to run.
+      const t = clamp(tAtX(x) + dT, tAtX(36), tAtX(plotW - 36));
+      onLevelMove?.(id, priceAt(y) + dPrice, t);
+      return;
+    }
     if (pointers.current.has(e.pointerId)) {
       pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     } else if (!gesture.current) {
@@ -280,7 +488,10 @@ export function PriceChart({
       const rect = svgRef.current!.getBoundingClientRect();
       const abs = Math.round(v.start + (e.clientX - rect.left - step / 2) / step);
       const i = abs - first;
+      const y = e.clientY - rect.top;
       setHover(i >= 0 && i < slice.length ? i : null);
+      setHoverY(y >= PAD_T && y <= PAD_T + priceH ? y : null);
+      setOverLevel(levelAt(e.clientX, e.clientY, e.pointerType !== "mouse") != null);
       return;
     }
     const g = gesture.current;
@@ -330,6 +541,7 @@ export function PriceChart({
   };
 
   const endPointer = (e: React.PointerEvent<SVGSVGElement>) => {
+    dragLevel.current = null;
     pointers.current.delete(e.pointerId);
     if (pointers.current.size === 0) gesture.current = null;
     else {
@@ -366,6 +578,7 @@ export function PriceChart({
   const timeTicks = buildTimeTicks(slice, timeframe, plotW, step, X);
 
   const hovered = hover != null ? slice[hover] : null;
+  const legend = hovered ?? slice[slice.length - 1] ?? null;
 
   return (
     <div className={`panel ${fullscreen ? "chart-fs" : ""}`} ref={hostRef}>
@@ -384,7 +597,9 @@ export function PriceChart({
           ))}
         </div>
         <div className="flex flex-wrap items-center gap-3 text-[10px] uppercase tracking-widest">
+          {symbolControl ? <div className="min-w-[9rem] flex-1 normal-case tracking-normal sm:flex-none">{symbolControl}</div> : null}
           <Toggle label="50 EMA" on={showMa} onChange={setShowMa} swatch="bg-gold" />
+          {viewControl}
           {!v.priceAuto ? (
             <button onClick={resetPrice} className="border border-gold/50 px-2 py-0.5 text-gold">
               Auto price
@@ -413,17 +628,27 @@ export function PriceChart({
         <div className="p-4 text-sm text-mute">Chart data unavailable.</div>
       ) : (
         <div className="chart-body relative">
+          {overlay ? (
+            // Below the OHLC legend rather than over it: the numbers are what a
+            // reader checks while they are moving a line.
+            <div className="pointer-events-auto absolute left-2 top-10 z-20">{overlay}</div>
+          ) : null}
           <svg
             ref={svgRef}
             width={width}
             height={H}
             viewBox={`0 0 ${width} ${H}`}
-            style={{ display: "block", touchAction: "none", userSelect: "none", cursor: "crosshair" }}
+            style={{
+              display: "block",
+              touchAction: "none",
+              userSelect: "none",
+              cursor: overLevel ? "ns-resize" : "crosshair",
+            }}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={endPointer}
             onPointerCancel={endPointer}
-            onPointerLeave={() => setHover(null)}
+            onPointerLeave={() => { setHover(null); setHoverY(null); }}
             onWheel={onWheel}
             onDoubleClick={resetAll}
             role="img"
@@ -432,7 +657,7 @@ export function PriceChart({
             {/* price grid + right-hand scale */}
             {priceTicks.map((p) => (
               <g key={p}>
-                <line x1={0} x2={plotW} y1={Y(p)} y2={Y(p)} stroke="var(--color-hairline-soft)" strokeWidth={1} />
+                <line x1={0} x2={plotW} y1={Y(p)} y2={Y(p)} stroke="var(--color-hairline-soft)" strokeWidth={1} opacity={0.5} />
                 <text
                   x={plotW + 8}
                   y={Y(p) + 3.5}
@@ -448,12 +673,69 @@ export function PriceChart({
             {/* time grid + bottom scale */}
             {timeTicks.map((t) => (
               <g key={t.i}>
-                <line x1={X(t.i)} x2={X(t.i)} y1={PAD_T} y2={PAD_T + priceH} stroke="var(--color-hairline-soft)" strokeWidth={1} />
+                <line x1={X(t.i)} x2={X(t.i)} y1={PAD_T} y2={PAD_T + priceH} stroke="var(--color-hairline-soft)" strokeWidth={1} opacity={0.5} />
                 <text x={X(t.i)} y={H - 9} fill="var(--color-faint)" fontSize={10} textAnchor="middle" fontFamily="ui-monospace, monospace">
                   {t.label}
                 </text>
               </g>
             ))}
+
+            {/* pullback zones — drawn under price so the candles stay readable */}
+            {(zones ?? []).map((z, k) => {
+              // Time maps to a bar index, so a zone spanning a candle's period
+              // lands exactly on that candle rather than near it.
+              const indexAt = (t: number) => {
+                if (!slice.length) return null;
+                if (t <= slice[0].t) return 0;
+                if (t >= slice[slice.length - 1].t) return slice.length - 1;
+                let best = 0;
+                for (let i = 0; i < slice.length; i++) if (slice[i].t <= t) best = i;
+                return best;
+              };
+              const i0 = indexAt(z.fromT);
+              const i1 = indexAt(z.toT);
+              if (i0 == null || i1 == null) return null;
+              // A price band is a level, not an event: drawn by hand it runs off
+              // both edges of the screen rather than stopping at one candle.
+              const x0 = z.fullWidth ? 0 : X(i0) - step / 2;
+              const x1 = z.fullWidth ? plotW : Math.max(X(i1) + step / 2, x0 + step);
+              const yA = Y(z.priceA);
+              const yB = Y(z.priceB);
+              const top = Math.min(yA, yB);
+              const h = Math.max(2, Math.abs(yB - yA));
+              return (
+                <g key={`z${k}`}>
+                  <rect
+                    x={x0}
+                    y={top}
+                    width={Math.max(2, x1 - x0)}
+                    height={h}
+                    fill={z.color}
+                    fillOpacity={z.opacity}
+                    stroke={z.color}
+                    strokeOpacity={Math.min(1, z.opacity + 0.35)}
+                    strokeWidth={1}
+                  />
+                  {z.invalidation != null ? (
+                    <line
+                      x1={x0}
+                      x2={x1}
+                      y1={Y(z.invalidation)}
+                      y2={Y(z.invalidation)}
+                      stroke={z.color}
+                      strokeOpacity={0.9}
+                      strokeWidth={1}
+                      strokeDasharray="4 3"
+                    />
+                  ) : null}
+                  {z.label ? (
+                    <text x={x0 + 4} y={top - 4} fill={z.color} fontSize={9} fontFamily="ui-monospace, monospace">
+                      {z.label}
+                    </text>
+                  ) : null}
+                </g>
+              );
+            })}
 
             {/* volume */}
             {slice.map((c, i) => (
@@ -476,14 +758,20 @@ export function PriceChart({
               const yc = Y(c.c);
               return (
                 <g key={i}>
-                  <line x1={X(i)} x2={X(i)} y1={Y(c.h)} y2={Y(c.l)} stroke={color} strokeWidth={1} />
+                  <line
+                    x1={X(i)} x2={X(i)} y1={Y(c.h)} y2={Y(c.l)}
+                    stroke={color} strokeWidth={Math.min(1.4, Math.max(1, bodyW * 0.14))}
+                    shapeRendering="crispEdges"
+                  />
                   <rect
                     x={X(i) - bodyW / 2}
                     y={Math.min(yo, yc)}
                     width={bodyW}
                     height={Math.max(1, Math.abs(yc - yo))}
                     fill={color}
-                    opacity={0.92}
+                    stroke={color}
+                    strokeWidth={bodyW > 3 ? 1 : 0}
+                    shapeRendering="crispEdges"
                   />
                 </g>
               );
@@ -492,6 +780,172 @@ export function PriceChart({
             {showMa ? (
               <path d={linePath(ma50, X, Y)} fill="none" stroke="var(--color-gold)" strokeWidth={1.6} />
             ) : null}
+
+            {/* structure levels and sequence markers */}
+            {(() => {
+            // Two levels can sit a few pixels apart — the line in force and the
+            // one the last shift broke. Labels then print on top of each other,
+            // or across the other line, so each one is placed clear of both.
+            const usedLabelY: number[] = [];
+            const lineYs = (levels ?? []).map((lv) => Y(lv.price));
+            return (levels ?? []).map((lv, k) => {
+              // Clamped to the plot, not to a bar: the line is drawn where its
+              // time falls, and only the drawing stops at the frame.
+              const at = (t: number) => clamp(xAtT(t), 0, plotW);
+              const anchor = at(lv.fromT);
+              const x0 = lv.extendLeft ? 0 : anchor;
+              const x1 = lv.extendRight
+                ? plotW
+                : Math.max(at(lv.toT), (lv.extendLeft ? anchor : x0) + step);
+              const y = Y(lv.price);
+              const selected = lv.draggable && lv.id != null && lv.id === selectedLevel;
+              return (
+                <g key={`lv${k}`} pointerEvents="none">
+                  {lv.draggable ? (
+                    // Something to take hold of, and a wider band of line to
+                    // grab: the level is meant to be put where the reader wants
+                    // it, so it has to look like it can be moved. Selected, it
+                    // lights up and grows handles at both ends and the middle.
+                    <>
+                      <line
+                        x1={x0} x2={x1} y1={y} y2={y}
+                        stroke={lv.color}
+                        strokeWidth={selected ? 22 : 12}
+                        opacity={selected ? 0.2 : 0.1}
+                      />
+                      {(selected ? [x0 + 6, (x0 + x1) / 2, x1 - 6] : [Math.max(x0, 10)]).map((hx, hi) => (
+                        <g key={`h${hi}`}>
+                          <circle cx={hx} cy={y} r={selected ? 5 : 4} fill={lv.color} stroke="var(--color-void)" strokeWidth={1} />
+                          {selected ? null : (
+                            <circle cx={hx} cy={y} r={7} fill="none" stroke={lv.color} strokeWidth={1} opacity={0.5} />
+                          )}
+                        </g>
+                      ))}
+                    </>
+                  ) : null}
+                  <line
+                    x1={x0} x2={x1} y1={y} y2={y}
+                    stroke={lv.color}
+                    strokeWidth={selected ? 2.4 : lv.faint ? 1 : 1.4}
+                    opacity={lv.faint && !selected ? 0.5 : 1}
+                    strokeDasharray={lv.dashed ? "5 4" : undefined}
+                  />
+                  {lv.label ? (
+                    (() => {
+                      // Kept inside the plot: a level can start before the
+                      // visible window or run to the right edge, and an
+                      // unclamped label is half-cut by the frame or lost under
+                      // the price scale. The backing keeps it readable where it
+                      // crosses candles, which is most of the time.
+                      // A line running to the right edge is labelled there,
+                      // next to the price it has to be broken at, the way a
+                      // hand-drawn level is annotated.
+                      // The label sits at whichever end the line finishes on,
+                      // so it never floats away from the line it names.
+                      const anchorEnd = lv.extendRight || lv.extendLeft || x0 + 4 > plotW - 80;
+                      const lx = lv.extendRight
+                        ? plotW - 4
+                        : Math.min(Math.max((lv.extendLeft ? x1 : x0) + (lv.extendLeft ? -4 : 4), 4), plotW - 4);
+                      const w = lv.label.length * 5.4 + 8;
+                      // Above its own line by default; below it when another
+                      // line runs through where the text would sit.
+                      const clashes = (c: number) =>
+                        lineYs.some((ly, j) => j !== k && ly > c - 13 && ly < c + 5) ||
+                        usedLabelY.some((u) => Math.abs(u - c) < 13);
+                      let ty = y - 5;
+                      if (clashes(ty)) ty = y + 13;
+                      while (clashes(ty)) ty += 12;
+                      usedLabelY.push(ty);
+                      return (
+                        <>
+                          <rect
+                            x={anchorEnd ? lx - w + 4 : lx - 4}
+                            y={ty - 9}
+                            width={w}
+                            height={12}
+                            fill="var(--color-void)"
+                            opacity={0.78}
+                          />
+                          <text
+                            x={lx}
+                            y={ty}
+                            fill={lv.color}
+                            opacity={lv.faint ? 0.65 : 1}
+                            fontSize={9}
+                            fontFamily="ui-monospace, monospace"
+                            textAnchor={anchorEnd ? "end" : "start"}
+                          >
+                            {lv.label}
+                          </text>
+                        </>
+                      );
+                    })()
+                  ) : null}
+                </g>
+              );
+            });
+            })()}
+
+            {(() => {
+              // Stagger only what actually collides. A sequence of three markers
+              // lands on neighbouring bars and needs separating; eighty structure
+              // points spread across the chart do not, and tiering them by index
+              // drew leader lines the height of the plot.
+              const placed: { x: number; tier: number }[] = [];
+              return (markers ?? []).map((m, k) => {
+                let best = -1;
+                for (let i = 0; i < slice.length; i++) if (slice[i].t <= m.t) best = i;
+                // Off the window either way, the mark is not drawn. Clamping it
+                // to the last visible bar stacked marks from bars off to the
+                // right onto the edge, at prices that bar never traded.
+                if (best < 0 || m.t > slice[slice.length - 1].t) return null;
+                const x = X(best);
+                const y = Y(m.price);
+                const r = m.radius ?? 3;
+                // A dot on its own needs no room made for it, and no leader
+                // line: it sits on the price it marks.
+                if (!m.label) {
+                  // A thin dark ring keeps a green dot readable on a green
+                  // candle, and a red one on red.
+                  return (
+                    <circle
+                      key={`mk${k}`}
+                      cx={x}
+                      cy={y}
+                      r={r}
+                      fill={m.color}
+                      stroke="var(--color-void)"
+                      strokeWidth={1}
+                      pointerEvents="none"
+                    />
+                  );
+                }
+                const up = m.side === "above";
+                const near = placed.filter((q) => Math.abs(q.x - x) < 44).length;
+                placed.push({ x, tier: near });
+                const tier = near * 13;
+                const ty = up ? y - 10 - tier : y + 18 + tier;
+              return (
+                <g key={`mk${k}`} pointerEvents="none">
+                  <circle cx={x} cy={y} r={r} fill={m.color} />
+                  {tier > 0 ? (
+                    <line x1={x} x2={x} y1={y} y2={up ? ty + 3 : ty - 9} stroke={m.color} strokeWidth={1} opacity={0.45} />
+                  ) : null}
+                  <text
+                    x={Math.min(Math.max(x, 28), plotW - 28)}
+                    y={ty}
+                    fill={m.color}
+                    fontSize={9}
+                    textAnchor="middle"
+                    fontFamily="ui-monospace, monospace"
+                  >
+                    {m.label}
+                  </text>
+                </g>
+                );
+              });
+            })()}
+
 
             {/* last price marker on the scale */}
             {slice.length ? (
@@ -520,8 +974,41 @@ export function PriceChart({
               </g>
             ) : null}
 
+            {/* crosshair: both arms, each ending in a label on its own scale */}
             {hover != null && hovered ? (
-              <line x1={X(hover)} x2={X(hover)} y1={PAD_T} y2={volTop + VOL_H} stroke="var(--color-gold)" strokeWidth={1} opacity={0.55} />
+              <g pointerEvents="none">
+                <line
+                  x1={X(hover)} x2={X(hover)} y1={PAD_T} y2={volTop + VOL_H}
+                  stroke="var(--color-mute)" strokeWidth={1} strokeDasharray="3 3" opacity={0.7}
+                />
+                {hoverY != null ? (
+                  <>
+                    <line
+                      x1={0} x2={plotW} y1={hoverY} y2={hoverY}
+                      stroke="var(--color-mute)" strokeWidth={1} strokeDasharray="3 3" opacity={0.7}
+                    />
+                    <rect x={plotW + 1} y={hoverY - 8} width={PRICE_GUTTER - 2} height={16} fill="var(--color-mute)" />
+                    <text
+                      x={plotW + 5} y={hoverY + 4}
+                      fill="var(--color-void)" fontSize={10} fontWeight={600}
+                      fontFamily="ui-monospace, monospace"
+                    >
+                      {fmtPrice(priceAt(hoverY), data.precision)}
+                    </text>
+                  </>
+                ) : null}
+                <rect
+                  x={Math.max(0, Math.min(width - 96, X(hover) - 48))}
+                  y={H - TIME_STRIP + 3} width={96} height={16} fill="var(--color-mute)"
+                />
+                <text
+                  x={Math.max(48, Math.min(width - 48, X(hover)))} y={H - TIME_STRIP + 15}
+                  fill="var(--color-void)" fontSize={10} fontWeight={600} textAnchor="middle"
+                  fontFamily="ui-monospace, monospace"
+                >
+                  {crosshairTime(hovered.t, timeframe)}
+                </text>
+              </g>
             ) : null}
 
             {/* scale hit-zones, drawn last so they sit above the plot */}
@@ -531,16 +1018,27 @@ export function PriceChart({
             <line x1={0} x2={width} y1={H - TIME_STRIP} y2={H - TIME_STRIP} stroke="var(--color-hairline)" strokeWidth={1} />
           </svg>
 
-          {hovered ? (
-            <div className="pointer-events-none absolute left-3 top-2 border border-hairline bg-ink/95 px-3 py-2 text-[11px]">
-              <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 tnum">
-                <span className="text-faint">O</span><span>{fmtPrice(hovered.o, data.precision)}</span>
-                <span className="text-faint">H</span><span>{fmtPrice(hovered.h, data.precision)}</span>
-                <span className="text-faint">L</span><span>{fmtPrice(hovered.l, data.precision)}</span>
-                <span className="text-faint">C</span>
-                <span className={hovered.c >= hovered.o ? "text-bull" : "text-bear"}>{fmtPrice(hovered.c, data.precision)}</span>
-              </div>
-              <div className="mt-1 text-faint">{new Date(hovered.t).toUTCString().slice(5, 22)} UTC</div>
+          {legend ? (
+            <div className="pointer-events-none absolute left-3 top-2 flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 text-[11px]">
+              <span className="display text-xs font-bold tracking-tight text-bone">{data.symbol}</span>
+              <span className="text-[10px] uppercase tracking-widest text-faint">{timeframe}</span>
+              <span className="tnum text-faint">
+                O<span className="ml-1 text-mute">{fmtPrice(legend.o, data.precision)}</span>
+              </span>
+              <span className="tnum text-faint">
+                H<span className="ml-1 text-mute">{fmtPrice(legend.h, data.precision)}</span>
+              </span>
+              <span className="tnum text-faint">
+                L<span className="ml-1 text-mute">{fmtPrice(legend.l, data.precision)}</span>
+              </span>
+              <span className="tnum text-faint">
+                C<span className={`ml-1 ${legend.c >= legend.o ? "text-bull" : "text-bear"}`}>
+                  {fmtPrice(legend.c, data.precision)}
+                </span>
+              </span>
+              <span className={`tnum ${legend.c >= legend.o ? "text-bull" : "text-bear"}`}>
+                {legend.o ? `${legend.c >= legend.o ? "+" : ""}${(((legend.c - legend.o) / legend.o) * 100).toFixed(2)}%` : ""}
+              </span>
             </div>
           ) : null}
 
@@ -606,6 +1104,14 @@ function buildPriceTicks(bot: number, top: number, target: number): number[] {
   const out: number[] = [];
   for (let p = first; p <= top && out.length < 12; p += stepSize) out.push(p);
   return out;
+}
+
+/** The crosshair's time stamp, at the granularity the timeframe deserves. */
+function crosshairTime(t: number, tf: Timeframe): string {
+  const d = new Date(t);
+  const day = `${String(d.getUTCDate()).padStart(2, "0")} ${d.toLocaleString("en", { month: "short", timeZone: "UTC" })}`;
+  if (tf === "1D" || tf === "1W") return `${day} ${d.getUTCFullYear()}`;
+  return `${day} ${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
 }
 
 /** Date labels whose granularity follows the timeframe and the zoom level. */

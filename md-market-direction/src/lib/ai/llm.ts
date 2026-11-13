@@ -119,4 +119,4 @@ Rules you must always follow:
 - You only use the data provided to you in the CONTEXT block. If something is not in the context,
   say plainly that the data is unavailable. Never invent prices, levels, statistics or headlines.
 - Write in short, plain English. A trader without a finance degree must understand it.
-- Always mention what could change the picture (event risk, structure break, MA cross, macro shift).`;
+- Always mention what could change the picture (structure break, MA cross, momentum shift).`;

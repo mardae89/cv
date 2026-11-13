@@ -8,13 +8,17 @@ import type { CategoryKey, Timeframe, TradingMode, TrendScope } from "@/lib/type
  * A/B tested or personalised per user without touching the engine.
  */
 export const DEFAULT_WEIGHTS: Record<CategoryKey, number> = {
-  technical: 20,
-  structure: 20,
-  momentum: 15,
-  news: 15,
-  macro: 15,
-  crossMarket: 10,
-  eventRisk: 5,
+  // PRICE-ONLY BUILD. Every point of the score comes from live prices: trend,
+  // structure, momentum and cross-market confirmation. News, macro and event
+  // risk were scored from generated sample data, so they are switched off
+  // (weight 0) rather than allowed to move a number traders act on.
+  technical: 31,
+  structure: 31,
+  momentum: 23,
+  news: 0,
+  macro: 0,
+  crossMarket: 15,
+  eventRisk: 0,
 };
 
 export const CATEGORY_LABELS: Record<CategoryKey, string> = {
@@ -27,14 +31,12 @@ export const CATEGORY_LABELS: Record<CategoryKey, string> = {
   eventRisk: "Event Risk",
 };
 
+/** The categories the score is built from. Price-derived only in this build. */
 export const CATEGORY_ORDER: CategoryKey[] = [
   "technical",
   "structure",
   "momentum",
-  "news",
-  "macro",
   "crossMarket",
-  "eventRisk",
 ];
 
 /**
@@ -141,13 +143,17 @@ export const MODE_TIMEFRAMES: Record<
 export const HTF_SCOPE: Timeframe[] = ["1W", "1D"];
 export const LTF_SCOPE: Timeframe[] = ["4H", "1H", "30M", "15M", "5M"];
 
-export const TREND_SCOPES: Record<TrendScope, { label: string; blurb: string }> = {
+export const TREND_SCOPES: Record<TrendScope, { label: string; blurb: string; shortLabel: string }> = {
   htf: {
     label: "Higher timeframes",
+    // Weekly and daily analysis is swing analysis; naming it so keeps the
+    // caption on a market page in the trader's own vocabulary.
+    shortLabel: "Swing",
     blurb: "Weekly and daily only. These decide the trend.",
   },
   all: {
     label: "All timeframes",
+    shortLabel: "All",
     blurb: "4H, 1H, 30M, 15M and 5M — the execution charts, scored on their own.",
   },
 };
@@ -183,7 +189,6 @@ export const MD_MOMENTUM_RULES = {
   fourHourStructure: 10,
   oneHourConfirmation: 8,
   momentum: 8,
-  news: 4,
 } as const;
 
 /**

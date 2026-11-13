@@ -43,13 +43,9 @@ export async function GET(req: Request) {
       ma200: ma200.slice(start),
       swings: swings.filter((s) => s.index >= start).map((s) => ({ t: s.t, price: s.price, kind: s.kind })),
       structure,
-      events: ctx.events
-        .filter((e) => e.importance === "high" && e.time >= all[start].t && e.time <= all[all.length - 1].t + 86_400_000)
-        .map((e) => ({ t: e.time, name: e.name, importance: e.importance })),
-      news: ctx.news
-        .filter((n) => n.impact === "high" && n.symbols.includes(asset.symbol))
-        .slice(0, 12)
-        .map((n) => ({ t: n.publishedAt, headline: n.headline })),
+      // Price-only build: no calendar or news markers on the chart.
+      events: [],
+      news: [],
       generatedAt: Date.now(),
     },
     { headers: CACHE_SHORT },

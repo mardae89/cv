@@ -16,19 +16,24 @@ import { resolveAsset } from "@/lib/data/universe";
 import type { AnalysisContext } from "./context";
 import { analyseMomentum, analyseTechnical } from "./technical";
 import { analyseStructure } from "./structure";
-import { analyseNews } from "./news";
-import { analyseMacro } from "./macro";
-import { analyseEventRisk } from "./eventRisk";
+import type { analyseNews } from "./news";
+import type { analyseMacro } from "./macro";
+import type { EventRiskResult } from "@/lib/types";
 import { analyseCrossMarket } from "./crossMarket";
 import { buildScore, detectConflict, weightByMode, type CategoryInput } from "./score";
 import { buildChange, buildWhatCouldChangeIt, buildWhy } from "./narrative";
 import { clamp } from "./indicators";
+import { estimateRunway, runwayTimeframe } from "./runway";
 import { singleton, TtlCache } from "@/lib/utils/cache";
 
 /** How many bars represent 24 hours on each timeframe — used for "yesterday's" run. */
 const BARS_PER_DAY: Record<Timeframe, number> = {
   "5M": 288, "15M": 96, "30M": 48, "1H": 24, "4H": 6, "1D": 1, "1W": 0,
 };
+
+const NO_NEWS: ReturnType<typeof analyseNews> = { strength: 0, items: [], evidence: [], coverage: 0, available: false };
+const NO_MACRO: ReturnType<typeof analyseMacro> = { strength: 0, drivers: [], available: false };
+const NO_EVENT_RISK: EventRiskResult = { nextEvent: null, hoursUntil: null, risk: "none", dampening: 0, upcoming: [] };
 
 const analysisCache = singleton("analysisCache", () => new TtlCache<AssetAnalysis>(45_000, 400));
 
@@ -98,9 +103,11 @@ export async function analyseAsset(
   const quote = await ctx.quote(asset.symbol);
   if (!quote) return null;
 
-  const newsReading = analyseNews(asset, ctx.news, ctx.now);
-  const macroReading = analyseMacro(asset, ctx.macro);
-  const eventRisk = analyseEventRisk(asset, ctx.events, ctx.now);
+  // Price-only build: news, macro and the economic calendar are not used. They
+  // ran on generated sample data, so they are neither scored nor shown.
+  const newsReading = NO_NEWS;
+  const macroReading = NO_MACRO;
+  const eventRisk = NO_EVENT_RISK;
   const cross = await analyseCrossMarket(ctx, asset);
 
   const score = assemble({
@@ -121,7 +128,7 @@ export async function analyseAsset(
     const prevSeries = {} as Record<Timeframe, Candle[]>;
     for (const tf of ALL_TIMEFRAMES) prevSeries[tf] = truncate(series[tf] ?? [], tf);
     const prevCore = readCore(prevSeries);
-    const prevNews = analyseNews(asset, ctx.news.filter((a) => a.publishedAt <= ctx.now - 86_400_000), ctx.now - 86_400_000);
+    const prevNews = NO_NEWS;
     const prevScore = assemble({
       mode,
       scope,
@@ -137,6 +144,12 @@ export async function analyseAsset(
   }
 
   const momentumStrength = weightByMode(core.momentum, mode, scope);
+  const runway = estimateRunway(
+    series[runwayTimeframe(scope)] ?? [],
+    score.direction,
+    scope,
+    asset.symbol,
+  );
   const analysis: AssetAnalysis = {
     asset,
     quote,
@@ -151,6 +164,7 @@ export async function analyseAsset(
     crossMarket: cross.readings,
     eventRisk,
     momentumScore: Math.round(((momentumStrength + 1) / 2) * 100),
+    runway,
     why: buildWhy(asset, score, core.technical, core.structure, eventRisk),
     whatCouldChangeIt: buildWhatCouldChangeIt(asset, score, core.technical, core.structure, eventRisk),
     previous,
@@ -266,7 +280,6 @@ function assemble({ mode, scope, core, news, macro, cross, eventDampening, ctxDe
 
   const qualityNotes: string[] = [];
   if (ctxDemo) qualityNotes.push("Demo data — not live market data");
-  if (!news.available) qualityNotes.push("No relevant news coverage");
 
   return buildScore({ categories, conflict, eventDampening, qualityNotes });
 }
