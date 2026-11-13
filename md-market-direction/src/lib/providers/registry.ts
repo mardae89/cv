@@ -150,7 +150,8 @@ export const providers = {
 
 /** True when ANY core data source is running on demo data. */
 export function isDemoMode(): boolean {
-  return !liveMarket || !liveNews || !liveCalendar;
+  // Price-only build: prices are the only data the app uses.
+  return !liveMarket;
 }
 
 /** How many symbols any live provider is configured to serve. */
@@ -178,9 +179,6 @@ export function liveCoverage(): {
 export function demoSources(): string[] {
   const out: string[] = [];
   if (!liveMarket) out.push("Market data");
-  if (!liveNews) out.push("News");
-  if (!liveCalendar) out.push("Economic calendar");
-  out.push("Macro");
   return out;
 }
 
@@ -193,9 +191,6 @@ export function providerStatus(): ProviderHealth[] {
     ...(liveOanda ? [liveOanda.health()] : []),
     ...(liveTwelve ? [liveTwelve.health()] : []),
     ...(liveOanda || liveTwelve ? [] : [providers.market.health()]),
-    providers.news.health(),
-    providers.calendar.health(),
-    providers.macro.health(),
     providers.fundamentals.health(),
   ];
 }

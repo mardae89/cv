@@ -269,68 +269,7 @@ export default function MarketDetailPage({ params }: { params: Promise<{ symbol:
         </Panel>
       </section>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* -------------------------- NEWS SENTIMENT ---------------------------- */}
-        <section>
-          <SectionHeading title="News Sentiment" subtitle="Mapped to this market by theme relationship, not by counting positive words." />
-          <Panel>
-            {a.news.length === 0 ? (
-              <p className="px-4 py-6 text-sm text-mute">No sufficiently relevant news found for this market in the last 72 hours.</p>
-            ) : (
-              a.news.slice(0, 8).map((n) => (
-                <div key={n.article.id} className="border-b border-hairline-soft px-4 py-3 last:border-b-0">
-                  <div className="flex items-start justify-between gap-3">
-                    <p className="text-sm leading-snug">{n.article.headline}</p>
-                    <span className={`shrink-0 text-xs font-semibold ${n.assetSentiment > 0.1 ? "text-bull" : n.assetSentiment < -0.1 ? "text-bear" : "text-mute"}`}>
-                      {n.assetSentiment > 0.1 ? "Bullish" : n.assetSentiment < -0.1 ? "Bearish" : "Neutral"}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-xs text-mute">{n.article.summary}</p>
-                  <p className="mt-1 text-xs text-faint">{n.reason}</p>
-                  <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-widest text-faint">
-                    <span>{n.article.source}</span>
-                    <span>{timeAgo(n.article.publishedAt)}</span>
-                    <ImpactTag impact={n.article.impact} />
-                    <span>Relevance {(n.relevance * 100).toFixed(0)}%</span>
-                  </div>
-                </div>
-              ))
-            )}
-          </Panel>
-        </section>
-
-        {/* ------------------------------ MACRO --------------------------------- */}
-        <section>
-          <SectionHeading title="Macro" subtitle="How the current macro setting interacts with this specific market." />
-          <Panel className="p-4">
-            {a.macroDrivers.length === 0 ? (
-              <p className="text-sm text-mute">Macro sensitivities are not defined for this market.</p>
-            ) : (
-              <ul className="space-y-3">
-                {a.macroDrivers.map((d) => (
-                  <li key={d.label}>
-                    <div className="flex items-center justify-between">
-                      <span className="font-display text-xs font-semibold uppercase tracking-widest">{d.label}</span>
-                      <span className={`ticker text-xs ${d.impact >= 0 ? "text-bull" : "text-bear"}`}>
-                        {d.impact > 0.08 ? "Supportive" : d.impact < -0.08 ? "Headwind" : "Neutral"}
-                      </span>
-                    </div>
-                    <p className="mt-0.5 text-xs text-mute">{d.detail}</p>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-1 border-t border-hairline-soft pt-3">
-              {a.macro.readings.slice(0, 8).map((r) => (
-                <div key={r.label} className="flex items-baseline justify-between text-xs">
-                  <span className="truncate text-faint">{r.label}</span>
-                  <span className="ticker">{r.value}</span>
-                </div>
-              ))}
-            </div>
-          </Panel>
-        </section>
-
+      <div className="grid gap-6">
         {/* --------------------------- CROSS MARKET ----------------------------- */}
         <section>
           <SectionHeading title="Cross-Market Confirmation" subtitle="Supporting evidence from related markets — tendencies, not rules." />
@@ -362,44 +301,6 @@ export default function MarketDetailPage({ params }: { params: Promise<{ symbol:
           </Panel>
         </section>
 
-        {/* ---------------------------- EVENT RISK ------------------------------ */}
-        <section>
-          <SectionHeading title="Event Risk" subtitle="Scheduled events reduce conviction — they do not push a market bearish." />
-          <Panel className="p-4">
-            {a.eventRisk.nextEvent ? (
-              <>
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="display text-lg font-bold">{a.eventRisk.nextEvent.name}</div>
-                    <div className="text-xs text-mute">
-                      {a.eventRisk.nextEvent.country} · {fmtTime(a.eventRisk.nextEvent.time)}
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <ImpactTag impact={a.eventRisk.risk === "none" ? "low" : a.eventRisk.risk} />
-                    <div className="ticker mt-1 text-xs text-mute">{untilLabel(a.eventRisk.nextEvent.time)}</div>
-                  </div>
-                </div>
-                <div className="mt-3 text-xs text-mute">
-                  Conviction dampening applied: <span className="ticker text-gold">{(a.eventRisk.dampening * 100).toFixed(0)}%</span> of the
-                  event-risk weight.
-                </div>
-                {a.eventRisk.upcoming.length > 1 ? (
-                  <ul className="mt-3 space-y-1 border-t border-hairline-soft pt-3 text-xs">
-                    {a.eventRisk.upcoming.slice(1, 5).map((e) => (
-                      <li key={e.id} className="flex items-center justify-between">
-                        <span className="text-mute">{e.name}</span>
-                        <span className="text-faint">{untilLabel(e.time)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-              </>
-            ) : (
-              <p className="text-sm text-mute">No scheduled events found that this market is directly exposed to.</p>
-            )}
-          </Panel>
-        </section>
       </div>
 
       {/* --------------------- WHAT COULD CHANGE IT ----------------------------- */}

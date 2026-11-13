@@ -25,8 +25,6 @@ const FILTERS = {
   ma50: ["any", "above", "below"],
   structure: ["any", "bullish", "bearish", "neutral"],
   momentum: ["any", "strong", "moderate", "weak"],
-  news: ["any", "bullish", "bearish", "neutral"],
-  eventRisk: ["any", "none", "low", "medium", "high"],
 };
 
 export default function ScannerPage() {
@@ -34,7 +32,7 @@ export default function ScannerPage() {
   const [mode] = useTradingMode();
   const [state, setState] = useState<Record<string, string>>({
     direction: "any", minScore: "0", class: "any", ma50: "any",
-    structure: "any", momentum: "any", news: "any", eventRisk: "any", q: "",
+    structure: "any", momentum: "any", q: "",
   });
   const [sort, setSort] = useState<"strength" | "score" | "change">("strength");
 
@@ -123,7 +121,7 @@ export default function ScannerPage() {
           <table className="w-full min-w-[820px] text-sm">
             <thead>
               <tr className="border-b border-hairline text-left">
-                {["Market", "Price", "Change", "MD Score", "Direction", "50 MA", "Structure", "Momentum", "News", "Event risk"].map((h) => (
+                {["Market", "Price", "Change", "MD Score", "Direction", "50 MA", "Structure", "Momentum"].map((h) => (
                   <th key={h} className="px-3 py-2.5 text-[10px] uppercase tracking-widest text-faint">{h}</th>
                 ))}
               </tr>
@@ -144,8 +142,6 @@ export default function ScannerPage() {
                   <td className={`px-3 py-2.5 text-xs uppercase ${r.ma50 === "above" ? "text-bull" : r.ma50 === "below" ? "text-bear" : "text-faint"}`}>{r.ma50 ?? "—"}</td>
                   <td className={`px-3 py-2.5 text-xs uppercase ${r.structure === "bullish" ? "text-bull" : r.structure === "bearish" ? "text-bear" : "text-mute"}`}>{r.structure}</td>
                   <td className="px-3 py-2.5 text-xs uppercase text-mute">{r.momentum}</td>
-                  <td className={`px-3 py-2.5 text-xs uppercase ${r.news === "bullish" ? "text-bull" : r.news === "bearish" ? "text-bear" : "text-mute"}`}>{r.news}</td>
-                  <td className={`px-3 py-2.5 text-xs uppercase ${r.eventRisk === "high" ? "text-bear" : r.eventRisk === "medium" ? "text-gold" : "text-faint"}`}>{r.eventRisk}</td>
                 </tr>
               ))}
             </tbody>

@@ -46,14 +46,12 @@ export function MarketCard({ row, precision = 2 }: { row: ScannerRow; precision?
         <Row label="50 EMA (1D)" value={row.ma50 ? row.ma50.toUpperCase() : "—"} good={row.ma50 === "above"} bad={row.ma50 === "below"} />
         <Row label="Structure (1D)" value={row.structure.toUpperCase()} good={row.structure === "bullish"} bad={row.structure === "bearish"} />
         <Row label="Momentum" value={row.momentum.toUpperCase()} good={row.momentum === "strong"} />
-        <Row label="News" value={row.news.toUpperCase()} good={row.news === "bullish"} bad={row.news === "bearish"} />
       </dl>
 
       <div className="mt-3 flex items-center justify-between text-[10px] uppercase tracking-widest text-faint">
         <span className={row.demo ? "text-gold" : "text-bull"}>
           {row.demo ? "Demo" : "Live"} · {timeAgo(row.updatedAt)}
         </span>
-        {row.eventRisk !== "none" ? <span className="text-gold">Event risk {row.eventRisk}</span> : <span>No event risk</span>}
       </div>
     </Link>
   );

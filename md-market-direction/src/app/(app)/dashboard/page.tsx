@@ -114,8 +114,8 @@ export default function DashboardPage() {
       </section>
 
       {/* ------------------------------ DAILY BRIEF ------------------------------- */}
-      <section className="grid gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2">
+      <section>
+        <div>
           <SectionHeading title="Daily Market Brief" subtitle="Everything that changed since yesterday, in one read." />
           {brief.loading && !brief.data ? (
             <Skeleton className="h-72" />
@@ -126,51 +126,6 @@ export default function DashboardPage() {
           ) : null}
         </div>
 
-        <div className="space-y-4">
-          <div>
-            <SectionHeading title="Major Upcoming Events" />
-            <Panel>
-              {brief.data?.brief.events.length ? (
-                brief.data.brief.events.map((e) => (
-                  <div key={e.name + e.when} className="flex items-start justify-between gap-3 border-b border-hairline-soft px-4 py-3 last:border-b-0">
-                    <div>
-                      <div className="text-sm font-medium">{e.name}</div>
-                      <div className="text-[11px] uppercase tracking-widest text-faint">{e.when}</div>
-                    </div>
-                    <ImpactTag impact={e.importance as "low" | "medium" | "high"} />
-                  </div>
-                ))
-              ) : (
-                <div className="px-4 py-6 text-sm text-mute">No high-impact events in the next 36 hours.</div>
-              )}
-              <div className="border-t border-hairline-soft px-4 py-2">
-                <Link href="/calendar" className="text-[10px] uppercase tracking-widest text-gold hover:underline">
-                  Full economic calendar →
-                </Link>
-              </div>
-            </Panel>
-          </div>
-
-          <div>
-            <SectionHeading title="Breaking News" />
-            <Panel>
-              {brief.data?.brief.headlines.map((h, i) => (
-                <div key={i} className="border-b border-hairline-soft px-4 py-3 last:border-b-0">
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="text-sm leading-snug">{h.headline}</p>
-                    <ImpactTag impact={h.impact as "low" | "medium" | "high"} />
-                  </div>
-                  <div className="mt-1 text-[10px] uppercase tracking-widest text-faint">{h.source}</div>
-                </div>
-              ))}
-              <div className="border-t border-hairline-soft px-4 py-2">
-                <Link href="/news" className="text-[10px] uppercase tracking-widest text-gold hover:underline">
-                  News intelligence →
-                </Link>
-              </div>
-            </Panel>
-          </div>
-        </div>
       </section>
     </div>
   );

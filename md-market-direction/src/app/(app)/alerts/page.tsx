@@ -24,7 +24,6 @@ const KINDS = [
   { kind: "price-cross-ma50", label: "Price crosses the daily 50 MA", threshold: 0, elite: false },
   { kind: "structure-change", label: "Daily structure changes", threshold: 0, elite: true },
   { kind: "factors-aligned", label: "N+ factors align", threshold: 5, elite: true },
-  { kind: "event-countdown", label: "Hours before next major event", threshold: 1, elite: true },
 ];
 
 export default function AlertsPage() {

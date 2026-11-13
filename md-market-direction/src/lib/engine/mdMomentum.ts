@@ -67,8 +67,6 @@ export function evaluateMdMomentum(analysis: AssetAnalysis, weeklyCandles: Candl
 
   const oneHourReading = clamp((oneTech?.strength ?? 0) * 0.5 + (oneStruct?.strength ?? 0) * 0.5, -1, 1);
   const momentumReading = clamp((momo("1D")?.strength ?? 0) * 0.6 + (momo("4H")?.strength ?? 0) * 0.4, -1, 1);
-  const newsCat = analysis.score.categories.find((c) => c.key === "news");
-  const newsReading = newsCat?.available ? newsCat.strength : 0;
 
   const raw: { key: keyof typeof MD_MOMENTUM_RULES; label: string; reading: number; value: string; detail: string }[] = [
     {
@@ -130,13 +128,6 @@ export function evaluateMdMomentum(analysis: AssetAnalysis, weeklyCandles: Candl
       reading: momentumReading,
       value: Math.abs(momentumReading) > 0.45 ? `${word(momentumReading)} — strong` : word(momentumReading),
       detail: "Daily and 4H RSI, MACD and rate of change combined.",
-    },
-    {
-      key: "news",
-      label: "News",
-      reading: newsReading,
-      value: newsCat?.available ? word(newsReading) : "No relevant coverage",
-      detail: newsCat?.available ? "Relevance-weighted news effect for this market." : "No sufficiently relevant news found.",
     },
   ];
 
