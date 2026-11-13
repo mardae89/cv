@@ -78,6 +78,8 @@ interface LineEdit {
   /** Where along the chart the reader dragged it, as a time. */
   anchorT?: number;
   extent?: LineExtent;
+  /** Taken off the chart by the reader. "Put them all back" restores it. */
+  hidden?: boolean;
 }
 
 type LineExtent = "right" | "left" | "both";
@@ -115,6 +117,26 @@ export default function WickPage() {
   useEffect(() => setSelected(null), [symbol, timeframe, view]);
 
   const editsKey = `${symbol}|${timeframe}`;
+
+  /* Delete or Backspace removes the selected line, on a keyboard. */
+  useEffect(() => {
+    if (!selected) return;
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) return;
+      if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault();
+        const id = selected;
+        setEdits((prev) => ({
+          ...prev,
+          [`${symbol}|${timeframe}`]: { ...(prev[`${symbol}|${timeframe}`] ?? {}), [id]: { hidden: true } },
+        }));
+        setSelected(null);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selected, symbol, timeframe]);
   const myEdits = useMemo(() => edits[editsKey] ?? {}, [edits, editsKey]);
 
   const editLine = (id: string, change: LineEdit | null) => {
@@ -193,6 +215,7 @@ export default function WickPage() {
     ) => {
       const id = lineId(label, t);
       const edit = myEdits[id] ?? {};
+      if (edit.hidden) return;
       const at = edit.price ?? price;
       const anchorT = edit.anchorT ?? t;
       if (out.some((l) => Math.abs(l.price - at) < 1e-9)) return;
@@ -378,6 +401,10 @@ export default function WickPage() {
                     moved={myEdits[selected]?.price != null}
                     onExtent={(extent) => editLine(selected, { extent })}
                     onReset={() => editLine(selected, null)}
+                    onDelete={() => {
+                      editLine(selected, { hidden: true });
+                      setSelected(null);
+                    }}
                     onDone={() => setSelected(null)}
                   />
                 ) : null
@@ -676,7 +703,7 @@ function MovedNote({ edited, onResetAll }: { edited: boolean; onResetAll: () => 
   return (
     <>
       {" "}
-      <span className="text-bone">You have moved lines on this chart.</span>{" "}
+      <span className="text-bone">You have moved or deleted lines on this chart.</span>{" "}
       <button
         onClick={onResetAll}
         className="display text-[10px] font-bold uppercase tracking-widest text-gold underline-offset-2 hover:underline"
@@ -696,12 +723,14 @@ function LineTools({
   moved,
   onExtent,
   onReset,
+  onDelete,
   onDone,
 }: {
   extent: LineExtent;
   moved: boolean;
   onExtent: (extent: LineExtent) => void;
   onReset: () => void;
+  onDelete: () => void;
   onDone: () => void;
 }) {
   const choices: { key: LineExtent; label: string; title: string }[] = [
@@ -732,6 +761,13 @@ function LineTools({
         className="display px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-mute transition hover:text-gold disabled:opacity-40"
       >
         Put back
+      </button>
+      <button
+        onClick={onDelete}
+        title="Remove this line from the chart"
+        className="display px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-bear transition hover:underline"
+      >
+        Delete
       </button>
       <button
         onClick={onDone}
@@ -765,7 +801,7 @@ function LineNote({ line, count }: { line: StructureLine; count: number }) {
       The line in force sits on the newest {name} at {line.price.toFixed(5)} and runs to the right
       edge — a candle closing {line.shift === "sell" ? "below" : "above"} it is the shift. Tap any line on the
       chart to take hold of it: drag it to where you read the structure to be, and run it left,
-      right or both ways.{rest}
+      right or both ways, or delete it.{rest}
     </>
   );
 }

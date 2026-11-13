@@ -353,6 +353,13 @@ export function PriceChart({
      itself the moment it starts moving. While one is held the chart does not
      pan — the gesture belongs to the line, not to the view. */
   const dragLevel = useRef<{ id: string; dPrice: number; dT: number } | null>(null);
+  /* Where the line in hand is right now. The drag is drawn here, inside the
+     chart, and handed to the owner once when the line is let go: telling the
+     whole page about every frame of a drag re-rendered all of it per pixel, and
+     on a phone that is what made the line lag behind the finger. */
+  const [livePos, setLivePos] = useState<{ id: string; price: number; t: number } | null>(null);
+  const livePosRef = useRef<{ id: string; price: number; t: number } | null>(null);
+  const frame = useRef<number | null>(null);
   const [overLevel, setOverLevel] = useState(false);
   const gesture = useRef<{
     zone: Zone;
@@ -414,7 +421,7 @@ export function PriceChart({
       // the line, not on it. A mouse is precise and gets a narrower one. Either
       // way the line in hand is easier to catch again than the rest.
       const selected = lv.id === selectedLevel;
-      const reach = touch ? (selected ? 36 : 26) : selected ? 18 : 10;
+      const reach = touch ? (selected ? 44 : 32) : selected ? 20 : 12;
       const gap = Math.abs(Y(lv.price) - y);
       if (gap > reach) continue;
       // The selected line wins where two overlap: it is the one in hand.
@@ -478,7 +485,13 @@ export function PriceChart({
       // A margin at each edge so the line always keeps a grabbable length,
       // whichever way it is set to run.
       const t = clamp(tAtX(x) + dT, tAtX(36), tAtX(plotW - 36));
-      onLevelMove?.(id, priceAt(y) + dPrice, t);
+      livePosRef.current = { id, price: priceAt(y) + dPrice, t };
+      if (frame.current == null) {
+        frame.current = requestAnimationFrame(() => {
+          frame.current = null;
+          setLivePos(livePosRef.current);
+        });
+      }
       return;
     }
     if (pointers.current.has(e.pointerId)) {
@@ -541,6 +554,18 @@ export function PriceChart({
   };
 
   const endPointer = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (dragLevel.current) {
+      if (frame.current != null) {
+        cancelAnimationFrame(frame.current);
+        frame.current = null;
+      }
+      const done = livePosRef.current;
+      livePosRef.current = null;
+      dragLevel.current = null;
+      if (done) onLevelMove?.(done.id, done.price, done.t);
+      setLivePos(null);
+      return;
+    }
     dragLevel.current = null;
     pointers.current.delete(e.pointerId);
     if (pointers.current.size === 0) gesture.current = null;
@@ -787,8 +812,13 @@ export function PriceChart({
             // one the last shift broke. Labels then print on top of each other,
             // or across the other line, so each one is placed clear of both.
             const usedLabelY: number[] = [];
-            const lineYs = (levels ?? []).map((lv) => Y(lv.price));
-            return (levels ?? []).map((lv, k) => {
+            const shown = (levels ?? []).map((lv) =>
+              livePos && lv.id === livePos.id
+                ? { ...lv, price: livePos.price, fromT: livePos.t, toT: lv.toT + (livePos.t - lv.fromT) }
+                : lv,
+            );
+            const lineYs = shown.map((lv) => Y(lv.price));
+            return shown.map((lv, k) => {
               // Clamped to the plot, not to a bar: the line is drawn where its
               // time falls, and only the drawing stops at the frame.
               const at = (t: number) => clamp(xAtT(t), 0, plotW);

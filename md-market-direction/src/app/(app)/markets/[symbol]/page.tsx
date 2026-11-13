@@ -58,6 +58,12 @@ export default function MarketDetailPage({ params }: { params: Promise<{ symbol:
 
   return (
     <div className="mx-auto max-w-7xl space-y-6">
+      <Link
+        href="/markets"
+        className="display inline-flex min-h-11 items-center gap-2 text-xs font-bold uppercase tracking-widest text-gold hover:underline"
+      >
+        <span aria-hidden="true" className="text-base leading-none">←</span> Back to markets
+      </Link>
       {/* ------------------------------- HERO ---------------------------------- */}
       <Panel className="fade-up overflow-hidden">
         <div className="gold-line" />
