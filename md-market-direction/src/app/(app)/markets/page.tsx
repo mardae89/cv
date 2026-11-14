@@ -5,8 +5,9 @@ import { useApi } from "@/lib/hooks";
 import { useTradingMode, useTrendScope } from "@/lib/useTrendScope";
 import { symbolMatches } from "@/lib/symbols";
 import type { ScannerRow } from "@/lib/types";
-import { MarketCard } from "@/components/market-card";
-import { EmptyState, ErrorState, Eyebrow, SectionHeading, Skeleton, TrendScopeSwitch } from "@/components/primitives";
+import { MiniGauge, PushArrow, scoreToDial } from "@/components/gauge";
+import { bandFor } from "@/lib/config/scoring";
+import { EmptyState, ErrorState, Eyebrow, Panel, SectionHeading, Skeleton, TrendScopeSwitch } from "@/components/primitives";
 import Link from "next/link";
 
 interface ScannerResponse {
@@ -46,7 +47,7 @@ export default function MarketsPage() {
         (group === "All" || r.group === group) &&
         // Separator-insensitive: "eurusd" finds EUR/USD, no slash required.
         symbolMatches(query, r.symbol, r.name),
-    );
+    ).sort((a, b) => Math.abs(b.score - 50) - Math.abs(a.score - 50));
   }, [data, group, query]);
 
   const groups = useMemo(() => {
@@ -106,9 +107,7 @@ export default function MarketsPage() {
       ) : null}
 
       {loading && !data ? (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-56" />)}
-        </div>
+        <Skeleton className="h-96" />
       ) : rows.length === 0 ? (
         <EmptyState
           title="No markets match"
@@ -116,14 +115,64 @@ export default function MarketsPage() {
         />
       ) : (
         <>
-          <Eyebrow>{rows.length} markets</Eyebrow>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <Eyebrow>{rows.length} markets · strongest alignment first</Eyebrow>
+          <Panel>
             {rows.map((r) => (
-              <MarketCard key={r.symbol} row={r} precision={r.symbol.includes("/") && r.price < 10 ? 5 : 2} />
+              <MarketListRow key={r.symbol} row={r} />
             ))}
-          </div>
+          </Panel>
         </>
       )}
     </div>
+  );
+}
+
+const TAG: Record<string, string> = {
+  bullish: "border-bull/50 text-bull bg-bull/10",
+  bearish: "border-bear/50 text-bear bg-bear/10",
+  mixed: "border-gold/50 text-gold bg-gold/10",
+  neutral: "border-gold/50 text-gold bg-gold/10",
+};
+
+/** One market, laid out like the MD Trader OS momentum board. */
+function MarketListRow({ row }: { row: ScannerRow }) {
+  const dial = scoreToDial(row.score);
+  const band = bandFor(row.score);
+  const tone = dial >= 20 ? "text-bull" : dial <= -20 ? "text-bear" : "text-gold";
+  const sub = [
+    row.direction === "mixed" ? "Timeframes disagree" : band.label,
+    row.structure !== "neutral" ? `structure ${row.structure}` : null,
+    row.ma50 ? `${row.ma50} 50 EMA` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return (
+    <Link
+      href={`/markets/${encodeURIComponent(row.symbol)}`}
+      className="grid grid-cols-[68px_minmax(0,1fr)_auto] items-center gap-3 border-b border-hairline-soft px-3 py-3 transition last:border-b-0 hover:bg-panel-2 sm:px-4"
+    >
+      <MiniGauge value={dial} />
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="display truncate text-base font-bold">{row.symbol}</span>
+          <span
+            className={`inline-flex shrink-0 items-center gap-1.5 border px-2 py-0.5 font-display text-[10px] font-semibold uppercase tracking-widest ${TAG[row.direction] ?? TAG.neutral}`}
+          >
+            {row.direction === "bullish" || row.direction === "bearish" ? (
+              <span className={`inline-block h-1.5 w-1.5 ${row.direction === "bullish" ? "bg-bull" : "bg-bear"}`} />
+            ) : null}
+            {row.direction}
+          </span>
+        </div>
+        <div className="truncate text-[10px] uppercase tracking-widest text-faint">{sub}</div>
+      </div>
+      <div className="flex items-center gap-2">
+        <PushArrow value={dial} className="h-5 w-5" />
+        <div className="text-right">
+          <div className={`ticker display text-xl font-extrabold leading-none ${tone}`}>{row.score}</div>
+          <div className="mt-0.5 hidden text-[9px] uppercase tracking-widest text-faint sm:block">MD score</div>
+        </div>
+      </div>
+    </Link>
   );
 }
