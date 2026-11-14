@@ -183,3 +183,18 @@ select option { background: var(--color-ink); }
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 .chart-fs .chart-body { flex: 1; min-height: 0; }
+
+/* Push arrows on the markets list, matching MD Trader OS. */
+@keyframes md-push-up {
+  0%, 100% { transform: translateY(2px); }
+  50% { transform: translateY(-3px); }
+}
+@keyframes md-push-down {
+  0%, 100% { transform: translateY(-2px); }
+  50% { transform: translateY(3px); }
+}
+.push-up { animation: md-push-up 1.4s ease-in-out infinite; }
+.push-down { animation: md-push-down 1.4s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .push-up, .push-down { animation: none; }
+}
