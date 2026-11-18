@@ -1,0 +1,8 @@
+# Seed search terms: one per line, in the words your buyers actually use (C-13).
+# Lines starting with # are ignored.
+#
+# Cover the entire niche: problems, desired outcomes, mechanisms, tools, mistakes,
+# comparisons, "how to" phrasings, identity terms ("for doctors", "for agency owners").
+# /yt-research generates this list from channel/profile.md. You can also ask any AI:
+#   "Give me a core seed list of YouTube search terms that covers the entire <niche> niche,
+#    phrased the way <core viewer> would type them."

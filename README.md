@@ -11,3 +11,12 @@ Know the Direction. Understand the Why. See
 ```bash
 cd md-market-direction && npm install && npm run dev
 ```
+
+## YouTube Growth Engine
+
+`youtube-engine/` is a master prompt, a rulebook, a 10-stage pipeline and a research crawler for building a YouTube channel that turns viewers into customers. It upgrades its own rules after every video. See
+[`youtube-engine/README.md`](youtube-engine/README.md).
+
+```bash
+python3 youtube-engine/engine/yt.py status
+```

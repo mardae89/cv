@@ -1,0 +1,6 @@
+{
+  "_help": "Funnel targets for `yt.py diagnose`. They're used until you have 3+ videos of your own history at a checkpoint. Leave null if unknown. The percentages are whole numbers (15 = 15%).",
+  "leads_per_1k_views": null,
+  "lead_to_call_pct": null,
+  "call_to_customer_pct": null
+}

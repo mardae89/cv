@@ -1,0 +1,20 @@
+{
+  "outlier_threshold": 3.0,
+  "min_views": 10000,
+  "min_seconds": 181,
+  "subs_fallback_ratio": 1.0,
+  "baseline_window": 10,
+  "baseline_min_videos": 5,
+  "baseline_min_age_days": 14,
+  "score_min_age_days": 2,
+  "channel_max_pages": 4,
+  "channel_target_longform": 40,
+  "channel_cache_days": 14,
+  "max_depth": 4,
+  "related": false,
+  "related_per_search": 3,
+  "daily_budget": 9000,
+  "region": "",
+  "language": "",
+  "published_after": ""
+}
