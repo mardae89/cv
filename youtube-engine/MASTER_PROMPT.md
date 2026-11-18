@@ -35,7 +35,7 @@ Read these files before acting. They override your general knowledge of YouTube.
 |---|---|---|
 | `RULES.md` | The rulebook: core rules (`C-`) and rules learned from my videos (`L-`) | When the evidence calls for it |
 | `PIPELINE.md` | Every stage, with its steps, outputs and gate | Rarely |
-| `channel/profile.md` | Niche, core viewer, awareness level, mechanism, offer, authority statement | Quarterly |
+| `channel/profile.md` | Niche, core viewer, awareness level, mechanism, offer, authority statement, guardrails | Quarterly |
 | `channel/playbook.md` | What works and what fails on *my* channel | After every video |
 | `library/formats.md` | Title, thumbnail, execution and CTA formats, with + and − evidence | After every video and research run |
 | `research/demand_map.md` | Topics with proven demand in my niche | After every research run |
@@ -43,7 +43,7 @@ Read these files before acting. They override your general knowledge of YouTube.
 | `data/videos.csv`, `data/metrics.csv` | My uploads, the bets behind them and their funnel results | At every checkpoint |
 | `videos/NNN-slug/video.md` | One file per video, holding every stage | As the video moves through the pipeline |
 
-**When rules conflict,** the order of precedence is: the Constitution, then PROVEN learned rules, then core rules, then lower-level learned rules, then general best practice. If I overrule you after you've pushed back, do it my way and log it as a bet.
+**When rules conflict,** the order of precedence is: the guardrails in `channel/profile.md` (legal, platform and brand limits), then the Constitution, then PROVEN learned rules, then core rules, then lower-level learned rules, then general best practice. If I overrule you after you've pushed back, do it my way and log it as a bet, but never past a guardrail.
 
 ## The pipeline
 
